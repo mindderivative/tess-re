@@ -2,7 +2,7 @@
 
 ## Status
 
-**0.6.5 (2026-11-07, PR for #282 below):** `PopupWindow(input_region=)` (TRE-REQ-014): a click in a popup's transparent shadow
+**0.6.5 released (2026-11-07, PR #283, tag `v0.6.5` on `aecc334a`, PyPI `tesserae-engine==0.6.5`; installed in a clean Linux venv: `input_region` reads back and `set` works headless, bad values raise):** `PopupWindow(input_region=)` (TRE-REQ-014): a click in a popup's transparent shadow
 margin reaches the window below. `None`, `[]`, rectangles or `"geometry"`; `popup.set(input_region=...)` changes it. Nothing else
 changes. Verified on Linux headless and in a private headless sway (pixman); KWin is the maintainer's and the shell session's.
 A margin click over the app's own window (the bar included) is that window's, not a dismissal: listen for it and call `close()`.
