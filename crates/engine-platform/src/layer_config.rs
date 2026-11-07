@@ -316,6 +316,10 @@ pub struct PopupConfig {
     /// The compositor places and constrains this rectangle and ignores the rest of the surface
     /// (a transparent shadow margin). `None` is the whole surface.
     pub geometry: Option<Rect>,
+    /// #282: where the compositor delivers input, `(x, y, width, height)` rectangles in the
+    /// popup's own logical pixels (margin included). `None` is the whole surface, `Some(vec![])`
+    /// nothing, so a click in a shadow margin can reach the window below.
+    pub input_region: Option<Vec<Rect>>,
 }
 
 impl PopupConfig {
@@ -329,6 +333,17 @@ impl PopupConfig {
             return Err(error(
                 "anchor_rect",
                 "needs a width and a height of 0 or more",
+            ));
+        }
+        if let Some(rects) = &self.input_region
+            && rects.len() > MAX_REGION_RECTS
+        {
+            return Err(error(
+                "input_region",
+                format!(
+                    "has {} rectangles; at most {MAX_REGION_RECTS} are allowed",
+                    rects.len()
+                ),
             ));
         }
         if let Some((x, y, w, h)) = self.geometry {
@@ -659,6 +674,7 @@ mod tests {
             offset: (0, 0),
             grab: true,
             geometry: None,
+            input_region: None,
         };
         assert!(ok.validate().is_ok());
         assert!(
@@ -684,6 +700,22 @@ mod tests {
             }
             .validate()
             .is_ok()
+        );
+        assert!(
+            PopupConfig {
+                input_region: Some(vec![(0, 0, 10, 10); MAX_REGION_RECTS]),
+                ..ok.clone()
+            }
+            .validate()
+            .is_ok()
+        );
+        assert!(
+            PopupConfig {
+                input_region: Some(vec![(0, 0, 10, 10); MAX_REGION_RECTS + 1]),
+                ..ok.clone()
+            }
+            .validate()
+            .is_err()
         );
         for bad in [
             (0, 0, 0, 10),

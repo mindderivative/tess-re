@@ -998,6 +998,13 @@ class PopupWindow(Window):
     inside `size`; the default is the whole surface. A compositor that resizes the popup resizes the
     body: the surface follows with the same margins.
 
+    `input_region` (0.6.5, #282) is where the compositor delivers pointer and touch input, as in a
+    `LayerWindow`: `None` (the default: the whole surface), `[]` (nothing), or rectangles
+    `[(x, y, width, height), ...]` in the popup's own logical pixels, at most 256; or the string
+    `"geometry"` for the body. A click outside it, in a shadow margin say, reaches the window below.
+    Unlike the other settings it can change after the popup is made: `popup.set(input_region=...)`.
+    There is no `"auto"` here.
+
     The popup is a window like any other: its nodes, events, listeners, animation and input method
     work as in a `LayerWindow`. `configure` reports `width`, `height` and, for a popup, `x` and `y`:
     where the compositor put it, in its parent's coordinates, after any flip or slide. Errors raise
@@ -1016,15 +1023,16 @@ class PopupWindow(Window):
         offset: tuple[int, int] | None = ...,
         grab: bool = ...,
         geometry: tuple[int, int, int, int] | None = ...,
+        input_region: Sequence[Sequence[float]] | Literal["geometry"] | None = ...,
     ) -> PopupWindow: ...
     def set(self, **props: Any) -> None:
-        """Sets the window keys a popup shares (`touch_slop`, `partial_redraw`, ...). The popup's own
-        settings can only be given to the constructor, and the keys that mean nothing to a popup
+        """Sets `input_region` and the window keys a popup shares (`touch_slop`, `partial_redraw`,
+        ...). The popup's other settings can only be given to the constructor, and the keys that mean nothing to a popup
         (`title`, `decorations`, `x`, `y`, ...) raise `ValueError`."""
         ...
     def get(self, name: str) -> Any:
         """Reads `size`, `anchor_rect`, `anchor`, `gravity`, `constraint_adjustment`, `offset`,
-        `grab`, `geometry` (the body; the whole surface when none was given), `position` (where the
+        `grab`, `geometry` (the body; the whole surface when none was given), `input_region`, `position` (where the
         compositor placed the body, in the parent's coordinates, or `None`
         until it has) or anything `Window.get` reads."""
         ...

@@ -50,12 +50,23 @@ def open_menu(e=None):
     try:
         if menus:
             return
-        popup = PopupWindow(bar, size=(160, 90), anchor_rect=(100, 0, 60, BAR_H), anchor="bottom_left",
-                            gravity="bottom_right", constraint_adjustment=("flip_y", "slide_x"),
-                            grab=args.get("grab", True))
-        popup.root.set(fill=(30, 140, 90, 255))
-        a = popup.create("box", width=148, height=30, x=6, y=6, position="absolute", fill=(200, 230, 210, 255))
-        b = popup.create("box", width=148, height=30, x=6, y=42, position="absolute", fill=(200, 230, 210, 255))
+        # #282: `margin` is a transparent shadow margin around the 160 x 90 body (`geometry`), and
+        # `region` is the popup's `input_region` (None, "geometry" or rectangles), when given.
+        m = args.get("margin", 0)
+        extra = {"geometry": (m, m, 160, 90)} if m else {}
+        if "region" in args:
+            extra["input_region"] = args["region"]
+        popup = PopupWindow(bar, size=(160 + 2 * m, 90 + 2 * m), anchor_rect=(100, 0, 60, BAR_H),
+                            anchor="bottom_left", gravity="bottom_right",
+                            constraint_adjustment=("flip_y", "slide_x"), grab=args.get("grab", True), **extra)
+        if m:
+            body = popup.create("box", width=160, height=90, x=m, y=m, position="absolute", fill=(30, 140, 90, 255))
+            popup.root.add_child(body)
+        else:
+            popup.root.set(fill=(30, 140, 90, 255))
+        popup.root.on("click", lambda e: say("popup_click"))
+        a = popup.create("box", width=148, height=30, x=6 + m, y=6 + m, position="absolute", fill=(200, 230, 210, 255))
+        b = popup.create("box", width=148, height=30, x=6 + m, y=42 + m, position="absolute", fill=(200, 230, 210, 255))
         a.on("click", lambda e: say("item", name="A"))
         b.on("click", lambda e: (say("item", name="B"), open_submenu(popup)))
         popup.root.add_child(a)

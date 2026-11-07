@@ -153,6 +153,8 @@ fn layer_request(
         .as_ref()
         .map(|spec| engine_platform::layer_config::PopupConfig {
             parent: spec.parent.id.get().unwrap_or(u64::MAX),
+            // #282: the live region (`set(input_region=...)` before the popup opened counts).
+            input_region: layer.config.borrow().input_region.clone(),
             ..spec.config.clone()
         });
     Some(engine_platform::layer::LayerRequest {

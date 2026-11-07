@@ -245,6 +245,11 @@ fn value_error(error: &ConfigError) -> PyErr {
     PyValueError::new_err(format!("LayerWindow {error}"))
 }
 
+/// A rectangle list for `who`'s `input_region`, as `extract_region` checks it.
+pub(crate) fn rects_error(who: &str, error: &ConfigError) -> PyErr {
+    PyValueError::new_err(format!("{who} {error}"))
+}
+
 fn names_error(key: &str, what: &str, names: &[&str]) -> PyErr {
     PyValueError::new_err(format!(
         "LayerWindow {key}: unknown {what}; valid: {}",
@@ -339,6 +344,11 @@ fn edge_name(bit: u8) -> &'static str {
 /// `input_region`: `None` (the whole surface), `[]` (nothing), or rectangles
 /// `[(x, y, width, height), ...]` in logical pixels.
 fn extract_region(value: &Bound<'_, PyAny>) -> PyResult<Region> {
+    extract_region_for("LayerWindow", value)
+}
+
+/// `extract_region`, with `who` named in its errors (`"LayerWindow"` or `"PopupWindow"`).
+pub(crate) fn extract_region_for(who: &str, value: &Bound<'_, PyAny>) -> PyResult<Region> {
     if value.is_none() {
         return Ok(Region::Rects(None));
     }
@@ -347,17 +357,17 @@ fn extract_region(value: &Bound<'_, PyAny>) -> PyResult<Region> {
             Ok(Region::Auto)
         } else {
             Err(PyValueError::new_err(format!(
-                "LayerWindow input_region: {:?} is not a region; use None, [], \"auto\" or a \
+                "{who} input_region: {:?} is not a region; use None, [], \"auto\" or a \
                  list of (x, y, width, height) rectangles",
                 text.to_string()
             )))
         };
     }
     let bad = || {
-        PyValueError::new_err(
-            "LayerWindow input_region: must be None, [], \"auto\" or a list of \
-             (x, y, width, height) rectangles",
-        )
+        PyValueError::new_err(format!(
+            "{who} input_region: must be None, [], \"auto\" or a list of \
+             (x, y, width, height) rectangles"
+        ))
     };
     // Each rectangle may be a tuple or a list of four numbers.
     let rows: Vec<Vec<f64>> = value.extract().map_err(|_| bad())?;
@@ -370,12 +380,12 @@ fn extract_region(value: &Bound<'_, PyAny>) -> PyResult<Region> {
         .collect::<PyResult<_>>()?;
     engine_platform::layer_config::region_from_floats(&rects)
         .map(|r| Region::Rects(Some(r)))
-        .map_err(|e| value_error(&e))
+        .map_err(|e| rects_error(who, &e))
 }
 
 /// What `input_region` was asked to be.
 #[derive(Clone, PartialEq)]
-enum Region {
+pub(crate) enum Region {
     /// `None` (the whole surface), `[]` or rectangles.
     Rects(Option<Vec<engine_platform::layer_config::Rect>>),
     /// `"auto"`: follows what is drawn.

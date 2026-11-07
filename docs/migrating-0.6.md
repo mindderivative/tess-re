@@ -165,3 +165,10 @@ without asking for it.
   and the window, told nothing was animating, drew once and slept, so the animation did not move until
   something else woke the window. It now draws every frame it runs. (Found while measuring #272; present
   before 0.6.4.)
+
+## 0.6.5
+
+- **`PopupWindow(input_region=)` (#282, TRE-REQ-014).** A popup with a transparent shadow margin took clicks
+  in that margin. `input_region=[(x, y, w, h), ...]`, `[]`, or `"geometry"` (the body) limits where it takes
+  input, and `popup.set(input_region=...)` changes it; the default `None` is the whole surface, as before.
+  See [`PopupWindow`](reference/layer-window.md#popupwindow).

@@ -1014,6 +1014,53 @@ def test_a_click_on_a_popup_item_reaches_it(children):
     _popup_session(children, ["top", "left", "right"], steps, extra={"no_window": True})
 
 
+# #282: a popup with a 20 px shadow margin, its body (100, 32) to (260, 122) on screen. The margin to
+# the left of the body, (90, 72), is over the window below. `region` is the popup's `input_region`.
+MARGIN_POINT = (90, 72)
+BODY_POINT = (180, 80)
+
+
+@pytest.mark.parametrize("region", [[(20, 20, 160, 90)], "geometry"])
+def test_a_click_in_a_popups_shadow_margin_reaches_the_window_below(children, region):
+    def steps(pointer, go, kinds, seen, out_h):
+        _open_menu(pointer, go, kinds, out_h, ["top", "left", "right"])
+        go(*MARGIN_POINT)
+        pointer.click()
+        got = kinds(3)
+        assert "window_click" in got and "popup_click" not in got, got
+        # The body still takes its own clicks.
+        seen.clear()
+        go(*BODY_POINT)
+        pointer.click()
+        got = kinds(3)
+        assert "popup_click" in got and "window_click" not in got, got
+
+    _popup_session(children, ["top", "left", "right"], steps, extra={"margin": 20, "region": region, "grab": False})
+
+
+def test_without_an_input_region_the_margin_takes_the_click(children):
+    def steps(pointer, go, kinds, seen, out_h):
+        _open_menu(pointer, go, kinds, out_h, ["top", "left", "right"])
+        go(*MARGIN_POINT)
+        pointer.click()
+        got = kinds(3)
+        assert "popup_click" in got and "window_click" not in got, got
+
+    _popup_session(children, ["top", "left", "right"], steps, extra={"margin": 20, "grab": False})
+
+
+def test_a_click_in_the_margin_still_dismisses_a_grabbed_popup(children):
+    def steps(pointer, go, kinds, seen, out_h):
+        _open_menu(pointer, go, kinds, out_h, ["top", "left", "right"])
+        go(*MARGIN_POINT)
+        pointer.click()
+        got = kinds(4)
+        closed = [e for e in seen if e["kind"] == "closed" and e["menu"] == "menu"]
+        assert closed and closed[-1]["reason"] == "dismissed", got
+
+    _popup_session(children, ["top", "left", "right"], steps, extra={"margin": 20, "region": "geometry", "no_window": True})
+
+
 def test_a_popup_can_hang_off_another_popup(children):
     def steps(pointer, go, kinds, seen, out_h):
         _open_menu(pointer, go, kinds, out_h, ["top", "left", "right"])

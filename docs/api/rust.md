@@ -2492,6 +2492,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `offset` | `(i32, i32)` | A fixed shift after placement, in logical pixels. |
 | `grab` | `bool` | Whether the popup grabs the keyboard and pointer, so an outside click or Escape ends it. |
 | `geometry` | `Option<Rect>` | The popup's body, `(x, y, width, height)` in the popup's own pixels, inside `size`. |
+| `input_region` | `Option<Vec<Rect>>` | Where the compositor delivers input, `(x, y, width, height)` rectangles in the popup's own logical pixels (margin included). |
 
 | Method | Description |
 | --- | --- |
