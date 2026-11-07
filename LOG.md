@@ -2,7 +2,7 @@
 
 ## Status
 
-**0.6.4 (2026-11-07, PRs #275-#278 merged, PR for the release below):** TRE-REQ-013, four ways to build a join that grows out of a
+**0.6.4 released (2026-11-07, PR #279, tag `v0.6.4` on `82617bbe`, PyPI `tesserae-engine==0.6.4`; installed in a clean Linux venv: every new property and method reads back and works headless, `import tre` raises):** TRE-REQ-013, four ways to build a join that grows out of a
 shape. `transform_origin` and `corner_style="concave"` (#269); `Shader.animate`, `hit_path`, the `sd_*` shader helpers and
 `frame.scale` (#270); `morph="structure"|"strict"` on a path (#271); path templates with `params` and `animate_param`
 (#272). Also fixed: an animation started by a timer drew no frames on a live window (found in #272, older than 0.6.4).

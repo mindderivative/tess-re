@@ -7,7 +7,7 @@ project Tesserae Rendering Engine; the old trackers are archived as
 
 ## Where we are
 
-`main` is at 0.6.4 (2026-11-07: TRE-REQ-013, #269-#272: transform origin, concave corners, shader joins, structure morph, parametric paths). 0.6.3 (2026-11-06: PR #267, tag `v0.6.3`): `PopupWindow(geometry=)`
+`main` is at 0.6.4 (released 2026-11-07, PR #279, tag `v0.6.4`, on PyPI: TRE-REQ-013, #269-#272: transform origin, concave corners, shader joins, structure morph, parametric paths). 0.6.3 (2026-11-06: PR #267, tag `v0.6.3`): `PopupWindow(geometry=)`
 (#266, TRE-REQ-007). 0.6.2 (2026-11-06): #263 (a text node measures to its content) and #264 (a cross-window change is
 drawn at once). 0.6.1 (2026-11-03): the loop no longer runs a self-queuing `call_soon`
 callback once it is exiting (#260; macOS unverified). 0.6.0 (2026-11-03) renamed the package `tre` to `tess_re` and the variables to `TESS_RE_*`, no alias
