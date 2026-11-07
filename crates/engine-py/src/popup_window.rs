@@ -13,7 +13,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyString};
 
-use crate::layer_window::{LayerState, PopupSpec, UnsupportedPlatform};
+use crate::layer_window::{LayerState, PopupSpec, Region, UnsupportedPlatform, extract_region_for};
 use crate::window::PyWindow;
 
 /// Window keys that mean nothing to a popup the compositor places and sizes.
@@ -48,6 +48,34 @@ const FIXED: &[&str] = &[
     "grab",
     "geometry",
 ];
+
+/// `input_region`: `None` (the whole surface), `[]` (nothing), rectangles in the popup's own
+/// logical pixels, or `"geometry"` (the popup's body, `geometry`, or the whole surface without
+/// one). Not `"auto"`: a popup is not drawn as shapes the engine follows.
+fn popup_region(
+    value: &Bound<'_, PyAny>,
+    size: (u32, u32),
+    geometry: Option<(i32, i32, i32, i32)>,
+) -> PyResult<Option<Vec<engine_platform::layer_config::Rect>>> {
+    if let Ok(text) = value.cast::<PyString>()
+        && text == "geometry"
+    {
+        return Ok(Some(vec![geometry.unwrap_or((
+            0,
+            0,
+            size.0 as i32,
+            size.1 as i32,
+        ))]));
+    }
+    match extract_region_for("PopupWindow", value)? {
+        Region::Rects(rects) => Ok(rects),
+        Region::Auto => Err(bad(
+            "input_region",
+            "\"auto\" is for a LayerWindow; use None, [], \"geometry\" or a list of \
+             (x, y, width, height) rectangles",
+        )),
+    }
+}
 
 fn bad(key: &str, what: &str) -> PyErr {
     PyValueError::new_err(format!("PopupWindow {key}: {what}"))
@@ -102,7 +130,8 @@ impl PyPopupWindow {
         constraint_adjustment = None,
         offset = None,
         grab = true,
-        geometry = None
+        geometry = None,
+        input_region = None
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -115,6 +144,7 @@ impl PyPopupWindow {
         offset: Option<&Bound<'_, PyAny>>,
         grab: bool,
         geometry: Option<&Bound<'_, PyAny>>,
+        input_region: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         match availability() {
             Availability::Unsupported(why) => return Err(UnsupportedPlatform::new_err(why)),
@@ -185,6 +215,12 @@ impl PyPopupWindow {
                 }
                 _ => None,
             },
+            input_region: None,
+        };
+        let mut config = config;
+        config.input_region = match input_region {
+            Some(value) => popup_region(value, config.size, config.geometry)?,
+            None => None,
         };
         config
             .validate()
@@ -196,6 +232,8 @@ impl PyPopupWindow {
         handles.dpi_scaling.set(true);
         handles.transparent.set(true);
         let mut state = LayerState::new_popup();
+        // The live region lives in the state's config, where `set` and `get` read it.
+        state.config.borrow_mut().input_region = config.input_region.clone();
         state.popup = Some(PopupSpec {
             parent: parent_state,
             config,
@@ -213,6 +251,30 @@ impl PyPopupWindow {
         let Some(props) = props else {
             return Ok(());
         };
+        // #282: `input_region` is the one popup setting that changes after it is made.
+        let mut region = None;
+        let rest = PyDict::new(slf.py());
+        for (name, value) in props.iter() {
+            if name.extract::<String>().is_ok_and(|n| n == "input_region") {
+                let state = base
+                    .handles
+                    .layer
+                    .clone()
+                    .expect("a PopupWindow has popup state");
+                let spec = state
+                    .popup
+                    .as_ref()
+                    .expect("a PopupWindow has a popup spec");
+                region = Some(popup_region(
+                    &value,
+                    spec.config.size,
+                    spec.config.geometry,
+                )?);
+            } else {
+                rest.set_item(name, value)?;
+            }
+        }
+        let props = &rest;
         for name in props.keys() {
             let name: String = name.extract()?;
             if FIXED.contains(&name.as_str()) {
@@ -225,11 +287,27 @@ impl PyPopupWindow {
                 ));
             }
         }
-        base.set(Some(props))
+        // The shared keys first: `Window.set` is all-or-nothing, so a bad one leaves the region alone.
+        base.set(Some(props))?;
+        if let Some(region) = region {
+            let state = base
+                .handles
+                .layer
+                .clone()
+                .expect("a PopupWindow has popup state");
+            state.config.borrow_mut().input_region = region.clone();
+            #[cfg(target_os = "linux")]
+            if let (Some(controller), Some(id)) =
+                (state.controller.borrow().as_ref(), state.id.get())
+            {
+                controller.set_input_region(id, region);
+            }
+        }
+        Ok(())
     }
 
     /// Reads a popup setting (`size`, `anchor_rect`, `anchor`, `gravity`,
-    /// `constraint_adjustment`, `offset`, `grab`), where the compositor put it (`position`, in
+    /// `constraint_adjustment`, `offset`, `grab`, `geometry`, `input_region`), where the compositor put it (`position`, in
     /// the parent's coordinates, `None` until it is placed), or anything `Window.get` reads.
     fn get(slf: &Bound<'_, Self>, name: &str) -> PyResult<Py<PyAny>> {
         let py = slf.py();
@@ -260,6 +338,12 @@ impl PyPopupWindow {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind(),
+            "input_region" => match &state.config.borrow().input_region {
+                None => py.None(),
+                Some(rects) => pyo3::types::PyList::new(py, rects.iter().copied())?
+                    .into_any()
+                    .unbind(),
+            },
             "position" => state
                 .popup_position
                 .get()

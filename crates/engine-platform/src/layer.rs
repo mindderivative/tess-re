@@ -983,6 +983,9 @@ impl State {
             popup.xdg_popup().grab(&seat, self.last_serial);
         }
         popup.xdg_surface().set_window_geometry(gx, gy, gw, gh);
+        // #282: input is taken inside this region only, set before the first commit so no click
+        // lands in the margin while the popup is being mapped.
+        set_region(&self.compositor, &surface, &config.input_region);
         let fractional = self
             .fractional_manager
             .as_ref()
@@ -1003,6 +1006,7 @@ impl State {
                 },
                 config: LayerConfig {
                     size: config.size,
+                    input_region: config.input_region.clone(),
                     ..LayerConfig::default()
                 },
                 surface: surface.clone(),

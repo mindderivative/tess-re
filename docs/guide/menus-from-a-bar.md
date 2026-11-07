@@ -33,6 +33,9 @@ def open_menu(e=None):
   the body is with `geometry=(m, m, width, height)`: the compositor then places, flips and slides the
   body, not the margin, so the menu lands where `anchor_rect` says and does not flip early near a
   screen edge.
+- **Clicks in that margin (0.6.5, #282).** The margin is transparent but still takes clicks.
+  `input_region="geometry"` (or rectangles, in the popup's own pixels) limits input to the body, so
+  a click on the margin goes to the window below.
 
 See the [`PopupWindow` reference](../reference/layer-window.md#popupwindow) for every argument.
 

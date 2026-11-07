@@ -71,6 +71,24 @@ Tracking lives in the GitHub project Tesserae Rendering Engine (the old
 issues: #187, #188 (everything that needs Windows or Mac hardware), #189 (X11 file drop
 position).
 
+## After 0.6.4 (unreleased)
+
+### #282, `PopupWindow(input_region=)` (TRE-REQ-014, 2026-11-07)
+
+From the shell session's draft `tests/kwin/TRE-REQ-014-draft.md` (not yet in the vault's `80 Requests`), approved by the
+maintainer: with `PopupWindow(geometry=)` (0.6.3) the compositor places the body, but the transparent shadow margin still
+took clicks (30 to 40 px around the card on KWin 6.8.2). `input_region` is `None` (default, whole surface), `[]`, rectangles
+in the popup's own logical pixels (at most 256, rounded outward as for a `LayerWindow`), or `"geometry"` (the body, or the
+whole surface without one); not `"auto"`. It is the one popup setting `set` can change. Built on what a layer surface
+already had: `Command::InputRegion` works on any surface of the layer thread, so `set` sends it; at creation
+`PopupConfig::input_region` is applied with `set_region` before the first commit (`layer_request` fills it from the live
+value, so a `set` made before the popup opened counts). Tests: headless `tests/test_popup_window.py` (5), 2 in
+`layer_config.rs`, and three live in a private headless sway (pixman, llvmpipe): a margin click reaches the window below
+and a body click reaches the popup (both `[rects]` and `"geometry"`), without a region the margin takes the click (the
+control), and with `grab=True` a margin click still dismisses the popup (needs no window of the same app below: a click on
+the app's own window is that window's, the protocol's rule for a grab). Not checked: KWin (the maintainer's, with the
+shell), touch, a compositor that resizes the popup (the region is not moved or scaled; documented).
+
 ## 0.6.4 (released 2026-11-07)
 
 ### #269, `transform_origin` (TRE-REQ-013 step 1, part A, 2026-11-06)

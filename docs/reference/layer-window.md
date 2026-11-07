@@ -213,6 +213,7 @@ app.add_window(menu)                           # from a click handler, with `bar
 | `offset` | A fixed `(x, y)` shift after placement. |
 | `grab` | `True` (the default) gives the popup the pointer and keyboard. |
 | `geometry` | (0.6.3) `(x, y, width, height)` in the popup's own pixels: the popup proper, when the surface is bigger. The compositor places and constrains this rectangle and ignores the rest. Default: the whole surface. Must lie inside `size`. |
+| `input_region` | (0.6.5) Where input is delivered, in the popup's own logical pixels: `None` (the default, the whole surface), `[]`, a list of `(x, y, width, height)` rectangles (at most 256), or `"geometry"` for the body. Not `"auto"`. The one popup setting `set` can change. |
 
 **Where it landed.** `configure` carries `width`, `height` and, for a popup, `x` and `y`: where the
 compositor put it, in its parent's coordinates, after any flip or slide (`y` is negative when a
@@ -236,6 +237,21 @@ body = menu.create("box", width=180, height=120, position="absolute", x=m, y=m,
 `x` and `y` are the body's. `width` and `height` in `configure` are the surface's (body plus margins).
 If a compositor resizes the popup (`resize_x`, `resize_y`) it resizes the body, and the surface follows
 with the same margins.
+
+**Clicks in the margin (0.6.5, #282).** `geometry` places the body; it does not say where input goes,
+and the transparent margin still takes clicks that were aimed at the window below. Give the popup an
+`input_region` of the body and they pass through:
+
+```python
+menu = PopupWindow(bar, size=(180 + 2 * m, 120 + 2 * m), geometry=(m, m, 180, 120),
+                   input_region="geometry", anchor_rect=(100, 0, 60, 32))
+menu.set(input_region=[(m, m, 180, 60)])        # or rectangles, in the popup's own pixels; [] is nothing
+```
+
+With `grab=True` a click in the margin is outside the popup, so it still ends the popup
+(`closed`, reason `"dismissed"`), and, as for any click outside the grab, it reaches the window
+below only if that window is another application's. The region is not moved or scaled if a
+compositor resizes the popup (`resize_x`, `resize_y`), so set it again from the `configure` size if you use those.
 
 **Dismissal.** With `grab=True`, a click outside the application, or Escape, ends the popup:
 `closed` with reason `"dismissed"`, and the click is the popup's. A click on **another window of

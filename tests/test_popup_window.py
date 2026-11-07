@@ -152,3 +152,55 @@ def test_geometry_is_the_body_and_defaults_to_the_whole_surface():
 def test_a_geometry_outside_the_surface_or_malformed_raises(geometry):
     with pytest.raises(ValueError, match="geometry"):
         popup(geometry=geometry)
+
+
+# #282 (TRE-REQ-014): an input region for a popup, so a click in its transparent shadow margin can
+# reach the window below. What a compositor does with it is in `test_layer_window_live.py`.
+
+
+def test_the_input_region_defaults_to_the_whole_surface_and_reads_back():
+    assert popup().get("input_region") is None
+    p = popup(size=(200, 130), geometry=(20, 20, 160, 90), input_region=[(20, 20, 160, 90)])
+    assert p.get("input_region") == [(20, 20, 160, 90)]
+    assert popup(input_region=[]).get("input_region") == []
+    assert popup(input_region=None).get("input_region") is None
+
+
+def test_the_string_geometry_is_the_body_or_the_whole_surface():
+    p = popup(size=(200, 130), geometry=(20, 20, 160, 90), input_region="geometry")
+    assert p.get("input_region") == [(20, 20, 160, 90)]
+    assert popup(input_region="geometry").get("input_region") == [(0, 0, 160, 90)]
+
+
+def test_the_region_can_be_changed_after_the_popup_is_made_and_the_other_settings_cannot():
+    p = popup(size=(200, 130), geometry=(20, 20, 160, 90))
+    p.set(input_region=[(20, 20, 160, 90)])
+    assert p.get("input_region") == [(20, 20, 160, 90)]
+    p.set(input_region=[])
+    assert p.get("input_region") == []
+    p.set(input_region="geometry")
+    assert p.get("input_region") == [(20, 20, 160, 90)]
+    p.set(input_region=None)
+    assert p.get("input_region") is None
+    with pytest.raises(ValueError, match="geometry"):
+        p.set(geometry=(0, 0, 10, 10))
+
+
+def test_a_bad_region_raises_and_changes_nothing():
+    p = popup(input_region=[(0, 0, 10, 10)])
+    for bad in ["auto", "box", 3, [(0, 0, 10)], [(0, 0, 0, 10)], [(0, 0, 10, -1)], [(0, 0, float("nan"), 1)],
+                [(0, 0, 1, 1)] * 257]:
+        with pytest.raises(ValueError, match="input_region"):
+            p.set(input_region=bad)
+        with pytest.raises(ValueError, match="input_region"):
+            popup(input_region=bad)
+    assert p.get("input_region") == [(0, 0, 10, 10)]
+
+
+def test_a_bad_region_in_the_same_call_as_another_key_changes_neither():
+    p = popup(input_region=[(0, 0, 10, 10)])
+    with pytest.raises(ValueError):
+        p.set(input_region=[(0, 0, 0, 0)], touch_slop=5.0)
+    assert p.get("input_region") == [(0, 0, 10, 10)]
+    p.set(input_region=[], touch_slop=5.0)
+    assert p.get("input_region") == []
