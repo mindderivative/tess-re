@@ -2,6 +2,11 @@
 
 ## Status
 
+**0.6.5 (2026-11-07, PR for #282 below):** `PopupWindow(input_region=)` (TRE-REQ-014): a click in a popup's transparent shadow
+margin reaches the window below. `None`, `[]`, rectangles or `"geometry"`; `popup.set(input_region=...)` changes it. Nothing else
+changes. Verified on Linux headless and in a private headless sway (pixman); KWin is the maintainer's and the shell session's.
+A margin click over the app's own window (the bar included) is that window's, not a dismissal: listen for it and call `close()`.
+
 **0.6.4 released (2026-11-07, PR #279, tag `v0.6.4` on `82617bbe`, PyPI `tesserae-engine==0.6.4`; installed in a clean Linux venv: every new property and method reads back and works headless, `import tre` raises):** TRE-REQ-013, four ways to build a join that grows out of a
 shape. `transform_origin` and `corner_style="concave"` (#269); `Shader.animate`, `hit_path`, the `sd_*` shader helpers and
 `frame.scale` (#270); `morph="structure"|"strict"` on a path (#271); path templates with `params` and `animate_param`
@@ -71,7 +76,7 @@ Tracking lives in the GitHub project Tesserae Rendering Engine (the old
 issues: #187, #188 (everything that needs Windows or Mac hardware), #189 (X11 file drop
 position).
 
-## After 0.6.4 (unreleased)
+## 0.6.5 (released 2026-11-07)
 
 ### #282, `PopupWindow(input_region=)` (TRE-REQ-014, 2026-11-07)
 
