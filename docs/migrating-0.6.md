@@ -135,6 +135,9 @@ Search for text nodes you create without a size and look at the ones inside a
 
 ## 0.6.4
 
+Additions only, with one thing that can break (see Shader joins). Nothing else changes
+without asking for it.
+
 - **`transform_origin` (#269, TRE-REQ-013 step 1).** `scale` and `rotation_deg` turn about a point
   you choose: `node.set(transform_origin=(0, 0))` is the top-left corner, `(1, 1)` the bottom-right, as
   fractions of the box. The default `(0.5, 0.5)` is the center, as before, so nothing changes

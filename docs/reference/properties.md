@@ -140,11 +140,13 @@ Every node.
 | Property | Value |
 | --- | --- |
 | `translate_x`, `translate_y` | Pixels (animatable) |
-| `scale` | A factor about the node's center (animatable) |
-| `rotation_deg` | Degrees clockwise about the node's center (animatable) |
+| `scale` | A factor about `transform_origin` (animatable) |
+| `rotation_deg` | Degrees clockwise about `transform_origin` (animatable) |
+| `transform_origin` | (0.6.4) `(x, y)`, fractions of the box that `scale` and `rotation_deg` turn about; `(0.5, 0.5)`, the center, by default. Set, not animated; see [Painting](../guide/painting.md) |
 | `visible` | `False` hides the node and its subtree: not painted, not hit, no layout space, not in the accessibility tree or tab order |
 | `z_index` | Paint and hit order among siblings: higher is on top; equal values keep child order |
 | `clip_children` | `True` clips children to the node's rounded box |
+| `hit_path` | (0.6.4) SVG path data in the node's own pixels, or `None`: pointer events and an `input_region="auto"` follow that shape in place of the box (how a [shader](shader.md) node says where it is); see [Painting](../guide/painting.md) |
 | `mask` | `None`, `"circle"`, `{"rounded": radius}`, or `{"path": data, "view_box": (x, y, w, h)}` (0.5.6) — clips the node and its subtree to the shape; see [Masks](paint.md#masks-056) |
 | `sticky` | (0.5.4) a number of pixels, or `None`: holds that far from the start edge of the scroll view it is in ([Sticky headers](../guide/nodes-and-layout.md#sticky-headers)) |
 
