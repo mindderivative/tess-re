@@ -248,9 +248,11 @@ menu = PopupWindow(bar, size=(180 + 2 * m, 120 + 2 * m), geometry=(m, m, 180, 12
 menu.set(input_region=[(m, m, 180, 60)])        # or rectangles, in the popup's own pixels; [] is nothing
 ```
 
-With `grab=True` a click in the margin is outside the popup, so it still ends the popup
-(`closed`, reason `"dismissed"`), and, as for any click outside the grab, it reaches the window
-below only if that window is another application's. The region is not moved or scaled if a
+With `grab=True` a click in the margin is outside the popup. If what lies under the margin is another
+application's window or the bare desktop, the click ends the popup (`closed`, reason `"dismissed"`).
+If it is **your own** window, the bar the popup hangs off included, that window gets the click and
+the popup stays open (the protocol's rule for a grab, see Dismissal below): listen for the click there
+and call `close()`. The region is not moved or scaled if a
 compositor resizes the popup (`resize_x`, `resize_y`), so set it again from the `configure` size if you use those.
 
 **Dismissal.** With `grab=True`, a click outside the application, or Escape, ends the popup:
