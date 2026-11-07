@@ -55,7 +55,7 @@ app.run()
 - **[Custom Title Bars](guide/custom-title-bars.md)** — an undecorated window
   with a title bar, buttons, and borders of your own (0.5.0).
 - **[Shaders](guide/shaders.md)** — your own WGSL paints a node or transforms
-  its rendered content (0.5.1).
+  its rendered content (0.5.1), with animated uniforms and shape helpers (0.6.4).
 - **[Bars and panels](guide/bars-and-panels.md)** and
   **[Menus from a bar](guide/menus-from-a-bar.md)** — a bar, panel, dock or OSD the
   compositor places (`LayerWindow`), and the menus that hang off it (`PopupWindow`),
@@ -85,7 +85,8 @@ complete switch.
   for quick reference. The [Reference](reference/app.md) pages go deeper.
 - **[Upgrading to 0.6.x](migrating-0.6.md)** — from 0.5.x: the package is
   `tess_re` now (was `tre`) and the variables are `TESS_RE_*`; 0.6.2: a text
-  node with no size is the size of its text.
+  node with no size is the size of its text; 0.6.4: one shader function name
+  is taken (the `sd_*` helpers).
 - **[Upgrading to 0.5.x](migrating-0.5.md)** — from 0.4.x: no renames,
   custom windowing, and a window root's fill now paints.
 - **[Upgrading to 0.4.x](migrating-0.4.md)** — from 0.3.5: no renames, a

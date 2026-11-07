@@ -32,6 +32,8 @@ listed in [Nodes and Properties](properties.md).
 | `data` | SVG path data — the `d` attribute: `M`, `L`, `H`, `V`, `C`, `S`, `Q`, `T`, `A`, `Z`, absolute and relative |
 | `view_box` | `(min_x, min_y, width, height)` — the region `data` is drawn in, fitted uniformly and centered into the node's box (SVG's default `xMidYMid meet`); `None` draws `data` in node-local pixels |
 | `trim_start`, `trim_end` | `0.0`–`1.0` — the part of the stroke drawn, by length across every subpath in order |
+| `morph` | (0.6.4) `"resample"` (the default), `"structure"` or `"strict"`: how an animation of `data` morphs; see [Morphing](#morphing-paths-and-corners) |
+| `params` | (0.6.4) a dict of names to numbers: what a path **template** reads. `data` with `{expression}` holes is a template; `node.animate_param(name, to, duration_ms, easing)` animates one; see [A path with parameters](../guide/animation.md#a-path-with-parameters) |
 | `hit_shape` | `"box"` (the default) or `"painted"` (0.5.9) — what takes pointer events and counts in an `input_region="auto"`; see [Hit testing a path](#hit-testing-a-path) |
 | `fill` | the path's fill |
 | `stroke_color`, `stroke_width` | the stroke, centered on the path with round caps and joins; its width stays in pixels however the view box scales |
@@ -78,6 +80,20 @@ by subpath, and closed contours are aligned by the best starting point, so a
 shape drawn from a different corner still morphs cleanly. Paths with different
 numbers of subpaths, or an open path against a closed one, switch at the
 halfway point instead. The last frame is exactly the target path.
+
+### Morphing paths and corners
+
+Resampling turns every mid-frame into a polygon. `morph="structure"` (0.6.4) pairs the numbers of
+two paths with **the same sequence of commands** (`M`, `L`, `Q`, `C`, `Z`; an arc is already curves)
+and moves each to its partner, so lines stay lines, curves stay curves and every mid-frame is the
+exact shape; a pair with different commands resamples as before. `morph="strict"` raises
+`ValueError` from `animate` for such a pair instead. Both paths must start at the same point and
+wind the same way. See [Morphing paths](../guide/animation.md#morphing-paths).
+
+A **concave corner** is the other half of a join: `corner_style="concave"` (or a 4-tuple of
+`"round"` and `"concave"`, ordered as `corner_radius`) makes a box corner curve inward about its
+own corner, so a small box is the fillet between two shapes. See
+[Painting](../guide/painting.md).
 
 ## SVG documents
 
