@@ -406,3 +406,20 @@ def test_a_single_line_input_keeps_up_and_down_and_gains_the_ctrl_keys():
     assert at(node) == 4
     press(window, "end", ctrl=True)
     assert at(node) == 11
+
+
+@pytest.mark.parametrize("props", [{"overflow": "scroll"}, {"multiline": True, "wrap": "word"}])
+def test_shift_with_ctrl_selects_by_word_and_to_the_ends_of_the_text_and_shift_alone_to_the_row(props):
+    window, node = field("hello big world and more words here", **props)
+    place(node, 6)
+    press(window, "arrow_right", ctrl=True, shift=True)
+    assert node.get("selection") == (6, 10), "to the start of the next word"
+    place(node, 6)
+    press(window, "end", ctrl=True, shift=True)
+    assert node.get("selection") == (6, 35)
+    place(node, 6)
+    press(window, "home", shift=True)
+    assert node.get("selection") == (6, 0)
+    place(node, 6)
+    press(window, "backspace", ctrl=True, shift=True)
+    assert node.get("text") == "big world and more words here", "Shift does not change Ctrl+Backspace"
