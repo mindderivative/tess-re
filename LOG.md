@@ -2,7 +2,7 @@
 
 ## Status
 
-**0.6.7 (2026-11-11, PR for #288 below):** a text input's caret keys by visual row (multiline with a `wrap`), Ctrl word and edge keys,
+**0.6.7 released (2026-11-11, PR #289, tag `v0.6.7` on `8e57a6ab`, PyPI `tesserae-engine==0.6.7`; installed in a clean Linux venv: row keys, Ctrl+Shift+End, Insert overwrite with its event and a double click all work headless):** a text input's caret keys by visual row (multiline with a `wrap`), Ctrl word and edge keys,
 the Insert key with an `overwrite` mode and `overwrite_change` event, and double and triple click selection (TRE-REQ-017). Behavior
 changes in every text input: Ctrl+Left/Right/Backspace/Delete go by word, Ctrl+Home/End by the whole text, two quick clicks select a word.
 No `wrap` keeps the 0.6.6 keys. Verified on Linux headless; no real compositor or IME. `wrap="char"` is not built.
