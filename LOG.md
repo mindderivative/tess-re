@@ -2,6 +2,11 @@
 
 ## Status
 
+**0.6.6 (2026-11-10, PR for #285 below):** `wrap` and `overflow` on a `text_input` (TRE-REQ-016): a multiline input wraps by word
+or scrolls sideways, a single-line one scrolls, cuts with an ellipsis or clips, and the scroll follows the caret by the shaped text.
+Unset is exactly 0.6.5. Verified on Linux headless and in a private headless sway (pixman); not on a real compositor. Known limit:
+in a wrapped multiline input the arrow keys and Home/End move by logical line.
+
 **0.6.5 released (2026-11-07, PR #283, tag `v0.6.5` on `aecc334a`, PyPI `tesserae-engine==0.6.5`; installed in a clean Linux venv: `input_region` reads back and `set` works headless, bad values raise):** `PopupWindow(input_region=)` (TRE-REQ-014): a click in a popup's transparent shadow
 margin reaches the window below. `None`, `[]`, rectangles or `"geometry"`; `popup.set(input_region=...)` changes it. Nothing else
 changes. Verified on Linux headless and in a private headless sway (pixman); KWin is the maintainer's and the shell session's.
@@ -76,7 +81,7 @@ Tracking lives in the GitHub project Tesserae Rendering Engine (the old
 issues: #187, #188 (everything that needs Windows or Mac hardware), #189 (X11 file drop
 position).
 
-## After 0.6.5 (unreleased)
+## 0.6.6 (released 2026-11-10)
 
 ### #285, `wrap` and `overflow` on a text input (TRE-REQ-016, 2026-11-10)
 
