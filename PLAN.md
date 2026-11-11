@@ -7,7 +7,7 @@ project Tesserae Rendering Engine; the old trackers are archived as
 
 ## Where we are
 
-`main` is at 0.6.7 (text input row keys, Ctrl word keys, Insert overwrite, double and triple click, #288, TRE-REQ-017). 0.6.6 (released 2026-11-10, PR #286, tag `v0.6.6`, on PyPI: `wrap` and `overflow` on a text input, #285, TRE-REQ-016). 0.6.5 (released 2026-11-07, PR #283, tag `v0.6.5`, on PyPI: `PopupWindow(input_region=)`, #282, TRE-REQ-014). 0.6.4 (released 2026-11-07, PR #279, tag `v0.6.4`, on PyPI: TRE-REQ-013, #269-#272: transform origin, concave corners, shader joins, structure morph, parametric paths). 0.6.3 (2026-11-06: PR #267, tag `v0.6.3`): `PopupWindow(geometry=)`
+`main` is at 0.6.7 (released 2026-11-11, PR #289, tag `v0.6.7`, on PyPI: text input row keys, Ctrl word keys, Insert overwrite, double and triple click, #288, TRE-REQ-017). 0.6.6 (released 2026-11-10, PR #286, tag `v0.6.6`, on PyPI: `wrap` and `overflow` on a text input, #285, TRE-REQ-016). 0.6.5 (released 2026-11-07, PR #283, tag `v0.6.5`, on PyPI: `PopupWindow(input_region=)`, #282, TRE-REQ-014). 0.6.4 (released 2026-11-07, PR #279, tag `v0.6.4`, on PyPI: TRE-REQ-013, #269-#272: transform origin, concave corners, shader joins, structure morph, parametric paths). 0.6.3 (2026-11-06: PR #267, tag `v0.6.3`): `PopupWindow(geometry=)`
 (#266, TRE-REQ-007). 0.6.2 (2026-11-06): #263 (a text node measures to its content) and #264 (a cross-window change is
 drawn at once). 0.6.1 (2026-11-03): the loop no longer runs a self-queuing `call_soon`
 callback once it is exiting (#260; macOS unverified). 0.6.0 (2026-11-03) renamed the package `tre` to `tess_re` and the variables to `TESS_RE_*`, no alias
