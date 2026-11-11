@@ -2,7 +2,7 @@
 
 ## Status
 
-**0.6.6 (2026-11-10, PR for #285 below):** `wrap` and `overflow` on a `text_input` (TRE-REQ-016): a multiline input wraps by word
+**0.6.6 released (2026-11-10, PR #286, tag `v0.6.6` on `7327b52a`, PyPI `tesserae-engine==0.6.6`; installed in a clean Linux venv: `wrap` and `overflow` read back and work headless, bad values raise):** `wrap` and `overflow` on a `text_input` (TRE-REQ-016): a multiline input wraps by word
 or scrolls sideways, a single-line one scrolls, cuts with an ellipsis or clips, and the scroll follows the caret by the shaped text.
 Unset is exactly 0.6.5. Verified on Linux headless and in a private headless sway (pixman); not on a real compositor. Known limit:
 in a wrapped multiline input the arrow keys and Home/End move by logical line.
