@@ -16,7 +16,7 @@ use crate::node_layout::lookup;
 use crate::node_props::{color_to_py, parse_color};
 
 /// Every kind-specific property this module handles, in error order.
-pub(crate) const KIND_PROPS: [&str; 37] = [
+pub(crate) const KIND_PROPS: [&str; 38] = [
     "text",
     "font_family",
     "font_weight",
@@ -31,6 +31,7 @@ pub(crate) const KIND_PROPS: [&str; 37] = [
     "spans",
     "selectable",
     "multiline",
+    "overwrite",
     "selection",
     "selection_start",
     "selection_end",
@@ -359,8 +360,8 @@ fn applies(name: &str) -> (&'static str, fn(&NodeKind) -> bool) {
         | "selectable" => ("a text", text),
         // #285: a text input takes `wrap` and `overflow` too.
         "wrap" | "overflow" => ("a text or text_input", text_like),
-        "multiline" | "show_whitespace" | "syntax_spans" | "folded_ranges" | "selection_start"
-        | "selection_end" => ("a text_input", text_input),
+        "multiline" | "overwrite" | "show_whitespace" | "syntax_spans" | "folded_ranges"
+        | "selection_start" | "selection_end" => ("a text_input", text_input),
         "selection" => ("a text, text_input or terminal", selectable),
         "rgba" | "pixel_width" | "pixel_height" | "fit" => ("an image", image),
         "svg" | "svg_size" | "svg_color" | "svg_images" | "svg_time" | "svg_duration" => {
@@ -581,6 +582,15 @@ fn parse_known(
             change(move |node| {
                 if let NodeKind::Text(state) = &mut node.kind {
                     state.options.max_lines = lines;
+                }
+            })
+        }
+        // #288: overwrite mode; the Insert key toggles it and fires `overwrite_change`.
+        "overwrite" => {
+            let on = boolean(value, name)?;
+            change(move |node| {
+                if let NodeKind::TextField(state) = &mut node.kind {
+                    state.overwrite = on;
                 }
             })
         }
@@ -1080,6 +1090,7 @@ fn read_known(name: &str, kind: &NodeKind, py: Python<'_>) -> PyResult<Py<PyAny>
         }
         ("overflow", NodeKind::Text(s)) => to_py(name_of(&OVERFLOW, &s.options.ellipsis), py),
         ("multiline", NodeKind::TextField(s)) => to_py(s.multiline, py),
+        ("overwrite", NodeKind::TextField(s)) => to_py(s.overwrite, py),
         ("show_whitespace", NodeKind::TextField(s)) => to_py(s.show_whitespace, py),
         ("selection", NodeKind::TextField(s)) => {
             to_py((s.selection_anchor.unwrap_or(s.cursor), s.cursor), py)

@@ -52,6 +52,31 @@ fn text_field_hit_offset(
     Some(text_renderer.hit_test_position(state, at, local_point))
 }
 
+/// #288: for a double or triple click in a text input: the character under the pointer and the
+/// visual row it is in, as `text_field_unit_at` of the renderer answers, resolved against the
+/// same placement `text_field_hit_offset` uses (so against what is painted).
+fn text_field_unit(
+    tree: &Rc<RefCell<Tree>>,
+    text_renderer: &mut TextRenderer,
+    hit: NodeId,
+    local_point: Point,
+) -> Option<(usize, usize, usize)> {
+    let tree = tree.borrow();
+    let node = tree.get(hit)?;
+    let NodeKind::TextField(state) = &node.kind else {
+        return None;
+    };
+    let layout = tree.layout(hit);
+    let pad = layout.padding;
+    let at = TextPlacement {
+        x: f64::from(pad.left) - state.horizontal_scroll_offset.current,
+        y: f64::from(pad.top) - state.scroll_offset.current,
+        max_width: (layout.size.width - pad.left - pad.right).max(0.0),
+        color: peniko::Color::TRANSPARENT,
+    };
+    text_renderer.field_unit_at(state, at, local_point)
+}
+
 /// 0.5.4 (#112): `text_field_hit_offset`'s sibling for selectable static text:
 /// the byte offset `local_point` lands on in a text node whose `selectable` is
 /// on, resolved against the placement `draw_own` paints it at (inside its
@@ -532,6 +557,22 @@ pub(crate) fn text_pointer_input(
                     }
                 } else if let Some(offset) = text_field_hit_offset(tree, text, hit, local_point) {
                     tree.borrow_mut().set_text_field_cursor(hit, offset);
+                    // #288: a double click selects the word under the pointer, a triple click
+                    // the string up to the spaces, inside the visual row. Neither starts a
+                    // drag: a press that follows is a new gesture, as it was.
+                    if count >= 2
+                        && let Some((character, row_start, row_end)) =
+                            text_field_unit(tree, text, hit, local_point)
+                    {
+                        tree.borrow_mut().select_text_field_unit(
+                            hit,
+                            character,
+                            row_start,
+                            row_end,
+                            count >= 3,
+                        );
+                        return link_click;
+                    }
                     // M18 Phase 2 (§8, §10): a real press
                     // on a TextField always ARMS drag
                     // tracking -- whether it turns into a

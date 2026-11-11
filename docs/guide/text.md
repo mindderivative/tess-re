@@ -294,14 +294,52 @@ name = window.create("text_input", width=160, height=28, overflow="ellipsis", te
 - A multiline input with **no** `wrap` keeps the old scroll, which assumes a monospace face
   (a code editor's) and is out by a few pixels in a proportional one. Set `wrap` to `"none"`
   to have the exact one.
-- In a wrapped multiline input, the arrow keys, Home and End still move by **logical** line
-  (between newlines), not by wrapped line. Clicking, typing and the caret itself follow the
-  wrapped text.
+- The caret keys of a multiline input with a `wrap` go by the **rows you see** (0.6.7): see
+  [Keys, rows and clicks](#keys-rows-and-clicks-in-a-text-input-067). With no `wrap` they are
+  as before.
 - `"ellipsis"` shows no selection while it is cut (an unfocused input), and a click in it
   focuses it and shows the whole line. Clearing a property with `None` gives back the old
   behavior; changing either starts the scroll from the top left.
 - `caret_rect()` and `text_rects()` read the scroll as it is, so they are right straight
   after you set `selection` or `text`.
+
+### Keys, rows and clicks in a text input (0.6.7)
+
+| Key | In any text input | In a multiline input with a `wrap` (`"word"` or `"none"`) |
+| --- | --- | --- |
+| Up, Down | (a single-line input: nothing) | one visual row, keeping the column; on the first row to the start of the text, on the last to its end |
+| Home, End | the start and end of the text | the start and end of the **row** (End stops before the spaces a wrap fell on) |
+| Page Up, Page Down | left to the scroll view around it | as many rows as the box shows, keeping the column; at the first or last row to the start or end |
+| Ctrl+Home, Ctrl+End | the start and end of the whole text | the same |
+| Ctrl+Left, Ctrl+Right | by word (a run of letters and digits, or of punctuation, then the spaces after it) | the same |
+| Ctrl+Backspace, Ctrl+Delete | delete back to the start of the word, or on to the next | the same |
+| Shift with any of these | extends the selection from its fixed end: it shrinks when the direction reverses and, past the end, selects on the other side | the same, by row |
+| Insert | toggles overwrite mode (below) | the same |
+
+Backspace and Delete remove one character before and after the caret, or the selection; at the
+start of a row they remove the last character of the row above (the space a wrap fell on, or the line
+break, which joins two lines), and nothing at the very start or end of the text.
+
+**The column is held** across a run of Up, Down, Page Up and Page Down, so passing a short row
+does not lose it. **A `wrap` of either value** gives the multiline input these exact row keys
+(with `"none"` a row is a logical line); with no `wrap` set it keeps the 0.6.6 keys, which go by
+logical line and count characters, not pixels. A single-line input has one row.
+
+**Overwrite mode.** `text_input.get("overwrite")` and `set(overwrite=True)`; the Insert key toggles it
+and fires `overwrite_change` (`old_value`, `new_value`; not for `set`). Off by default. With it on, each
+character you type, a space and an IME-committed character included, replaces the one after the
+caret and the caret moves on; at the end of the text, or before a line break, it is added instead, so a
+break is never eaten. Typing over a selection replaces just the selection in both modes, and a paste is
+always inserted. A `caret_shape` of `"bar"` (the default) is drawn as a block while overwrite is on;
+`"block"` and `"underline"` stay as you set them. `max_length` lets a replacement through, since the
+text does not grow.
+
+**Double and triple click** (0.6.7). A double click selects the *word* under the pointer: letters, digits
+and the underscore, Unicode ones too, so a double click on `well` in `well-known` selects `well`. On a
+space or on punctuation it selects that run of spaces or of punctuation. A triple click selects the
+**string** around it up to the spaces, special characters included: `well-known`. Both stop at the edge
+of the **visual row**, so a string that wraps is selected one row at a time, and neither
+starts a drag; click, hold and drag selects by character as before.
 
 ### Submit, composition and the caret (0.5.6)
 

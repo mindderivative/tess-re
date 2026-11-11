@@ -339,6 +339,8 @@ class Node:
         `event.property` and `event.finished`), `submit` (Enter in a single-line
         text input), `compose_start`/`compose_update`/`compose_end` (an IME
         composition) and `caret_move` (a text input's caret moved).
+        (0.6.7) Also `overwrite_change` (the user toggled a text input's overwrite
+        mode with Insert; `event.old_value` and `event.new_value`).
         (0.5.7) Also `layout` (the node's laid-out size changed, or it was
         first laid out: `event.width`, `event.height`, and `event.old_value` /
         `event.new_value` as `(width, height)`; only a node with a listener is

@@ -46,6 +46,7 @@ mod focus;
 mod layers;
 mod layout;
 pub use layout::{FIT_CONTENT_SLACK, LayoutChange, TextMeasure};
+pub use text_editing::{FieldRows, RowAnswer, RowQuery};
 mod nodes;
 mod region;
 mod scroll;
@@ -165,6 +166,16 @@ pub struct Tree {
     /// 0.5.6 (#165): text fields whose caret moved or text changed, until
     /// `take_caret_changes` reports them.
     caret_changes: Vec<(NodeId, Option<std::ops::Range<usize>>)>,
+    /// #288: text inputs whose overwrite mode the user toggled (Insert), with the new value,
+    /// until `take_overwrite_changes` reports them.
+    overwrite_changes: Vec<(NodeId, bool)>,
+    /// #288: the modifier keys held, set by the window before each event: `KeyPressed` carries
+    /// only Shift, and a text input needs Ctrl for its word and edge keys.
+    held: crate::input::Modifiers,
+    /// #288: answers a text input's questions about the rows its shaped text shows (a window
+    /// installs its shaper here, as for `text_measure`). With none, the caret keys keep
+    /// moving by logical line.
+    field_rows: Option<FieldRows>,
     /// 0.5.6 (#166): scroll views the user has scrolled, waiting to settle on a
     /// snap point once the input stops (`None`: not yet seen by a tick).
     snap_pending: Vec<(NodeId, Option<Instant>)>,
@@ -243,6 +254,9 @@ impl Tree {
             shader_epoch_seen: 0,
             shader_versions: std::collections::HashMap::new(),
             caret_changes: Vec::new(),
+            overwrite_changes: Vec::new(),
+            held: crate::input::Modifiers::default(),
+            field_rows: None,
             snap_pending: Vec::new(),
             taffy_nodes: SecondaryMap::new(),
             taffy: TaffyTree::new(),

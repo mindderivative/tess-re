@@ -2006,6 +2006,8 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
         wrap,
         overflow,
         follow_stamp: _, // bookkeeping, not paint
+        overwrite,
+        goal_x: _, // where a vertical run holds the caret, not what is drawn
     } = state;
     caret_visible.hash(h);
     caret_width.to_bits().hash(h);
@@ -2042,6 +2044,8 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
     obscured.hash(h);
     // #285: wrap and overflow change how the text is laid out and cut.
     wrap.hash(h);
+    // #288: overwrite mode draws a block caret.
+    overwrite.hash(h);
     overflow.map(engine_core::FieldOverflow::name).hash(h);
 }
 

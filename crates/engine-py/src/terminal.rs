@@ -71,6 +71,7 @@ pub(crate) fn input_bytes_for(event: &InputEvent) -> Option<Vec<u8>> {
                 Key::End => "\x1b[F",
                 Key::PageUp => "\x1b[5~",
                 Key::PageDown => "\x1b[6~",
+                Key::Insert => "\x1b[2~",
             }
             .as_bytes()
             .to_vec(),

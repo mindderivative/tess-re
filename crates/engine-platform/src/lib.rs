@@ -165,6 +165,7 @@ fn translate_key(logical_key: &WinitKey) -> Option<Key> {
         WinitKey::Named(NamedKey::End) => Some(Key::End),
         WinitKey::Named(NamedKey::PageUp) => Some(Key::PageUp),
         WinitKey::Named(NamedKey::PageDown) => Some(Key::PageDown),
+        WinitKey::Named(NamedKey::Insert) => Some(Key::Insert),
         _ => None,
     }
 }
@@ -1816,8 +1817,12 @@ mod tests {
         // this codebase has yet (this module's own doc comment); a
         // named key this minimal model simply doesn't assign meaning to.
         assert_eq!(translate_key(&WinitKey::Character("a".into())), None);
-        // (Page Down was the example here until 0.4.2 gave it a meaning.)
-        assert_eq!(translate_key(&WinitKey::Named(NamedKey::Insert)), None);
+        // (Page Down was the example here until 0.4.2 gave it a meaning, and Insert until 0.6.7.)
+        assert_eq!(translate_key(&WinitKey::Named(NamedKey::F1)), None);
+        assert_eq!(
+            translate_key(&WinitKey::Named(NamedKey::Insert)),
+            Some(Key::Insert)
+        );
     }
 
     #[test]

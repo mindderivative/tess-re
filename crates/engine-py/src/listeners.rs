@@ -141,13 +141,16 @@ pub(crate) enum EventType {
     ComposeEnd,
     /// 0.5.6 (#165): a text input's caret moved or its text changed.
     CaretMove,
+    /// #288: the user toggled a text input's overwrite mode (Insert); `old_value` and
+    /// `new_value` are the modes before and after.
+    OverwriteChange,
     /// 0.5.7 (#178): the node's laid-out size changed (or it was laid out for
     /// the first time); carries `width`, `height`, `old_value`, `new_value`.
     Layout,
 }
 
 impl EventType {
-    const ALL: [EventType; 39] = [
+    const ALL: [EventType; 40] = [
         Self::PointerEnter,
         Self::PointerLeave,
         Self::PointerDown,
@@ -186,6 +189,7 @@ impl EventType {
         Self::ComposeUpdate,
         Self::ComposeEnd,
         Self::CaretMove,
+        Self::OverwriteChange,
         Self::Layout,
     ];
 
@@ -229,6 +233,7 @@ impl EventType {
             Self::ComposeUpdate => "compose_update",
             Self::ComposeEnd => "compose_end",
             Self::CaretMove => "caret_move",
+            Self::OverwriteChange => "overwrite_change",
             Self::Layout => "layout",
         }
     }
@@ -250,6 +255,7 @@ impl EventType {
                 | Self::ComposeUpdate
                 | Self::ComposeEnd
                 | Self::CaretMove
+                | Self::OverwriteChange
                 | Self::Layout
         )
     }
@@ -667,6 +673,19 @@ pub(crate) fn fire_caret_changes(ctx: &NodeContext<'_>, py: Python<'_>) {
             e.caret = crate::text_interaction::field_caret_rect(ctx.tree, field)
                 .map(|r| (r.x0, r.y0, r.width(), r.height()));
             e.inserted = inserted.map(|r| (r.start, r.end));
+        });
+    }
+}
+
+/// #288: `overwrite_change` for every text input whose overwrite mode the user toggled since the
+/// last call (`Tree::take_overwrite_changes`), with `old_value` and `new_value`. Called after
+/// each input event.
+pub(crate) fn fire_overwrite_changes(ctx: &NodeContext<'_>, py: Python<'_>) {
+    let changes = ctx.tree.borrow_mut().take_overwrite_changes();
+    for (field, now) in changes {
+        deliver(ctx, py, EventType::OverwriteChange, field, None, |e| {
+            e.old_value = pyo3::IntoPyObjectExt::into_py_any(!now, py).ok();
+            e.new_value = pyo3::IntoPyObjectExt::into_py_any(now, py).ok();
         });
     }
 }

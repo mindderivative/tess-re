@@ -81,6 +81,33 @@ Tracking lives in the GitHub project Tesserae Rendering Engine (the old
 issues: #187, #188 (everything that needs Windows or Mac hardware), #189 (X11 file drop
 position).
 
+## After 0.6.6 (unreleased)
+
+### #288, caret movement by visual row, word keys, Insert and double click in a text input (TRE-REQ-017, 2026-11-11)
+
+From the vault's `TRE-REQ-017 Caret Movement by Visual Row`, accepted by the maintainer as 0.6.7. **Checked first (headless, 0.6.6):**
+Up/Down did nothing in a multiline input without newlines; Home/End went to the logical line; Page Up/Down were ignored; Ctrl+Left/
+Right/Backspace/Delete acted on one character (Ctrl was never read: `KeyPressed` carries only Shift); there was no Insert key;
+double and triple click only placed the caret. Backspace and Delete (selection, joining lines at a break) already worked.
+**Design.** `engine-core` cannot shape text, so a window installs its shaper as `Tree::set_field_rows` (as for `set_text_measure`):
+`RowQuery` (`Start`, `End`, `Vertical { down, page, goal_x }`) answered by `TextRenderer::field_rows` from the layout the input paints
+(any font, wrapped rows, folds and whitespace/bullet glyphs mapped back). The key logic stays in `dispatch_text_field_key`, so
+selection, anchors, `change` and `caret_move` flow as before. `Tree::held` (the window sets it before each event, from the modifiers
+`engine-py` already tracks) lets core read Ctrl. **Rows**: `moves_by_rows()` = multiline with a `wrap` set (either value); no `wrap`
+keeps the 0.6.6 keys exactly. Up/Down keep a pixel goal column (`goal_x`), the first row goes to the start and the last to the end;
+Page keys move by `floor(box height / row height)` rows (`keyboard_scroll` no longer takes them for the scroll view in such an input);
+End stops before the spaces a soft wrap fell on (a caret has no affinity here), before a line break on a hard row. **Ctrl keys** work in
+every text input, by the existing static-text word rule. **Insert** is a new `Key::Insert` (winit, layer keys, `simulate`, terminal
+escape), toggles `TextFieldState::overwrite` (property `overwrite`, event `overwrite_change`, block caret when the shape is the default bar),
+overwrite replaces up to as many characters as typed, never a line break, and lets `max_length` through since the text does not grow.
+**Clicks**: a double or triple click asks `field_unit_at` (the cluster under the pointer, the row's text) and `select_text_field_unit`
+selects by the request's rules; neither starts a drag. **Existing test changed:** `test_multiline_input.py` clicked one input twice
+at once and expected a caret; it now advances the clock between clicks. Tests: `tests/test_text_input_keys.py` (32: the acceptance
+table, goal column, edges, Ctrl keys, overwrite, clicks, what does not change), 3 in `text_editing.rs`; lib tests of the four crates,
+clippy and 264 related pytest pass; not run: a real compositor or an IME. **Not built / decisions:** `wrap="char"`; Ctrl+arrow word
+uses tre's existing word (letters, digits and underscore; punctuation run; spaces) not the click's; Shift+Insert and Ctrl+Insert are left
+alone; double click on a space or punctuation selects that run.
+
 ## 0.6.6 (released 2026-11-10)
 
 ### #285, `wrap` and `overflow` on a text input (TRE-REQ-016, 2026-11-10)

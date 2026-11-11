@@ -180,3 +180,17 @@ without asking for it.
   scroll follows the caret by the shaped text. Both default to `None`, which is exactly the 0.6.5 behavior (a
   single-line input wraps by word, a multiline one keeps each line whole), so nothing changes without them. Before,
   both properties raised `ValueError` on a text input. See [Long lines in a text input](guide/text.md#long-lines-in-a-text-input-066).
+
+## 0.6.7
+
+- **A text input's caret keys, Insert and double click (#288, TRE-REQ-017).** In a multiline input with a `wrap`
+  (either value), Up, Down, Home, End, Page Up and Page Down go by the visual row, keep the column, and take Shift
+  for selecting. Every text input gains Ctrl+Left/Right and Ctrl+Backspace/Delete by word, Ctrl+Home/End, an
+  `overwrite` property toggled by the Insert key (with an `overwrite_change` event and a block caret), and double
+  click (a word) and triple click (a string up to the spaces) selection. **Behavior changes, in every text input:**
+  Ctrl+Left, Ctrl+Right, Ctrl+Backspace and Ctrl+Delete moved or deleted one character and now work by word; Ctrl+Home and
+  Ctrl+End in a multiline input went to the start or end of the line and now go to the start or end of the text; and a
+  double or triple click used to place the caret only and now selects, so code that clicks twice quickly (a test
+  clicking one input twice) selects a word: advance the clock between clicks. A multiline input with no `wrap` keeps
+  its 0.6.6 Up, Down, Home, End and Page keys. See
+  [Keys, rows and clicks](guide/text.md#keys-rows-and-clicks-in-a-text-input-067).
