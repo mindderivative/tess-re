@@ -475,6 +475,10 @@ pub(crate) fn process_input(
         }
     }
     listeners::note_input_modality(event);
+    // #288: a text input reads Ctrl from the tree (`KeyPressed` carries only Shift).
+    ctx.tree
+        .borrow_mut()
+        .set_held_modifiers(listeners::modifiers());
     let shifted = shift_wheel(event);
     let delivered = shifted.as_ref().unwrap_or(event);
     let target = listeners::target_before(&ctx.tree.borrow(), root, delivered);
@@ -516,6 +520,7 @@ pub(crate) fn process_input(
     system_menu_key(io, event);
     listeners::fire_scroll_changes(ctx, py);
     listeners::fire_caret_changes(ctx, py);
+    listeners::fire_overwrite_changes(ctx, py);
     outcome
 }
 
@@ -873,7 +878,12 @@ fn keyboard_scroll(ctx: &NodeContext<'_>, event: &InputEvent) {
     for id in tree.ancestors(focused) {
         let listens = handlers.contains_key(&(id, HandlerKey::Listener(EventType::KeyDown)));
         let text_input = matches!(tree.get(id).map(|n| &n.kind), Some(NodeKind::TextField(_)));
-        if listens || (text_input && !pages) {
+        // #288: a text input that moves by rows takes Page Up and Down itself too.
+        let pages_too = matches!(
+            tree.get(id).map(|n| &n.kind),
+            Some(NodeKind::TextField(state)) if state.moves_by_rows()
+        );
+        if listens || (text_input && (!pages || pages_too)) {
             return;
         }
         if id == view {

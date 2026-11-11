@@ -725,6 +725,12 @@ pub struct TextFieldState {
     pub overflow: Option<FieldOverflow>,
     /// #285: what `follow_caret` last saw, so a field that did not change is not shaped again.
     pub follow_stamp: u64,
+    /// #288: overwrite mode (the Insert key toggles it): a typed character replaces the one
+    /// after the caret instead of being added before it. Off by default.
+    pub overwrite: bool,
+    /// #288: the x (in pixels along the text) Up, Down, Page Up and Page Down hold across a run
+    /// of vertical moves, so passing a short row does not lose the column. `None` between runs.
+    pub goal_x: Option<f32>,
 }
 
 /// #285: how a single-line text input shows a line longer than its box (it is one line, however
@@ -788,6 +794,12 @@ impl TextFieldState {
                         self.overflow,
                         Some(FieldOverflow::Scroll | FieldOverflow::Ellipsis)
                     )))
+    }
+
+    /// #288: whether the caret keys move by the rows the shaped text shows (a multiline input
+    /// that has a `wrap`, either value) and not by the logical lines of the old editor code.
+    pub fn moves_by_rows(&self) -> bool {
+        self.multiline && self.wrap.is_some()
     }
 
     /// #285: whether a single-line input goes back to its start when it loses the focus.
@@ -914,6 +926,8 @@ impl TextFieldState {
             wrap: None,
             overflow: None,
             follow_stamp: 0,
+            overwrite: false,
+            goal_x: None,
             obscured: false,
         }
     }

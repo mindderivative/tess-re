@@ -1638,7 +1638,14 @@ impl TextRenderer {
                     });
                 advance.unwrap_or(f64::from(state.font_size) * 0.5)
             };
-            let bounds = match state.caret_shape {
+            // #288: in overwrite mode a bar caret is drawn as a block over the character it
+            // would replace; a shape the app chose (block, underline) stays.
+            let shape = if state.overwrite && state.caret_shape == engine_core::CaretShape::Bar {
+                engine_core::CaretShape::Block
+            } else {
+                state.caret_shape
+            };
+            let bounds = match shape {
                 engine_core::CaretShape::Bar => bar,
                 engine_core::CaretShape::Block => {
                     Rect::new(bar.x0, bar.y0, bar.x0 + next_width, bar.y1)
@@ -1748,6 +1755,136 @@ impl TextRenderer {
             bounds.x1 + at.x,
             bounds.y1 + at.y,
         )
+    }
+
+    /// #288: the shaped rows of text input `state` laid out in `max_width`, with the text that was
+    /// shaped (`display`: folds collapsed, whitespace or bullets shown) and the maps between byte
+    /// offsets in `content` and in `display`. `None` while a composition is in progress.
+    fn field_rows_layout(&mut self, state: &TextFieldState, max_width: f32) -> Option<RowsLayout> {
+        if state.preedit.as_deref().is_some_and(|p| !p.is_empty()) {
+            return None;
+        }
+        let folded = elide_folded_ranges(&state.content, &state.folded_ranges).into_owned();
+        let glyphs = Glyphs::of(state);
+        let display = if glyphs.active() {
+            substitute(&folded, glyphs)
+        } else {
+            folded.clone()
+        };
+        let layout = self.build_field_layout(
+            &display,
+            &state.font_family,
+            state.font_weight,
+            state.font_size,
+            max_width,
+        );
+        Some(RowsLayout {
+            layout,
+            display,
+            folded,
+            glyphs,
+            content_len: state.content.len(),
+            folded_ranges: state.folded_ranges.clone(),
+        })
+    }
+
+    /// #288: answers a [`engine_core::RowQuery`] about text input `state` shown in a content box
+    /// of `viewport` (width, height), by the shaped rows (the same layout it paints from).
+    pub fn field_rows(
+        &mut self,
+        state: &TextFieldState,
+        viewport: (f32, f32),
+        query: engine_core::RowQuery,
+    ) -> Option<engine_core::RowAnswer> {
+        let rows = self.field_rows_layout(state, field_max_width(state, viewport.0))?;
+        let layout = &rows.layout;
+        if rows.display.is_empty() || layout.is_empty() {
+            return Some(engine_core::RowAnswer {
+                offset: 0,
+                goal_x: 0.0,
+                moved: false,
+            });
+        }
+        let d = rows.display_offset(state.cursor);
+        let current = rows.row_of(d);
+        let last = layout.len() - 1;
+        let caret_x = f64_x(layout, d);
+        match query {
+            engine_core::RowQuery::Start => {
+                let range = rows.range(current);
+                Some(engine_core::RowAnswer {
+                    offset: rows.content_offset(range.start),
+                    goal_x: caret_x,
+                    moved: false,
+                })
+            }
+            engine_core::RowQuery::End => Some(engine_core::RowAnswer {
+                offset: rows.content_offset(rows.ink_end(current)),
+                goal_x: caret_x,
+                moved: false,
+            }),
+            engine_core::RowQuery::Vertical { down, page, goal_x } => {
+                let x = goal_x.unwrap_or(caret_x);
+                let step = if page {
+                    let line = layout.get(current)?;
+                    let m = line.metrics();
+                    let height = (m.block_max_coord - m.block_min_coord).max(1.0);
+                    ((viewport.1 / height).floor() as usize).max(1)
+                } else {
+                    1
+                };
+                let target = if down {
+                    (current + step).min(last)
+                } else {
+                    current.saturating_sub(step)
+                };
+                if target == current {
+                    // Nowhere to go: the start or the end of the whole text.
+                    let edge = if down { rows.content_len } else { 0 };
+                    return Some(engine_core::RowAnswer {
+                        offset: edge,
+                        goal_x: x,
+                        moved: false,
+                    });
+                }
+                let line = layout.get(target)?;
+                let metrics = line.metrics();
+                let y = (metrics.block_min_coord + metrics.block_max_coord) / 2.0;
+                let at = Cursor::from_point(layout, x, y).index();
+                let range = rows.range(target);
+                let at = at.clamp(range.start, rows.ink_end(target));
+                Some(engine_core::RowAnswer {
+                    offset: rows.content_offset(at),
+                    goal_x: x,
+                    moved: true,
+                })
+            }
+        }
+    }
+
+    /// #288: for a double or triple click at `point` (in the same space as `at`, which places the
+    /// text in the node, scroll included): the byte offset in `content` of the character under
+    /// it, and the bytes `(start, end)` of the visual row it is in, without that row's trailing
+    /// spaces and line break. `None` while a composition is in progress or with no text.
+    pub fn field_unit_at(
+        &mut self,
+        state: &TextFieldState,
+        at: TextPlacement,
+        point: Point,
+    ) -> Option<(usize, usize, usize)> {
+        let rows = self.field_rows_layout(state, field_max_width(state, at.max_width))?;
+        if rows.display.is_empty() {
+            return None;
+        }
+        let (x, y) = ((point.x - at.x) as f32, (point.y - at.y) as f32);
+        let (cluster, _) = parley::layout::Cluster::from_point(&rows.layout, x, y)?;
+        let character = cluster.text_range().start;
+        let row = rows.row_of(character);
+        Some((
+            rows.content_offset(character),
+            rows.content_offset(rows.range(row).start),
+            rows.content_offset(rows.ink_end(row)),
+        ))
     }
 
     /// #285: where text input `state`'s scroll offsets should be so its caret is in view, for a
@@ -2239,6 +2376,71 @@ const OBSCURED_GLYPH: char = '\u{2022}';
 /// substitution is one character for one character, which is what lets
 /// `to_display_offset`/`from_display_offset` map cursor and click
 /// offsets between the real content and what's shaped.
+/// #288: a text input's shaped rows and what maps their text back to the input's `content`.
+struct RowsLayout {
+    layout: parley::Layout<[u8; 4]>,
+    display: String,
+    folded: String,
+    glyphs: Glyphs,
+    content_len: usize,
+    folded_ranges: Vec<Range<usize>>,
+}
+
+impl RowsLayout {
+    /// A byte offset in `content` as one in the shaped text.
+    fn display_offset(&self, offset: usize) -> usize {
+        let folded = to_display_offset_folded(self.content_len, &self.folded_ranges, offset);
+        if self.glyphs.active() {
+            to_display_offset(&self.folded, folded, self.glyphs)
+        } else {
+            folded
+        }
+    }
+
+    /// The inverse of `to_display`.
+    fn content_offset(&self, display_offset: usize) -> usize {
+        let folded = if self.glyphs.active() {
+            from_display_offset(&self.folded, display_offset, self.glyphs)
+        } else {
+            display_offset
+        };
+        from_display_offset_folded(self.content_len, &self.folded_ranges, folded)
+    }
+
+    /// The row a caret at shaped offset `d` is in: at a wrap it is the row that starts there.
+    fn row_of(&self, d: usize) -> usize {
+        let count = self.layout.len();
+        (0..count)
+            .find(|&i| self.layout.get(i).is_some_and(|l| d < l.text_range().end))
+            .unwrap_or(count.saturating_sub(1))
+    }
+
+    fn range(&self, row: usize) -> Range<usize> {
+        self.layout.get(row).map_or(0..0, |line| line.text_range())
+    }
+
+    /// Where a caret goes for End on `row`: after its last character, leaving out the line
+    /// break, and, on a row that only wraps (the text goes on below), the spaces the wrap fell on.
+    fn ink_end(&self, row: usize) -> usize {
+        let range = self.range(row);
+        let text = &self.display[range.clone()];
+        let hard = text.ends_with(['\n', '\r']) || row + 1 >= self.layout.len();
+        let trimmed = if hard {
+            text.trim_end_matches(['\n', '\r'])
+        } else {
+            text.trim_end_matches(char::is_whitespace)
+        };
+        range.start + trimmed.len()
+    }
+}
+
+/// The x of the caret at shaped offset `d`.
+fn f64_x(layout: &parley::Layout<[u8; 4]>, d: usize) -> f32 {
+    Cursor::from_byte_index(layout, d, Affinity::Downstream)
+        .geometry(layout, 0.0)
+        .x0 as f32
+}
+
 /// 0.5.6 (#165): a field's shaped layout, the map from a byte offset in its
 /// content to one in what is shaped, and where the caret is (in content bytes).
 type FieldGeometry = (parley::Layout<[u8; 4]>, Box<dyn Fn(usize) -> usize>, usize);

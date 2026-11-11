@@ -186,6 +186,7 @@ fn engine_key(name: &str) -> Option<Key> {
         "end" => Key::End,
         "page_up" => Key::PageUp,
         "page_down" => Key::PageDown,
+        "insert" => Key::Insert,
         _ => return None,
     })
 }

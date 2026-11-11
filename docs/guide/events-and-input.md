@@ -184,8 +184,11 @@ one to show a focus ring by. Tesserae Engine draws no focus ring itself.
 
 A focused `"text_input"` handles its own editing: typing, the arrow keys and
 Home/End (with Shift to select), Backspace and Delete, Enter in a `multiline`
-input, and Ctrl+C, Ctrl+X, Ctrl+V, and Ctrl+A. Page Up and Page Down it
-leaves alone, to scroll the view around it. Two events report it:
+input, and Ctrl+C, Ctrl+X, Ctrl+V, and Ctrl+A. Ctrl+Left and Right, Ctrl+Backspace and
+Delete work by word, Insert toggles an overwrite mode, and a double or triple click selects
+a word or a string. In a `multiline` input with a `wrap` the caret keys, Page Up and Page Down
+included, go by the rows it shows (see [Text](text.md#keys-rows-and-clicks-in-a-text-input-067));
+otherwise Page Up and Page Down are left alone, to scroll the view around it. Two events report it:
 
 - `input` — committed text arrived (`event.text`), from typing, an input
   method, or a paste.

@@ -536,6 +536,18 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn parse(text: &str) -> Result<Self, String>` | Parses a template: every `{` closes with a `}` and holds an expression. |
 | `fn source(&self) -> &str` | The template as written. |
 
+### RowAnswer { #rowanswer }
+
+*struct.* The answer to a `RowQuery`: a byte offset in `content`, the x the caret was held at (for the next vertical move), and whether it moved to another…
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `offset` | `usize` |  |
+| `goal_x` | `f32` |  |
+| `moved` | `bool` |  |
+
 ### ScrollViewState { #scrollviewstate }
 
 *struct.* The state of a scroll view: offset, direction and scrollbar look.
@@ -917,12 +929,15 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `wrap` | `Option<bool>` | `Some(true)` wraps a multiline input's lines at its width (by word); `Some(false)` keeps each line whole and scrolls sideways. |
 | `overflow` | `Option<FieldOverflow>` | How a single-line input shows a line longer than its box. |
 | `follow_stamp` | `u64` | What `follow_caret` last saw, so a field that did not change is not shaped again. |
+| `overwrite` | `bool` | Overwrite mode (the Insert key toggles it): a typed character replaces the one after the caret instead of being added before it. |
+| `goal_x` | `Option<f32>` | The x (in pixels along the text) Up, Down, Page Up and Page Down hold across a run of vertical moves, so passing a short row does not lose the column. |
 
 | Method | Description |
 | --- | --- |
 | `fn clips(&self) -> bool` | Whether the painted text is clipped to the box (every input but a legacy single line, which wraps inside it). |
 | `fn fit<'a>(&self, text: &'a str) -> &'a str` | `text` cut to what `room` allows, on a character boundary. |
 | `fn follows_caret(&self, focused: bool) -> bool` | Whether the scroll offsets follow the caret by the shaped layout (`follow_caret`), rather than the editor heuristic in… |
+| `fn moves_by_rows(&self) -> bool` | Whether the caret keys move by the rows the shaped text shows (a multiline input that has a `wrap`, either value) and not by the logical lines of… |
 | `fn new(content: impl Into<String>, font_family: impl Into<String>, font_weight: f32, font_size: f32) -> Self` | Creates a field with the caret at the end of the content. |
 | `fn resets_when_unfocused(&self) -> bool` | Whether a single-line input goes back to its start when it loses the focus. |
 | `fn room(&self) -> usize` | How many more characters an insertion could add now, counting the selection as replaced. |
@@ -1081,12 +1096,15 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn select_across(&mut self, anchor: (NodeId, usize), focus: (NodeId, usize)) -> bool` | Selects from `anchor` to `focus`, each a text node and a byte offset (clamped to a character boundary). |
 | `fn select_all_static_text(&mut self) -> bool` | Ctrl+A in static text: selects all of the text node the selection started in. |
 | `fn select_all_text_field(&mut self, field: NodeId) -> bool` | Selects all the text in a text field. |
+| `fn select_text_field_unit(&mut self, field: NodeId, character: usize, row_start: usize, row_end: usize, triple: bool) -> bool` | A double or triple click in a text input selects around the character the pointer is on, inside the visual row `row_start..row_end` (the row's text… |
 | `fn set_access(&mut self, id: NodeId, access: AccessNodeData)` | Sets a node's accessibility role, label and actions. |
 | `fn set_anchor(&mut self, id: NodeId, anchored: Option<Anchored>) -> bool` | Places `id` against another node in the tree (`Some`), or puts it back in the flow (`None`). |
 | `fn set_calc_size(&mut self, id: NodeId, height: bool, calc: Option<CalcLen>)` | Makes one side of `id`'s size a `calc` (or, with `None`, an ordinary size again). |
 | `fn set_canvas_content(&mut self, id: NodeId, commands: Vec<DrawCommand>, hit_test: Option<CustomHitTest>) -> Option<()>` | Replaces a canvas node's draw commands and optional custom hit test. |
+| `fn set_field_rows(&mut self, rows: FieldRows)` | Installs what answers a text input's questions about its shaped rows. |
 | `fn set_fit_content(&mut self, id: NodeId, fit: FitContent)` | Sets which sides of text node `id` take the text's own size. |
 | `fn set_focus_to(&mut self, node: NodeId) -> Option<(Option<NodeId>, Option<NodeId>)>` | Moves keyboard focus directly to a node and returns the old and new focus. |
+| `fn set_held_modifiers(&mut self, held: Modifiers)` | Tells the tree which modifier keys are held; the window calls it before each event. |
 | `fn set_hit_testable(&mut self, id: NodeId, hit_testable: bool)` | Sets whether a node can claim a hit by itself. |
 | `fn set_hovered(&mut self, hit: Option<NodeId>) -> Option<NodeId>` | Sets the hovered node and returns the previous one if it changed. |
 | `fn set_layout_style(&mut self, id: NodeId, style: Style)` | Updates a node's layout style and keeps the layout engine in sync. |
@@ -1114,10 +1132,11 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn svg_bitmaps(&self) -> Vec<Arc<SvgBitmap>>` | Every raster image the tree's SVG nodes were given, for the renderer to upload as textures. |
 | `fn take_anchor_conflicts(&mut self) -> Vec<NodeId>` | The anchored nodes `compute_layout` gave up on since this was last called: their anchors depend on each other with no solution (A is placed against… |
 | `fn take_calc_conflicts(&mut self) -> Vec<(NodeId, bool)>` | The calc sizes `compute_layout` gave up on since this was last called, as `(node, is_height)`. |
-| `fn take_caret_changes(&mut self) -> Vec<(NodeId, Option<Range<usize>>)>` | The text fields whose caret moved, or whose text changed, since the last call, each with the bytes the edit inserted, if it did. |
+| `fn take_caret_changes(&mut self) -> Vec<(NodeId, Option<Range<usize>>)>` |  |
 | `fn take_dirty(&mut self) -> bool` | Returns whether the tree needs a frame and clears the flag. |
 | `fn take_dismissals(&mut self) -> Vec<NodeId>` | Returns the layers an outside press or Escape asked to dismiss since the last call. |
 | `fn take_layout_changes(&mut self) -> Vec<LayoutChange>` | Every watched node whose laid-out size has changed since this was last asked, as `(node, old, new)` with `old` `None` the first time. |
+| `fn take_overwrite_changes(&mut self) -> Vec<(NodeId, bool)>` | The text fields whose caret moved, or whose text changed, since the last call, each with the bytes the edit inserted, if it did. |
 | `fn take_scroll_changes(&mut self) -> Vec<(NodeId, f64, f64)>` | Returns each scroll view whose offset changed since the last call, as (view, old, new). |
 | `fn take_touched(&self) -> Touched` | The nodes handed out mutably since the last call (see `Touched`), and a fresh start. |
 | `fn terminal_selected_text(&self, id: NodeId) -> Option<String>` | Returns the text selected in a terminal, if any. |
@@ -1521,6 +1540,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `End` |  | The End key. |
 | `PageUp` |  | The Page Up key, which scrolls a view up by its viewport. |
 | `PageDown` |  | The Page Down key, which scrolls a view down by its viewport. |
+| `Insert` |  | The Insert key: in a text input it toggles insert and overwrite mode. |
 
 ### LayoutAnimError { #layoutanimerror }
 
@@ -1675,6 +1695,18 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Middle` |  | The middle button, usually the wheel click. |
 | `Back` |  | The mouse's back side button. |
 | `Forward` |  | The mouse's forward side button. |
+
+### RowQuery { #rowquery }
+
+*enum.* A question about the rows a text input's shaped text shows, which `engine-core` (with no font) puts to whatever the window installed…
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Start` |  | The start of the row the caret is in. |
+| `End` |  | The end of that row: after its last character that is not a space or a line break. |
+| `Vertical` | `{ down: bool, page: bool, goal_x: Option<f32> }` | The caret one row up or down (`page`: as many rows as the box shows), at the x `goal_x` (`None`: where the caret is now). |
 
 ### ScrollDelta { #scrolldelta }
 
@@ -2169,6 +2201,8 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | `fn evict_stale_layouts(&mut self, tree: &Tree)` | Drops cached text layouts belonging to nodes that no longer exist in the tree. |
 | `fn field_caret_rect(&mut self, state: &TextFieldState, at: TextPlacement) -> Rect` | The caret's rectangle in the field's own coordinates (`at` placing the text in the node, scroll offsets already in it): the bar's, with… |
 | `fn field_range_rects(&mut self, state: &TextFieldState, at: TextPlacement, start: usize, end: usize) -> Vec<Rect>` | The rectangles covering `start..end` (bytes of `state.content`), one per line it crosses, in the field's coordinates. |
+| `fn field_rows(&mut self, state: &TextFieldState, viewport: (f32, f32), query: RowQuery) -> Option<RowAnswer>` | Answers a `engine_core::RowQuery` about text input `state` shown in a content box of `viewport` (width, height), by the shaped rows (the same layout… |
+| `fn field_unit_at(&mut self, state: &TextFieldState, at: TextPlacement, point: Point) -> Option<(usize, usize, usize)>` | For a double or triple click at `point` (in the same space as `at`, which places the text in the node, scroll included): the byte offset in… |
 | `fn follow_caret(&mut self, state: &TextFieldState, viewport: (f32, f32)) -> Option<(f64, f64, u64)>` | Where text input `state`'s scroll offsets should be so its caret is in view, for a content box of `viewport` (width, height) and the offsets it has… |
 | `fn glyph_cache(&self) -> bool` |  |
 | `fn hit_test_position(&mut self, state: &TextFieldState, at: TextPlacement, point: Point) -> usize` | Returns the character index in a text field that a local point falls on. |

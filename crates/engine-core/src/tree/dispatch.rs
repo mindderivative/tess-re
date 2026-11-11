@@ -78,6 +78,22 @@ impl Tree {
 
     /// 0.5.6 (#165): the text fields whose caret moved, or whose text changed,
     /// since the last call, each with the bytes the edit inserted, if it did.
+    /// #288: the text inputs whose overwrite mode the user toggled since the last call, each
+    /// with its new value.
+    pub fn take_overwrite_changes(&mut self) -> Vec<(NodeId, bool)> {
+        std::mem::take(&mut self.overwrite_changes)
+    }
+
+    /// #288: tells the tree which modifier keys are held; the window calls it before each event.
+    pub fn set_held_modifiers(&mut self, held: crate::input::Modifiers) {
+        self.held = held;
+    }
+
+    /// #288: installs what answers a text input's questions about its shaped rows.
+    pub fn set_field_rows(&mut self, rows: FieldRows) {
+        self.field_rows = Some(rows);
+    }
+
     pub fn take_caret_changes(&mut self) -> Vec<(NodeId, Option<std::ops::Range<usize>>)> {
         std::mem::take(&mut self.caret_changes)
     }
@@ -402,7 +418,8 @@ impl Tree {
                     | Key::Home
                     | Key::End
                     | Key::PageUp
-                    | Key::PageDown => DispatchOutcome::None,
+                    | Key::PageDown
+                    | Key::Insert => DispatchOutcome::None,
                 }
             }
             InputEvent::KeyReleased { .. } => DispatchOutcome::None,
@@ -423,12 +440,21 @@ impl Tree {
                     state.preedit = None;
                     return DispatchOutcome::None;
                 }
+                // #288: in overwrite mode each typed character replaces the one after the caret
+                // (not a line break), so those are taken out first and the limit sees the room.
+                let old_content = state.content.clone();
+                let had_selection = state.selection_anchor.is_some_and(|a| a != state.cursor);
+                let replaced = if state.overwrite && !had_selection {
+                    Self::take_overwritten(state, text.chars().count())
+                } else {
+                    String::new()
+                };
                 let text = state.fit(&text).to_string();
                 if text.is_empty() {
+                    state.content.insert_str(state.cursor, &replaced);
                     state.preedit = None;
                     return DispatchOutcome::None;
                 }
-                let old_content = state.content.clone();
                 // M15 Phase 3 (§16.7): typing over a real, active
                 // selection replaces it -- the same real desktop-editor
                 // behavior `Backspace`/`Delete`/`Space` already apply,
@@ -438,6 +464,7 @@ impl Tree {
                 state.content.insert_str(state.cursor, &text);
                 state.cursor += text.len();
                 state.goal_column = None;
+                state.goal_x = None;
                 // M17 Phase 2 (§8): a real insertion -- whether from a
                 // plain keypress or a real IME `Commit` (both reach
                 // this same arm) -- always clears any stale preedit.

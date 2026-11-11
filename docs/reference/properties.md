@@ -204,6 +204,7 @@ painted.
 | Property | Value |
 | --- | --- |
 | `multiline` | `True` for several lines |
+| `overwrite` | (0.6.7) `True` for overwrite mode: a typed character replaces the one after the caret. The Insert key toggles it and fires `overwrite_change`. Default `False`. See [Keys, rows and clicks](../guide/text.md#keys-rows-and-clicks-in-a-text-input-067) |
 | `wrap` | (0.6.6) multiline: `"word"` breaks lines at the width, `"none"` keeps each whole and scrolls sideways, `None` (default) is as before: no wrap, and a monospace scroll. Means nothing to a single-line input |
 | `overflow` | (0.6.6) single-line: `"scroll"` keeps the caret in view, `"ellipsis"` cuts a long line with "…" until the input is focused, `"clip"` cuts it at the box edge; any of them makes it one line. `None` (default) is as before: the line wraps by word. Means nothing to a multiline input. See [Long lines](../guide/text.md#long-lines-in-a-text-input-066) |
 | `selection` | `(start, end)` byte offsets; `start == end` is a caret. Given with `text`, it selects in the new text |

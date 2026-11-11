@@ -2,6 +2,38 @@
 
 use super::*;
 
+/// #288: a question about the rows a text input's shaped text shows, which `engine-core`
+/// (with no font) puts to whatever the window installed (`Tree::set_field_rows`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RowQuery {
+    /// The start of the row the caret is in.
+    Start,
+    /// The end of that row: after its last character that is not a space or a line break.
+    End,
+    /// The caret one row up or down (`page`: as many rows as the box shows), at the x `goal_x`
+    /// (`None`: where the caret is now).
+    Vertical {
+        down: bool,
+        page: bool,
+        goal_x: Option<f32>,
+    },
+}
+
+/// #288: the answer to a [`RowQuery`]: a byte offset in `content`, the x the caret was held at
+/// (for the next vertical move), and whether it moved to another row (`false` at the first row
+/// going up, or the last going down: the offset is then the start or end of the whole text).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RowAnswer {
+    pub offset: usize,
+    pub goal_x: f32,
+    pub moved: bool,
+}
+
+/// #288: answers a [`RowQuery`] for a text input whose content box is `viewport` (width, height);
+/// `None` when it cannot (a composition is in progress), and the key falls back to the old move.
+pub type FieldRows =
+    Box<dyn FnMut(&TextFieldState, (f32, f32), RowQuery) -> Option<RowAnswer> + Send>;
+
 impl Tree {
     /// M38 Phase 7 (§5, §8): real caret-follow -- if `field`'s own real
     /// caret would currently sit outside its own visible viewport
@@ -161,6 +193,16 @@ impl Tree {
         key: Key,
         shift: bool,
     ) -> Option<DispatchOutcome> {
+        // #288: the content box, for the questions about rows.
+        let viewport = {
+            let layout = self.layout(field);
+            let pad = layout.padding;
+            (
+                (layout.size.width - pad.left - pad.right).max(0.0),
+                (layout.size.height - pad.top - pad.bottom).max(0.0),
+            )
+        };
+        let ctrl = self.held.ctrl && !self.held.alt;
         let NodeKind::TextField(state) = &mut self.nodes[field].kind else {
             return None;
         };
@@ -169,9 +211,16 @@ impl Tree {
         // manage `goal_column` themselves (seed it on the first hop,
         // leave it alone on every further one), matching real desktop-
         // editor behavior: only a *consecutive* run of vertical moves
-        // remembers the original column.
+        // remembers the original column. #288: Page Up and Page Down belong to the
+        // run, and `goal_x` is its pixel twin.
         if !matches!(key, Key::ArrowUp | Key::ArrowDown) {
             state.goal_column = None;
+        }
+        if !matches!(
+            key,
+            Key::ArrowUp | Key::ArrowDown | Key::PageUp | Key::PageDown
+        ) {
+            state.goal_x = None;
         }
         // 0.5.6 (#162): a read-only field takes no edit. Tab in a multiline
         // one is focus traversal again, as in a single-line field.
@@ -185,6 +234,33 @@ impl Tree {
             };
         }
         state.last_inserted = None;
+        // #288: Insert toggles overwrite mode (with Shift or Ctrl it is paste or copy, not ours).
+        if key == Key::Insert {
+            if self.held.shift || self.held.ctrl || shift {
+                return None;
+            }
+            state.overwrite = !state.overwrite;
+            let now = state.overwrite;
+            self.overwrite_changes.push((field, now));
+            self.dirty = true;
+            return Some(DispatchOutcome::None);
+        }
+        // #288: Ctrl with a caret key goes by word or to the ends of the text, and Ctrl+Backspace
+        // and Ctrl+Delete delete a word.
+        if ctrl && let Some(outcome) = Self::ctrl_key(state, field, key, shift) {
+            return Some(outcome);
+        }
+        // #288: in a multiline input that has a `wrap`, the caret keys go by the rows shown.
+        if state.moves_by_rows()
+            && matches!(
+                key,
+                Key::ArrowUp | Key::ArrowDown | Key::PageUp | Key::PageDown | Key::Home | Key::End
+            )
+            && let Some(rows) = self.field_rows.as_mut()
+            && let Some(outcome) = Self::row_key(state, rows, viewport, key, shift)
+        {
+            return Some(outcome);
+        }
         match key {
             Key::Backspace => {
                 // M54 Phase 1 (§8, §16.2): the real pre-edit content,
@@ -362,10 +438,18 @@ impl Tree {
             // not fall through to `Key::Enter | Key::Space =>
             // Activated`'s own generic button-activation meaning.
             Key::Space => {
+                let old_content = state.content.clone();
+                // #288: in overwrite mode a space replaces the character after the caret.
+                let had_selection = state.selection_anchor.is_some_and(|a| a != state.cursor);
+                let replaced = if state.overwrite && !had_selection {
+                    Self::take_overwritten(state, 1)
+                } else {
+                    String::new()
+                };
                 if state.fit(" ").is_empty() {
+                    state.content.insert_str(state.cursor, &replaced);
                     return Some(DispatchOutcome::None);
                 }
-                let old_content = state.content.clone();
                 Self::delete_selection(state);
                 state.last_inserted = Some(state.cursor..state.cursor + 1);
                 state.content.insert(state.cursor, ' ');
@@ -440,7 +524,157 @@ impl Tree {
             // 0.4.2 M12: a text field doesn't page; the scroll view around
             // it does.
             Key::PageUp | Key::PageDown => None,
+            Key::Insert => None,
         }
+    }
+
+    /// #288: removes, for overwrite mode, up to `count` characters after the caret, stopping at a
+    /// line break (a typed character does not eat the break) and at the end of the text, and
+    /// returns what it removed so a refused edit can put it back.
+    pub(super) fn take_overwritten(state: &mut TextFieldState, count: usize) -> String {
+        let rest = &state.content[state.cursor..];
+        let mut end = 0;
+        for (taken, (i, c)) in rest.char_indices().enumerate() {
+            if taken == count || c == '\n' || c == '\r' {
+                break;
+            }
+            end = i + c.len_utf8();
+        }
+        let removed = rest[..end].to_string();
+        let start = state.cursor;
+        state.content.replace_range(start..start + end, "");
+        removed
+    }
+
+    /// #288: a caret key with Ctrl held, in any text input: by word, to the ends of the text, or
+    /// a word deleted. `None` for a key Ctrl does not change.
+    fn ctrl_key(
+        state: &mut TextFieldState,
+        field: NodeId,
+        key: Key,
+        shift: bool,
+    ) -> Option<DispatchOutcome> {
+        let target = match key {
+            Key::ArrowLeft => word_start_before(&state.content, state.cursor),
+            Key::ArrowRight => word_start_after(&state.content, state.cursor),
+            Key::Home => 0,
+            Key::End => state.content.len(),
+            Key::Backspace | Key::Delete => {
+                let old_content = state.content.clone();
+                if Self::delete_selection(state) {
+                    return Some(DispatchOutcome::Changed {
+                        node: field,
+                        old_value: ChangedValue::Text(old_content),
+                    });
+                }
+                let (start, end) = if key == Key::Backspace {
+                    (
+                        word_start_before(&state.content, state.cursor),
+                        state.cursor,
+                    )
+                } else {
+                    (state.cursor, word_start_after(&state.content, state.cursor))
+                };
+                if start == end {
+                    return Some(DispatchOutcome::None);
+                }
+                state.content.replace_range(start..end, "");
+                state.cursor = start;
+                return Some(DispatchOutcome::Changed {
+                    node: field,
+                    old_value: ChangedValue::Text(old_content),
+                });
+            }
+            _ => return None,
+        };
+        if shift {
+            state.selection_anchor.get_or_insert(state.cursor);
+        } else {
+            state.selection_anchor = None;
+        }
+        state.cursor = Self::snap_out_of_fold(target, &state.content, &state.folded_ranges);
+        Some(DispatchOutcome::None)
+    }
+
+    /// #288: Up, Down, Page Up, Page Down, Home and End by the rows the shaped text shows (see
+    /// `RowQuery`). `None`, having changed nothing, when the rows cannot be worked out.
+    fn row_key(
+        state: &mut TextFieldState,
+        rows: &mut FieldRows,
+        viewport: (f32, f32),
+        key: Key,
+        shift: bool,
+    ) -> Option<DispatchOutcome> {
+        let vertical = matches!(
+            key,
+            Key::ArrowUp | Key::ArrowDown | Key::PageUp | Key::PageDown
+        );
+        let page = matches!(key, Key::PageUp | Key::PageDown);
+        let down = matches!(key, Key::ArrowDown | Key::PageDown);
+        // A plain Up or Down over a selection collapses it to its edge, as Left and Right do.
+        if vertical
+            && !page
+            && !shift
+            && let Some(anchor) = state.selection_anchor.take()
+        {
+            state.cursor = if down {
+                state.cursor.max(anchor)
+            } else {
+                state.cursor.min(anchor)
+            };
+            state.goal_x = None;
+            return Some(DispatchOutcome::None);
+        }
+        let query = match key {
+            Key::Home => RowQuery::Start,
+            Key::End => RowQuery::End,
+            _ => RowQuery::Vertical {
+                down,
+                page,
+                goal_x: state.goal_x,
+            },
+        };
+        let answer = rows(state, viewport, query)?;
+        if shift {
+            state.selection_anchor.get_or_insert(state.cursor);
+        } else {
+            state.selection_anchor = None;
+        }
+        state.cursor = Self::char_boundary(&state.content, answer.offset);
+        if vertical {
+            state.goal_x = Some(answer.goal_x);
+        }
+        Some(DispatchOutcome::None)
+    }
+
+    /// #288: a double or triple click in a text input selects around the character the pointer is
+    /// on, inside the visual row `row_start..row_end` (the row's text, without trailing
+    /// spaces and its line break): a double click a *word* (letters, digits and underscore), or the
+    /// run of spaces or of other characters if it is on one; a triple click the string up to
+    /// the spaces on either side, special characters included. `character` is the byte offset of
+    /// the character under the pointer. `false` if `field` is not a text input.
+    pub fn select_text_field_unit(
+        &mut self,
+        field: NodeId,
+        character: usize,
+        row_start: usize,
+        row_end: usize,
+        triple: bool,
+    ) -> bool {
+        let before = self.caret_of(field);
+        self.dirty = true;
+        let Some(NodeKind::TextField(state)) = self.nodes.get_mut(field).map(|n| &mut n.kind)
+        else {
+            return false;
+        };
+        let (start, end) = unit_range(&state.content, character, row_start, row_end, triple);
+        state.selection_anchor = Some(start);
+        state.cursor = end;
+        state.goal_column = None;
+        state.goal_x = None;
+        self.scroll_text_field_caret_into_view(field);
+        self.note_caret(field, before);
+        true
     }
 
     /// M15 Phase 3 (§16.7): deletes a real, active selection (`anchor
@@ -465,6 +699,7 @@ impl Tree {
         state.cursor = start;
         state.selection_anchor = None;
         state.goal_column = None;
+        state.goal_x = None;
         true
     }
 
@@ -655,6 +890,7 @@ impl Tree {
         state.cursor = Self::char_boundary(&state.content, offset);
         state.selection_anchor = None;
         state.goal_column = None;
+        state.goal_x = None;
         self.scroll_text_field_caret_into_view(field);
         self.note_caret(field, before);
         true
@@ -720,6 +956,7 @@ impl Tree {
         }
         state.cursor = Self::char_boundary(&state.content, offset);
         state.goal_column = None;
+        state.goal_x = None;
         self.scroll_text_field_caret_into_view(field);
         self.note_caret(field, before);
         true
@@ -744,6 +981,7 @@ impl Tree {
         state.selection_anchor = Some(0);
         state.cursor = state.content.len();
         state.goal_column = None;
+        state.goal_x = None;
         self.scroll_text_field_caret_into_view(field);
         self.note_caret(field, before);
         true
@@ -1265,4 +1503,134 @@ fn word_start_before(content: &str, from: usize) -> usize {
         start = i;
     }
     start
+}
+
+/// #288: the kind of a character for a double click: a word character (letters, digits, the
+/// underscore: Unicode ones too), a space, or any other ("special").
+fn click_class(c: char) -> u8 {
+    word_class(c)
+}
+
+/// #288: what a double or triple click selects, see `Tree::select_text_field_unit`. A click past the
+/// end of the row's text counts as on its last character; an empty row selects nothing.
+pub(crate) fn unit_range(
+    content: &str,
+    character: usize,
+    row_start: usize,
+    row_end: usize,
+    triple: bool,
+) -> (usize, usize) {
+    let row_end = row_end.min(content.len());
+    let row_start = row_start.min(row_end);
+    let row = &content[row_start..row_end];
+    let Some(last) = row.char_indices().next_back() else {
+        return (row_start, row_start);
+    };
+    let at = character.clamp(row_start, row_end);
+    // The character at `at` is under the pointer; at the row's end it is the last one.
+    let pivot = if at >= row_end {
+        row_start + last.0
+    } else {
+        at
+    };
+    let pivot = (0..=pivot)
+        .rev()
+        .find(|i| content.is_char_boundary(*i) && *i >= row_start)
+        .unwrap_or(row_start);
+    let Some(under) = content[pivot..row_end].chars().next() else {
+        return (row_start, row_start);
+    };
+    let class = click_class(under);
+    // A triple click takes every character that is not a space; on a space, the run of spaces.
+    let same = |c: char| {
+        if triple && class != 1 {
+            click_class(c) != 1
+        } else {
+            click_class(c) == class
+        }
+    };
+    let mut start = pivot;
+    for (i, c) in content[row_start..pivot].char_indices().rev() {
+        if !same(c) {
+            break;
+        }
+        start = row_start + i;
+    }
+    let mut end = pivot + under.len_utf8();
+    for (i, c) in content[end..row_end].char_indices() {
+        if !same(c) {
+            end += i;
+            return (start, end);
+        }
+    }
+    (start, row_end)
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+
+    #[test]
+    fn a_double_click_takes_a_word_a_triple_click_the_string_between_spaces() {
+        let text = "well-known stuff";
+        assert_eq!(unit_range(text, 1, 0, text.len(), false), (0, 4), "well");
+        assert_eq!(
+            unit_range(text, 4, 0, text.len(), false),
+            (4, 5),
+            "the hyphen"
+        );
+        assert_eq!(unit_range(text, 6, 0, text.len(), false), (5, 10), "known");
+        assert_eq!(
+            unit_range(text, 1, 0, text.len(), true),
+            (0, 10),
+            "well-known"
+        );
+        assert_eq!(unit_range(text, 12, 0, text.len(), true), (11, 16), "stuff");
+        assert_eq!(
+            unit_range(text, 10, 0, text.len(), true),
+            (10, 11),
+            "the space"
+        );
+    }
+
+    #[test]
+    fn a_click_selection_stays_inside_its_row_and_a_click_past_the_end_is_on_the_last_character() {
+        let text = "aaaa bbbb cccc";
+        assert_eq!(unit_range(text, 7, 5, 9, true), (5, 9), "the row is bbbb");
+        assert_eq!(
+            unit_range(text, 12, 5, 9, false),
+            (5, 9),
+            "past the row: its last word"
+        );
+        assert_eq!(unit_range("", 0, 0, 0, false), (0, 0));
+        assert_eq!(
+            unit_range("foo_bar2 x", 2, 0, 10, false),
+            (0, 8),
+            "underscore and digits"
+        );
+        assert_eq!(
+            unit_range("na\u{ef}ve+x", 1, 0, 8, false),
+            (0, 6),
+            "Unicode letters"
+        );
+    }
+
+    #[test]
+    fn overwrite_takes_characters_after_the_caret_but_not_a_line_break() {
+        let mut state = TextFieldState::new("ab\ncd", "Roboto", 400.0, 14.0);
+        state.cursor = 1;
+        assert_eq!(Tree::take_overwritten(&mut state, 5), "b");
+        assert_eq!(state.content, "a\ncd");
+        state.cursor = 2;
+        assert_eq!(Tree::take_overwritten(&mut state, 1), "c");
+        state.cursor = state.content.len();
+        assert_eq!(Tree::take_overwritten(&mut state, 3), "");
+        let mut wide = TextFieldState::new("\u{e9}\u{1f600}x", "Roboto", 400.0, 14.0);
+        wide.cursor = 0;
+        assert_eq!(
+            Tree::take_overwritten(&mut wide, 2),
+            "\u{e9}\u{1f600}",
+            "by character"
+        );
+    }
 }

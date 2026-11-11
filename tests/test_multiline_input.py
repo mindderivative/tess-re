@@ -266,6 +266,7 @@ def test_navigating_and_editing_work_when_the_text_overflows_vertically():
     # line it lands on depends on font metrics, so the check is only that
     # typing afterward adds exactly one character.
     before = editor.get("text")
+    window.advance(1000)  # a second click this soon would be a double click (it selects a word)
     window.simulate("click", node=editor)
     window.simulate("input", text="Y")
     assert len(editor.get("text")) == len(before) + 1, (

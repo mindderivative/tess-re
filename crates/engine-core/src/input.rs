@@ -74,6 +74,8 @@ pub enum Key {
     /// 0.4.2 M12 (issue #24): scroll a scroll view by its viewport.
     PageUp,
     PageDown,
+    /// #288: the Insert key: in a text input it toggles insert and overwrite mode.
+    Insert,
 }
 
 /// M4 Phase 8 (§11.7/§11.8 groundwork): mirrors `winit::event::

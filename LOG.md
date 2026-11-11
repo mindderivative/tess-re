@@ -2,6 +2,11 @@
 
 ## Status
 
+**0.6.7 (2026-11-11, PR for #288 below):** a text input's caret keys by visual row (multiline with a `wrap`), Ctrl word and edge keys,
+the Insert key with an `overwrite` mode and `overwrite_change` event, and double and triple click selection (TRE-REQ-017). Behavior
+changes in every text input: Ctrl+Left/Right/Backspace/Delete go by word, Ctrl+Home/End by the whole text, two quick clicks select a word.
+No `wrap` keeps the 0.6.6 keys. Verified on Linux headless; no real compositor or IME. `wrap="char"` is not built.
+
 **0.6.6 released (2026-11-10, PR #286, tag `v0.6.6` on `7327b52a`, PyPI `tesserae-engine==0.6.6`; installed in a clean Linux venv: `wrap` and `overflow` read back and work headless, bad values raise):** `wrap` and `overflow` on a `text_input` (TRE-REQ-016): a multiline input wraps by word
 or scrolls sideways, a single-line one scrolls, cuts with an ellipsis or clips, and the scroll follows the caret by the shaped text.
 Unset is exactly 0.6.5. Verified on Linux headless and in a private headless sway (pixman); not on a real compositor. Known limit:
@@ -80,6 +85,33 @@ Tracking lives in the GitHub project Tesserae Rendering Engine (the old
 `BUILD_TRACKER_ARCHIVE_*.md` files are the pre-GitHub trackers). Open
 issues: #187, #188 (everything that needs Windows or Mac hardware), #189 (X11 file drop
 position).
+
+## 0.6.7 (released 2026-11-11)
+
+### #288, caret movement by visual row, word keys, Insert and double click in a text input (TRE-REQ-017, 2026-11-11)
+
+From the vault's `TRE-REQ-017 Caret Movement by Visual Row`, accepted by the maintainer as 0.6.7. **Checked first (headless, 0.6.6):**
+Up/Down did nothing in a multiline input without newlines; Home/End went to the logical line; Page Up/Down were ignored; Ctrl+Left/
+Right/Backspace/Delete acted on one character (Ctrl was never read: `KeyPressed` carries only Shift); there was no Insert key;
+double and triple click only placed the caret. Backspace and Delete (selection, joining lines at a break) already worked.
+**Design.** `engine-core` cannot shape text, so a window installs its shaper as `Tree::set_field_rows` (as for `set_text_measure`):
+`RowQuery` (`Start`, `End`, `Vertical { down, page, goal_x }`) answered by `TextRenderer::field_rows` from the layout the input paints
+(any font, wrapped rows, folds and whitespace/bullet glyphs mapped back). The key logic stays in `dispatch_text_field_key`, so
+selection, anchors, `change` and `caret_move` flow as before. `Tree::held` (the window sets it before each event, from the modifiers
+`engine-py` already tracks) lets core read Ctrl. **Rows**: `moves_by_rows()` = multiline with a `wrap` set (either value); no `wrap`
+keeps the 0.6.6 keys exactly. Up/Down keep a pixel goal column (`goal_x`), the first row goes to the start and the last to the end;
+Page keys move by `floor(box height / row height)` rows (`keyboard_scroll` no longer takes them for the scroll view in such an input);
+End stops before the spaces a soft wrap fell on (a caret has no affinity here), before a line break on a hard row. **Ctrl keys** work in
+every text input, by the existing static-text word rule. **Insert** is a new `Key::Insert` (winit, layer keys, `simulate`, terminal
+escape), toggles `TextFieldState::overwrite` (property `overwrite`, event `overwrite_change`, block caret when the shape is the default bar),
+overwrite replaces up to as many characters as typed, never a line break, and lets `max_length` through since the text does not grow.
+**Clicks**: a double or triple click asks `field_unit_at` (the cluster under the pointer, the row's text) and `select_text_field_unit`
+selects by the request's rules; neither starts a drag. **Existing test changed:** `test_multiline_input.py` clicked one input twice
+at once and expected a caret; it now advances the clock between clicks. Tests: `tests/test_text_input_keys.py` (32: the acceptance
+table, goal column, edges, Ctrl keys, overwrite, clicks, what does not change), 3 in `text_editing.rs`; lib tests of the four crates,
+clippy and 264 related pytest pass; not run: a real compositor or an IME. **Not built / decisions:** `wrap="char"`; Ctrl+arrow word
+uses tre's existing word (letters, digits and underscore; punctuation run; spaces) not the click's; Shift+Insert and Ctrl+Insert are left
+alone; double click on a space or punctuation selects that run.
 
 ## 0.6.6 (released 2026-11-10)
 

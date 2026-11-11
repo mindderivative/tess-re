@@ -295,6 +295,11 @@ impl PyWindow {
             };
             crate::shaper::with(|shaper| shaper.measure(&state.content, &font, max_width))
         }));
+        // #288: a text input's caret keys go by the rows its shaped text shows, which the
+        // same shaper works out.
+        tree.set_field_rows(Box::new(|state, viewport, query| {
+            crate::shaper::with(|shaper| shaper.field_rows(state, viewport, query))
+        }));
         let root = tree.insert(
             NodeKind::Container,
             Style {

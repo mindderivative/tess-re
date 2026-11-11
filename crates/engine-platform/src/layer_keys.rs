@@ -227,6 +227,7 @@ pub(crate) fn engine_key(keysym: u32) -> Option<engine_core::Key> {
         k::End | k::KP_End => Key::End,
         k::Page_Up | k::KP_Page_Up => Key::PageUp,
         k::Page_Down | k::KP_Page_Down => Key::PageDown,
+        k::Insert | k::KP_Insert => Key::Insert,
         _ => return None,
     })
 }

@@ -76,6 +76,7 @@ pub use svg::{
     SvgNode, SvgPaint, SvgPath, SvgPattern, SvgShadow, SvgState, SvgStroke,
 };
 pub use tree::{
-    AccessLine, FIT_CONTENT_SLACK, FocusDirection, KEY_SCROLL_LINE, LayoutAnimError, LayoutChange,
-    TextMeasure, TextPart, Touched, Tree, from_access_id, node_id_as_u64, to_access_id,
+    AccessLine, FIT_CONTENT_SLACK, FieldRows, FocusDirection, KEY_SCROLL_LINE, LayoutAnimError,
+    LayoutChange, RowAnswer, RowQuery, TextMeasure, TextPart, Touched, Tree, from_access_id,
+    node_id_as_u64, to_access_id,
 };
