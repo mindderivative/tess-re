@@ -172,3 +172,11 @@ without asking for it.
   in that margin. `input_region=[(x, y, w, h), ...]`, `[]`, or `"geometry"` (the body) limits where it takes
   input, and `popup.set(input_region=...)` changes it; the default `None` is the whole surface, as before.
   See [`PopupWindow`](reference/layer-window.md#popupwindow).
+
+## 0.6.6
+
+- **`wrap` and `overflow` on a `text_input` (#285, TRE-REQ-016).** A multiline input takes `wrap="word"` or
+  `"none"`; a single-line one takes `overflow="scroll"`, `"ellipsis"` or `"clip"`, and stays one line. The
+  scroll follows the caret by the shaped text. Both default to `None`, which is exactly the 0.6.5 behavior (a
+  single-line input wraps by word, a multiline one keeps each line whole), so nothing changes without them. Before,
+  both properties raised `ValueError` on a text input. See [Long lines in a text input](guide/text.md#long-lines-in-a-text-input-066).

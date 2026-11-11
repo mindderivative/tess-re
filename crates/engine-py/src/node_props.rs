@@ -2110,6 +2110,7 @@ impl Node {
     fn caret_rect(&self, py: Python<'_>) -> PyResult<(f64, f64, f64, f64)> {
         self.require_text_input("caret_rect")?;
         self.layout_box(py);
+        crate::shaper::with(|shaper| crate::text_interaction::follow_fields(&self.tree, shaper));
         let rect = crate::text_interaction::field_caret_rect(&self.tree, self.id)
             .ok_or(crate::error::EngineError::Destroyed)?;
         Ok((rect.x0, rect.y0, rect.width(), rect.height()))
@@ -2140,6 +2141,7 @@ impl Node {
             }
         }
         self.layout_box(py);
+        crate::shaper::with(|shaper| crate::text_interaction::follow_fields(&self.tree, shaper));
         let rects = crate::text_interaction::field_range_rects(&self.tree, self.id, start, end)
             .ok_or(crate::error::EngineError::Destroyed)?;
         Ok(rects

@@ -120,6 +120,8 @@ impl PyWindow {
             &handlers,
             py,
         );
+        // #285: inputs that follow their caret by the shaped text, now they have a box.
+        crate::shaper::with(|shaper| crate::text_interaction::follow_fields(&tree, shaper));
 
         let (pixel_w, pixel_h) = (
             crate::scale::to_physical(w, scale),

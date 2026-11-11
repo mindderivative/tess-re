@@ -250,6 +250,8 @@ field.on("change", lambda e: validate(e.new_value))
 | `text` | the content; setting it fires no `change` |
 | `placeholder`, `placeholder_fill` | the hint shown while it's empty |
 | `multiline` | Enter inserts a newline |
+| `wrap` | (0.6.6) a multiline input: `"word"` breaks lines at its width, `"none"` keeps each line whole and scrolls sideways; `None` (the default) is as before. See [Long lines](#long-lines-in-a-text-input-066) |
+| `overflow` | (0.6.6) a single-line input: `"scroll"`, `"ellipsis"` or `"clip"` for a line longer than the box, which then stays one line; `None` (the default) is as before |
 | `selection` | `(start, end)` as UTF-8 byte offsets; equal ends are a caret |
 | `obscured` | a password field: bullets, and no copy or cut |
 | `selection_start`, `selection_end` | the ends of the selection in order (0.5.6); set one and the other moves along if it would cross |
@@ -262,6 +264,44 @@ field.on("change", lambda e: validate(e.new_value))
 | `syntax_spans` | `[(start, end, color), ...]` byte ranges to color |
 | `folded_ranges` | `[(start, end), ...]` byte ranges drawn as "…" |
 | `show_whitespace` | draw spaces and tabs as marks |
+
+### Long lines in a text input (0.6.6)
+
+A text input chooses what a line longer than its box does with `wrap` (a multiline input)
+or `overflow` (a single-line one). Left unset, both are as they were: a single-line input
+wraps its text by word onto further lines, and a multiline one keeps each line whole.
+
+| Input | Setting | What it does |
+| --- | --- | --- |
+| multiline | `wrap="word"` | lines break at the box width, at spaces; the box scrolls down to the caret |
+| multiline | `wrap="none"` | each line whole; the box scrolls sideways and down to the caret |
+| single line | `overflow="scroll"` | one line high; the text scrolls sideways to keep the caret in view |
+| single line | `overflow="ellipsis"` | one line; a long line is cut and ended with "…" until the input has the focus, then it scrolls |
+| single line | `overflow="clip"` | one line, cut at the box edge; it never scrolls, so the caret can sit past the edge |
+
+```python
+note = window.create("text_input", width=240, height=80, multiline=True, wrap="word", text=long_text)
+name = window.create("text_input", width=160, height=28, overflow="ellipsis", text="A long file name.txt")
+```
+
+- Setting `overflow` on a single-line input makes it one line; **`wrap` means nothing to a
+  single-line input**, and `overflow` means nothing to a multiline one. Set neither and a
+  single-line input still wraps, which is how it was before 0.6.6.
+- The scroll follows the caret by the shaped text, so it is exact for any font. It moves
+  only as far as the caret needs, comes back when the caret does, and a wider box brings
+  scrolled text back. It follows only **while the input has the focus**: a single-line input
+  that loses it shows its start again, and a multiline one keeps its place.
+- A multiline input with **no** `wrap` keeps the old scroll, which assumes a monospace face
+  (a code editor's) and is out by a few pixels in a proportional one. Set `wrap` to `"none"`
+  to have the exact one.
+- In a wrapped multiline input, the arrow keys, Home and End still move by **logical** line
+  (between newlines), not by wrapped line. Clicking, typing and the caret itself follow the
+  wrapped text.
+- `"ellipsis"` shows no selection while it is cut (an unfocused input), and a click in it
+  focuses it and shows the whole line. Clearing a property with `None` gives back the old
+  behavior; changing either starts the scroll from the top left.
+- `caret_rect()` and `text_rects()` read the scroll as it is, so they are right straight
+  after you set `selection` or `text`.
 
 ### Submit, composition and the caret (0.5.6)
 

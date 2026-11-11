@@ -2,6 +2,11 @@
 
 ## Status
 
+**0.6.6 (2026-11-10, PR for #285 below):** `wrap` and `overflow` on a `text_input` (TRE-REQ-016): a multiline input wraps by word
+or scrolls sideways, a single-line one scrolls, cuts with an ellipsis or clips, and the scroll follows the caret by the shaped text.
+Unset is exactly 0.6.5. Verified on Linux headless and in a private headless sway (pixman); not on a real compositor. Known limit:
+in a wrapped multiline input the arrow keys and Home/End move by logical line.
+
 **0.6.5 released (2026-11-07, PR #283, tag `v0.6.5` on `aecc334a`, PyPI `tesserae-engine==0.6.5`; installed in a clean Linux venv: `input_region` reads back and `set` works headless, bad values raise):** `PopupWindow(input_region=)` (TRE-REQ-014): a click in a popup's transparent shadow
 margin reaches the window below. `None`, `[]`, rectangles or `"geometry"`; `popup.set(input_region=...)` changes it. Nothing else
 changes. Verified on Linux headless and in a private headless sway (pixman); KWin is the maintainer's and the shell session's.
@@ -75,6 +80,31 @@ Tracking lives in the GitHub project Tesserae Rendering Engine (the old
 `BUILD_TRACKER_ARCHIVE_*.md` files are the pre-GitHub trackers). Open
 issues: #187, #188 (everything that needs Windows or Mac hardware), #189 (X11 file drop
 position).
+
+## 0.6.6 (released 2026-11-10)
+
+### #285, `wrap` and `overflow` on a text input (TRE-REQ-016, 2026-11-10)
+
+From the vault's `TRE-REQ-016 Text Input Wrap and Overflow`, approved by the maintainer. Checked against the code first (headless
+snapshot): the request's table is right. A default single-line `text_input` wrapped by word onto six lines; a multiline one drew
+one clipped line (`field_max_width` shaped it at `f32::MAX`), and its caret-follow is a monospace estimate in `engine-core`
+(`scroll_text_field_caret_into_view`: `font_size * 0.6` a column), which put the caret 41 px left of the box at the End key in
+Roboto. **Defaults.** The request asks that unset properties keep 0.6.5, yet also that a single-line input never wraps; those
+conflict, so unset keeps today (a single-line input wraps by word), and `overflow` set makes it one line. **Built.**
+`TextFieldState` gained `wrap: Option<bool>` and `overflow: Option<FieldOverflow>` (`scroll`, `ellipsis`, `clip`) with
+`wraps()`, `clips()`, `follows_caret(focused)`; `field_max_width` shapes at the box width only when `wraps()`; the paint clips for
+every input but a legacy single line. **The scroll** needs the shaped text, which `engine-core` cannot have, so
+`TextRenderer::follow_caret` computes it from the layout the input paints from (any font, wrapped lines, sticky, clamped to the
+text's extent plus a caret) and `engine-py`'s `follow_fields` applies it: after every input event (`text_interaction::process`),
+after layout in a live frame and in `Window.snapshot`, and in `caret_rect` and `text_rects`. A hash stamp in the field
+(`follow_stamp`) makes a settled input cost no shaping and no frame; a live headless-sway window drew 1 frame at focus and 0
+idle. It follows only while focused; an unfocused single-line input shows its start (as a browser's does), a multiline one
+keeps its place. `ellipsis` unfocused reuses the text node's cut (`TextOptions { wrap: false, ellipsis: true }`), pixel-equal to
+a text node's (tested); it draws no selection over the cut. A multiline input with a `wrap` set uses the exact scroll too; with
+none set it keeps the old monospace one. **Known limit.** In a wrapped multiline input the arrow keys and Home/End move by
+logical line, not wrapped line (`engine-core` dispatches them without shaped text): a follow-up if wanted. `wrap="char"`
+(the request's "later") is not built. Tests: `tests/test_text_input_wrap.py` (19, Window pixels and `caret_rect`),
+4 in `node.rs`, 2 in `text.rs`; engine-core/-render/-py lib tests, clippy and 128 related pytest pass; not run: a real compositor.
 
 ## 0.6.5 (released 2026-11-07)
 

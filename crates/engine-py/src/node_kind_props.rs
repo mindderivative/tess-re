@@ -355,8 +355,10 @@ fn applies(name: &str) -> (&'static str, fn(&NodeKind) -> bool) {
     match name {
         "text" | "font_family" | "font_weight" => ("a text or text_input", text_like),
         "font_size" => ("a text, text_input, or terminal", sized_text),
-        "line_height" | "text_align" | "font_style" | "letter_spacing" | "wrap" | "max_lines"
-        | "overflow" | "spans" | "selectable" => ("a text", text),
+        "line_height" | "text_align" | "font_style" | "letter_spacing" | "max_lines" | "spans"
+        | "selectable" => ("a text", text),
+        // #285: a text input takes `wrap` and `overflow` too.
+        "wrap" | "overflow" => ("a text or text_input", text_like),
         "multiline" | "show_whitespace" | "syntax_spans" | "folded_ranges" | "selection_start"
         | "selection_end" => ("a text_input", text_input),
         "selection" => ("a text, text_input or terminal", selectable),
@@ -487,6 +489,48 @@ fn parse_known(
             change(move |node| {
                 if let NodeKind::Text(state) = &mut node.kind {
                     state.align = align;
+                }
+            })
+        }
+        // #285: on a text input `wrap` is `"word"`, `"none"` or `None` (as it was), and `overflow`
+        // is `"scroll"`, `"ellipsis"`, `"clip"` or `None` (as it was).
+        "wrap" | "overflow" if matches!(kind, NodeKind::TextField(_)) => {
+            let is_wrap = name == "wrap";
+            let expected = if is_wrap {
+                "\"word\", \"none\" or None"
+            } else {
+                "\"scroll\", \"ellipsis\", \"clip\" or None"
+            };
+            let (wrap, overflow) = if value.is_none() {
+                (None, None)
+            } else {
+                let word: String = value.extract().map_err(|_| invalid(name, expected))?;
+                if is_wrap {
+                    (
+                        Some(lookup(&WRAP, &word).map_err(|_| invalid(name, expected))?),
+                        None,
+                    )
+                } else {
+                    (
+                        None,
+                        Some(
+                            engine_core::FieldOverflow::parse(&word)
+                                .ok_or_else(|| invalid(name, expected))?,
+                        ),
+                    )
+                }
+            };
+            change(move |node| {
+                if let NodeKind::TextField(state) = &mut node.kind {
+                    if is_wrap {
+                        state.wrap = wrap;
+                    } else {
+                        state.overflow = overflow;
+                    }
+                    // The scroll was for the old layout: start from the top left.
+                    state.horizontal_scroll_offset.current = 0.0;
+                    state.scroll_offset.current = 0.0;
+                    state.follow_stamp = 0;
                 }
             })
         }
@@ -997,6 +1041,8 @@ fn read_known(name: &str, kind: &NodeKind, py: Python<'_>) -> PyResult<Py<PyAny>
         ("font_style", NodeKind::Text(s)) => to_py(name_of(&FONT_STYLE, &s.options.italic), py),
         ("letter_spacing", NodeKind::Text(s)) => to_py(f64::from(s.options.letter_spacing), py),
         ("wrap", NodeKind::Text(s)) => to_py(name_of(&WRAP, &s.options.wrap), py),
+        ("wrap", NodeKind::TextField(s)) => to_py(s.wrap.map(|w| name_of(&WRAP, &w)), py),
+        ("overflow", NodeKind::TextField(s)) => to_py(s.overflow.map(|o| o.name()), py),
         ("max_lines", NodeKind::Text(s)) => to_py(s.options.max_lines, py),
         ("selectable", NodeKind::Text(s)) => to_py(s.options.selectable, py),
         ("selection", NodeKind::Text(s)) => to_py(s.options.selection, py),

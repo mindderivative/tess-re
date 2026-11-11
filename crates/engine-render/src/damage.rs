@@ -2003,6 +2003,9 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
         last_inserted: _,
         selection_fill,
         obscured,
+        wrap,
+        overflow,
+        follow_stamp: _, // bookkeeping, not paint
     } = state;
     caret_visible.hash(h);
     caret_width.to_bits().hash(h);
@@ -2037,6 +2040,9 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
         color(h, c.current);
     }
     obscured.hash(h);
+    // #285: wrap and overflow change how the text is laid out and cut.
+    wrap.hash(h);
+    overflow.map(engine_core::FieldOverflow::name).hash(h);
 }
 
 fn image_fingerprint(h: &mut impl Hasher, state: &ImageState) {

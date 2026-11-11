@@ -121,6 +121,42 @@ fn text_placement(tree: &Tree, id: NodeId) -> TextPlacement {
     }
 }
 
+/// #285: brings the scroll of every text input that follows its caret by the shaped layout
+/// (a wrapped multiline input, a single-line one with `overflow="scroll"`, or `"ellipsis"` while
+/// focused) to where the caret is in view, and puts an `"ellipsis"` input that lost the focus
+/// back at its start. It needs the shaped text, which `engine-core` has not, so it runs here:
+/// after an input event, and before a frame is drawn or a snapshot taken, once layout has given
+/// each input its box. A settled input costs one hash and no frame.
+pub(crate) fn follow_fields(tree: &Rc<RefCell<Tree>>, text: &mut TextRenderer) {
+    let ids = tree.borrow().caret_following_fields();
+    for id in ids {
+        let next = {
+            let tree = tree.borrow();
+            let Some(NodeKind::TextField(state)) = tree.get(id).map(|n| &n.kind) else {
+                continue;
+            };
+            let layout = tree.layout(id);
+            let pad = layout.padding;
+            let viewport = (
+                (layout.size.width - pad.left - pad.right).max(0.0),
+                (layout.size.height - pad.top - pad.bottom).max(0.0),
+            );
+            if state.follows_caret(tree.focused() == Some(id)) {
+                text.follow_caret(state, viewport)
+            } else {
+                // A single-line input that is not being edited shows its start.
+                (state.horizontal_scroll_offset.current != 0.0
+                    || state.scroll_offset.current != 0.0)
+                    .then_some((0.0, 0.0, 0))
+            }
+        };
+        if let Some((horizontal, vertical, stamp)) = next {
+            tree.borrow_mut()
+                .set_text_field_scroll(id, horizontal, vertical, stamp);
+        }
+    }
+}
+
 /// 0.5.6 (#165): where a text input's text sits in its node: inside the
 /// padding, shifted by its scroll offsets -- the placement `draw_field` gets.
 fn field_placement(tree: &Tree, id: NodeId) -> Option<TextPlacement> {
@@ -362,6 +398,8 @@ pub(crate) fn process(
     }
     // 0.5.4 (#154): Shift+Up and Shift+Down in static text.
     text_key_input(event, &handles.tree, text);
+    // #285: an edit, a key or a click moved a caret: scroll to keep it in view.
+    follow_fields(&handles.tree, text);
     // 0.5.4 (#131): the `link` events, after the click itself, with no state
     // borrowed, so a listener may do anything.
     for click in link_clicks {

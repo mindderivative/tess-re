@@ -141,6 +141,7 @@ NODE_PROPERTIES = [
         ("`font_family`, `font_weight`, `font_size`", "name / 1–1000 / pixels", "Font."),
         ("`line_height`, `text_align`, `font_style`, `letter_spacing`, `wrap`, `max_lines`, `overflow`", "see the text guide", "Text layout (`text` nodes)."),
         ("`multiline`, `selection`, `show_whitespace`, `syntax_spans`, `folded_ranges`", "—", "Text input editing and decoration."),
+        ("`wrap`, `overflow` (text input)", "`\"word\"`/`\"none\"`; `\"scroll\"`/`\"ellipsis\"`/`\"clip\"`; or `None`", "How a text input shows a long line: `wrap` for a multiline input, `overflow` for a single-line one; `None` is as before (0.6.6)."),
         ("`placeholder`, `placeholder_fill`, `caret_color`, `selection_fill`, `obscured`", "—", "Text input colors and password mode."),
     ]),
     ("Image, path and canvas", [

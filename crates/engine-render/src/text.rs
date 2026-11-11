@@ -1457,13 +1457,30 @@ impl TextRenderer {
             (display_content, display_spans, at.color)
         };
 
+        // #285: a single-line input with `overflow="ellipsis"` that is not being edited shows a
+        // line cut to its box and ended with "…". The cut text is not `content`, so no
+        // selection is drawn over it; there is no caret either (it is not focused).
+        let ellipsize = !state.multiline
+            && state.overflow == Some(engine_core::FieldOverflow::Ellipsis)
+            && !show_caret
+            && !showing_placeholder;
+        let default_options = TextOptions::default();
+        let ellipsis_options = TextOptions {
+            wrap: false,
+            ellipsis: true,
+            ..TextOptions::default()
+        };
         let layout = self.shaped_layout(
             node_id,
             &display_content,
             &state.font_family,
             state.font_weight,
             state.font_size,
-            field_max_width(state, at.max_width),
+            if ellipsize {
+                at.max_width
+            } else {
+                field_max_width(state, at.max_width)
+            },
             TextAlign::Start,
             // M62 Phase 1 (§7.1, §16.3): `TextFieldState` is a distinct
             // real struct from `TextState` and outside this milestone's
@@ -1472,7 +1489,11 @@ impl TextRenderer {
             // pre-M62 behavior, never wired to any real per-field value.
             None,
             &display_spans,
-            &TextOptions::default(),
+            if ellipsize {
+                &ellipsis_options
+            } else {
+                &default_options
+            },
         );
 
         // Selection highlight, painted first (behind the glyphs below).
@@ -1485,6 +1506,7 @@ impl TextRenderer {
         // whenever whitespace substitution is active (M31 Phase 3).
         if let Some(anchor) = anchor_for_layout
             && anchor != cursor_for_layout
+            && !ellipsize
         {
             let anchor_cursor = Cursor::from_byte_index(layout, anchor, Affinity::Downstream);
             let focus_cursor =
@@ -1726,6 +1748,83 @@ impl TextRenderer {
             bounds.x1 + at.x,
             bounds.y1 + at.y,
         )
+    }
+
+    /// #285: where text input `state`'s scroll offsets should be so its caret is in view, for a
+    /// content box of `viewport` (width, height) and the offsets it has now, or `None` when the
+    /// answer is what it was (`state.follow_stamp` says what it was worked out from). Moves
+    /// the offsets only as far as the caret needs, and never past the text's own extent, so
+    /// shortening the text or widening the box brings it back. The shaped layout is the
+    /// one the input paints from, so a proportional font and a wrapped line are exact.
+    pub fn follow_caret(
+        &mut self,
+        state: &TextFieldState,
+        viewport: (f32, f32),
+    ) -> Option<(f64, f64, u64)> {
+        let stamp = follow_stamp(
+            state,
+            viewport,
+            state.horizontal_scroll_offset.current,
+            state.scroll_offset.current,
+        );
+        if state.follow_stamp == stamp {
+            return None;
+        }
+        let at = TextPlacement {
+            x: 0.0,
+            y: 0.0,
+            max_width: viewport.0,
+            color: peniko::Color::TRANSPARENT,
+        };
+        let (layout, map, caret_at) = self.field_geometry_layout(state, at);
+        let at_offset = if state.preedit.as_deref().is_some_and(|p| !p.is_empty()) {
+            caret_at
+        } else {
+            map(caret_at)
+        };
+        let caret = Cursor::from_byte_index(&layout, at_offset, Affinity::Downstream)
+            .geometry(&layout, state.caret_width.max(0.0));
+        let (vw, vh) = (f64::from(viewport.0), f64::from(viewport.1));
+        let follow = |scroll: f64, lo: f64, hi: f64, extent: f64, view: f64| {
+            let mut scroll = scroll;
+            if lo < scroll {
+                scroll = lo;
+            } else if hi > scroll + view {
+                scroll = hi - view;
+            }
+            scroll.clamp(0.0, (extent - view).max(0.0))
+        };
+        let horizontal = if state.wraps() {
+            0.0
+        } else {
+            follow(
+                state.horizontal_scroll_offset.current,
+                caret.x0,
+                caret.x1,
+                // Room for the caret after the last character, so the end of the text can be
+                // reached with the caret in view, and stays so when the caret moves back.
+                (f64::from(layout.full_width()) + f64::from(state.caret_width.max(0.0)))
+                    .max(caret.x1),
+                vw,
+            )
+        };
+        let vertical = if state.multiline {
+            follow(
+                state.scroll_offset.current,
+                caret.y0,
+                caret.y1,
+                f64::from(layout.height()).max(caret.y1),
+                vh,
+            )
+        } else {
+            state.scroll_offset.current
+        };
+        // What the stamp must say next time is the stamp of the *new* offsets.
+        Some((
+            horizontal,
+            vertical,
+            follow_stamp(state, viewport, horizontal, vertical),
+        ))
     }
 
     /// 0.5.6 (#165): the rectangles covering `start..end` (bytes of
@@ -2048,8 +2147,36 @@ impl TextRenderer {
 /// `Option`-typed plumbing through `shaped_layout`/`build_field_
 /// layout`'s own existing `f32` parameter, just the right value at
 /// the two real call sites that know `state.multiline`.
+/// #285: what `follow_caret` worked an input's scroll out from -- its text, caret, font, wrap
+/// mode and box, and the offsets in force -- so an input that did not change is not shaped again.
+fn follow_stamp(
+    state: &TextFieldState,
+    viewport: (f32, f32),
+    horizontal: f64,
+    vertical: f64,
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    state.content.hash(&mut h);
+    state.cursor.hash(&mut h);
+    state.font_family.hash(&mut h);
+    state.font_weight.to_bits().hash(&mut h);
+    state.font_size.to_bits().hash(&mut h);
+    state.caret_width.to_bits().hash(&mut h);
+    (state.multiline, state.wrap).hash(&mut h);
+    state
+        .overflow
+        .map(engine_core::FieldOverflow::name)
+        .hash(&mut h);
+    state.preedit.hash(&mut h);
+    (viewport.0.to_bits(), viewport.1.to_bits()).hash(&mut h);
+    (horizontal.to_bits(), vertical.to_bits()).hash(&mut h);
+    h.finish() | 1
+}
+
 fn field_max_width(state: &TextFieldState, max_width: f32) -> f32 {
-    if state.multiline { f32::MAX } else { max_width }
+    // #285: broken at the width when the input wraps (`TextFieldState::wraps`), else laid out whole.
+    if state.wraps() { max_width } else { f32::MAX }
 }
 
 /// M39 Phase 4 (§5, §7): `draw_terminal`'s own real `inverse`
@@ -3446,5 +3573,61 @@ mod tests {
             !renderer.sync_registered_fonts(),
             "nothing new: a second sync is a no-op"
         );
+    }
+
+    /// #285: `follow_caret` brings a single-line input's caret into view, moves only as far as the
+    /// caret needs, comes back when the caret does, and settles (`None`) once nothing changed.
+    #[test]
+    fn follow_caret_keeps_a_single_line_caret_in_view_and_settles() {
+        let text = "the quick brown fox jumps over the lazy dog and keeps going on";
+        let mut renderer = TextRenderer::new();
+        let mut state = TextFieldState::new(text, "Roboto", 400.0, 14.0);
+        state.overflow = Some(engine_core::FieldOverflow::Scroll);
+        let viewport = (100.0, 20.0);
+        // The caret starts at the end (a field made with text): scrolled to show it.
+        let (h, v, stamp) = renderer
+            .follow_caret(&state, viewport)
+            .expect("must scroll");
+        assert!(
+            h > 100.0 && v == 0.0,
+            "scrolled right by more than a box: {h}"
+        );
+        state.horizontal_scroll_offset.current = h;
+        state.follow_stamp = stamp;
+        assert_eq!(renderer.follow_caret(&state, viewport), None, "settled");
+        // A few characters left: the caret is still in view, so the scroll does not move.
+        state.cursor = text.len() - 3;
+        let moved = renderer.follow_caret(&state, viewport);
+        assert!(moved.is_none_or(|(h2, _, _)| (h2 - h).abs() < 1e-9));
+        // At the start the text goes back to the left edge.
+        state.cursor = 0;
+        let (h0, _, _) = renderer
+            .follow_caret(&state, viewport)
+            .expect("must scroll back");
+        assert_eq!(h0, 0.0);
+    }
+
+    /// #285: a wrapped multiline input scrolls down to a caret on a later line, by the shaped
+    /// lines (a wrapped line is several), and never sideways.
+    #[test]
+    fn follow_caret_scrolls_a_wrapped_input_by_its_shaped_lines() {
+        let text = "the quick brown fox jumps over the lazy dog and keeps going on ".repeat(4);
+        let mut renderer = TextRenderer::new();
+        let mut state = TextFieldState::new(text.clone(), "Roboto", 400.0, 14.0);
+        state.multiline = true;
+        state.wrap = Some(true);
+        let (h, v, _) = renderer
+            .follow_caret(&state, (100.0, 40.0))
+            .expect("must scroll");
+        assert_eq!(h, 0.0, "a wrapped line has nothing to scroll sideways");
+        assert!(
+            v > 20.0,
+            "the caret at the end is lines below a 40 px box: {v}"
+        );
+        state.cursor = 0;
+        let (_, back, _) = renderer
+            .follow_caret(&state, (100.0, 40.0))
+            .expect("must scroll back");
+        assert_eq!(back, 0.0);
     }
 }
