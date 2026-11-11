@@ -166,9 +166,9 @@ On `text` and `text_input` unless noted.
 | `text_align` | `"start"`, `"center"`, or `"end"` (`text` only) |
 | `font_style` | `"normal"` or `"italic"` — slanted when the family has no italic face (`text` only) |
 | `letter_spacing` | Extra pixels after each character (`text` only) |
-| `wrap` | `"word"` wraps within the node's width; `"none"` keeps each paragraph on one line (`text` only) |
+| `wrap` | `"word"` wraps within the node's width; `"none"` keeps each paragraph on one line. On a text input (0.6.6) it is for a multiline one: see [Text input](#text-input) |
 | `max_lines` | The most lines shown, or `None` (`text` only) |
-| `overflow` | `"clip"` cuts text past the box or the line limit; `"ellipsis"` ends each cut line with "…" (`text` only) |
+| `overflow` | `"clip"` cuts text past the box or the line limit; `"ellipsis"` ends each cut line with "…". On a text input (0.6.6) it is for a single-line one, and takes `"scroll"` too: see [Text input](#text-input) |
 | `spans` | (0.5.4) `[(start, end, style), ...]`: UTF-8 byte ranges styled with a dict of `color`, `weight`, `italic`, `underline`, `strikethrough`, `font_size`, `font_family`, `link` (`text` only; later spans win where they overlap) |
 | `selectable` | (0.5.4) `True` lets a press and drag select the text and Copy take it (`text` only; default `False`) |
 | `fill` | The glyph color (animatable) |
@@ -204,6 +204,8 @@ painted.
 | Property | Value |
 | --- | --- |
 | `multiline` | `True` for several lines |
+| `wrap` | (0.6.6) multiline: `"word"` breaks lines at the width, `"none"` keeps each whole and scrolls sideways, `None` (default) is as before: no wrap, and a monospace scroll. Means nothing to a single-line input |
+| `overflow` | (0.6.6) single-line: `"scroll"` keeps the caret in view, `"ellipsis"` cuts a long line with "…" until the input is focused, `"clip"` cuts it at the box edge; any of them makes it one line. `None` (default) is as before: the line wraps by word. Means nothing to a multiline input. See [Long lines](../guide/text.md#long-lines-in-a-text-input-066) |
 | `selection` | `(start, end)` byte offsets; `start == end` is a caret. Given with `text`, it selects in the new text |
 | `show_whitespace` | Draws spaces and tabs as visible marks |
 | `syntax_spans` | A list of `(start, end, color)` byte ranges |

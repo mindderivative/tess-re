@@ -173,6 +173,8 @@ pub struct Tree {
     /// 0.5.4 (#150): how many `Image` and `Svg` nodes the tree holds, so a
     /// per-frame consumer of them can skip scanning a tree that has none.
     image_count: usize,
+    /// #285: how many text inputs the tree holds.
+    text_field_count: usize,
     svg_count: usize,
     /// 0.5.4 (review): which nodes those are, kept as nodes are added and
     /// removed, so the per-frame image and SVG sync visits them and not every
@@ -260,6 +262,7 @@ impl Tree {
             scroll_view_count: 0,
             virtual_list_count: 0,
             image_count: 0,
+            text_field_count: 0,
             svg_count: 0,
             image_ids: Default::default(),
             svg_ids: Default::default(),
@@ -362,6 +365,7 @@ impl Tree {
             NodeKind::ScrollView(_) => self.scroll_view_count += 1,
             NodeKind::VirtualList(_) => self.virtual_list_count += 1,
             NodeKind::Image(_) => self.image_count += 1,
+            NodeKind::TextField(_) => self.text_field_count += 1,
             NodeKind::Svg(_) => self.svg_count += 1,
             _ => {}
         }
@@ -729,6 +733,7 @@ impl Tree {
         match &node.kind {
             NodeKind::ScrollView(_) => self.scroll_view_count -= 1,
             NodeKind::VirtualList(_) => self.virtual_list_count -= 1,
+            NodeKind::TextField(_) => self.text_field_count -= 1,
             NodeKind::Image(_) => {
                 self.image_count -= 1;
                 self.image_ids.remove(&id);

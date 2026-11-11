@@ -32,7 +32,9 @@ impl Tree {
         let NodeKind::TextField(state) = &node.kind else {
             return;
         };
-        if !state.multiline {
+        // #285: an input with a `wrap` follows its caret by the shaped layout (`follow_caret`),
+        // which this monospace estimate would fight.
+        if !state.multiline || state.wrap.is_some() {
             return;
         }
         // 0.5.1 (#53): the viewport is the content box, inside the padding.
@@ -96,6 +98,61 @@ impl Tree {
         };
         state.scroll_offset.current = scroll;
         state.horizontal_scroll_offset.current = h_scroll;
+    }
+
+    /// #285: the text inputs whose scroll follows the caret by the shaped layout, which
+    /// `engine-core` cannot do (no font), so the window's text renderer does: see
+    /// `TextFieldState::follows_caret`. Empty without any text input in the tree.
+    pub fn caret_following_fields(&self) -> Vec<NodeId> {
+        if self.text_field_count == 0 {
+            return Vec::new();
+        }
+        let focused = self.focused();
+        self.nodes
+            .iter()
+            .filter(|(id, node)| match &node.kind {
+                NodeKind::TextField(state) => {
+                    state.follows_caret(focused == Some(*id))
+                        // A single-line input that lost the focus goes back to its start.
+                        || (state.resets_when_unfocused()
+                            && (state.horizontal_scroll_offset.current != 0.0
+                                || state.scroll_offset.current != 0.0))
+                }
+                _ => false,
+            })
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    /// #285: sets text input `id`'s scroll offsets (and the stamp of what they were worked out
+    /// from), touching the node only when something changed, so a settled field costs no frame.
+    pub fn set_text_field_scroll(
+        &mut self,
+        id: NodeId,
+        horizontal: f64,
+        vertical: f64,
+        stamp: u64,
+    ) {
+        let Some(NodeKind::TextField(state)) = self.nodes.get(id).map(|n| &n.kind) else {
+            return;
+        };
+        if state.horizontal_scroll_offset.current == horizontal
+            && state.scroll_offset.current == vertical
+            && state.follow_stamp == stamp
+        {
+            return;
+        }
+        let moved = state.horizontal_scroll_offset.current != horizontal
+            || state.scroll_offset.current != vertical;
+        let Some(NodeKind::TextField(state)) = self.nodes.get_mut(id).map(|n| &mut n.kind) else {
+            return;
+        };
+        state.horizontal_scroll_offset.current = horizontal;
+        state.scroll_offset.current = vertical;
+        state.follow_stamp = stamp;
+        if moved {
+            self.dirty = true;
+        }
     }
 
     pub(super) fn dispatch_text_field_key(

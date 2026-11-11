@@ -715,6 +715,89 @@ pub struct TextFieldState {
     /// M95: a password field -- every character paints as a bullet, and
     /// its text never leaves through copy or cut.
     pub obscured: bool,
+    /// #285: `Some(true)` wraps a multiline input's lines at its width (by word); `Some(false)`
+    /// keeps each line whole and scrolls sideways. Either way the scroll follows the caret by
+    /// the shaped text. `None` (the default) is how it was: no wrap, and a scroll worked out
+    /// for a monospace font. Means nothing to a single-line input, which `overflow` decides.
+    pub wrap: Option<bool>,
+    /// #285: how a single-line input shows a line longer than its box. `None` (the default) is
+    /// how it was: the line wraps by word onto further lines. Otherwise the input is one line.
+    pub overflow: Option<FieldOverflow>,
+    /// #285: what `follow_caret` last saw, so a field that did not change is not shaped again.
+    pub follow_stamp: u64,
+}
+
+/// #285: how a single-line text input shows a line longer than its box (it is one line, however
+/// long): `Scroll` keeps the caret in view, `Ellipsis` cuts the line with "…" while the input is
+/// not focused (and scrolls while it is), `Clip` cuts it at the box edge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldOverflow {
+    Scroll,
+    Ellipsis,
+    Clip,
+}
+
+impl FieldOverflow {
+    pub const ALL: [(&'static str, FieldOverflow); 3] = [
+        ("scroll", FieldOverflow::Scroll),
+        ("ellipsis", FieldOverflow::Ellipsis),
+        ("clip", FieldOverflow::Clip),
+    ];
+
+    pub fn name(self) -> &'static str {
+        Self::ALL
+            .iter()
+            .find(|(_, v)| *v == self)
+            .map_or("clip", |(n, _)| n)
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
+    }
+}
+
+impl TextFieldState {
+    /// #285: whether the input's lines are broken at its width (`true`) or each is laid out whole
+    /// (`false`, and the box clips or scrolls it). A multiline input wraps only when asked
+    /// (`wrap`); a single-line one wraps by word, as it always did, until `overflow` says
+    /// otherwise.
+    pub fn wraps(&self) -> bool {
+        if self.multiline {
+            self.wrap == Some(true)
+        } else {
+            self.overflow.is_none()
+        }
+    }
+
+    /// #285: whether the painted text is clipped to the box (every input but a legacy single
+    /// line, which wraps inside it).
+    pub fn clips(&self) -> bool {
+        self.multiline || self.overflow.is_some()
+    }
+
+    /// #285: whether the scroll offsets follow the caret by the shaped layout (`follow_caret`),
+    /// rather than the editor heuristic in `Tree::scroll_text_field_caret_into_view` (which
+    /// assumes a monospace font): a multiline input that has a `wrap`, and a single-line one
+    /// that scrolls or cuts with an ellipsis. Only while it has the focus, so an input shows
+    /// its start until it is used (as a browser's does).
+    pub fn follows_caret(&self, focused: bool) -> bool {
+        focused
+            && ((self.multiline && self.wrap.is_some())
+                || (!self.multiline
+                    && matches!(
+                        self.overflow,
+                        Some(FieldOverflow::Scroll | FieldOverflow::Ellipsis)
+                    )))
+    }
+
+    /// #285: whether a single-line input goes back to its start when it loses the focus.
+    pub fn resets_when_unfocused(&self) -> bool {
+        !self.multiline
+            && matches!(
+                self.overflow,
+                Some(FieldOverflow::Scroll | FieldOverflow::Ellipsis)
+            )
+    }
 }
 
 /// 0.5.6 (#162): what kind of text a text input takes (HTML's `inputmode`).
@@ -828,6 +911,9 @@ impl TextFieldState {
             preedit_cursor: None,
             last_inserted: None,
             selection_fill: None,
+            wrap: None,
+            overflow: None,
+            follow_stamp: 0,
             obscured: false,
         }
     }
@@ -1798,5 +1884,81 @@ impl Cursor {
 
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|cursor| cursor.name() == name)
+    }
+}
+
+#[cfg(test)]
+mod field_flow_tests {
+    use super::*;
+
+    fn field(
+        multiline: bool,
+        wrap: Option<bool>,
+        overflow: Option<FieldOverflow>,
+    ) -> TextFieldState {
+        let mut state = TextFieldState::new("text", "Roboto", 400.0, 14.0);
+        state.multiline = multiline;
+        state.wrap = wrap;
+        state.overflow = overflow;
+        state
+    }
+
+    #[test]
+    fn unset_is_how_it_was_a_single_line_input_wraps_and_a_multiline_one_does_not() {
+        let single = field(false, None, None);
+        assert!(single.wraps() && !single.clips());
+        let multi = field(true, None, None);
+        assert!(!multi.wraps() && multi.clips());
+        for focused in [false, true] {
+            assert!(!single.follows_caret(focused) && !multi.follows_caret(focused));
+        }
+    }
+
+    #[test]
+    fn wrap_decides_a_multiline_input_and_overflow_a_single_line_one() {
+        assert!(field(true, Some(true), None).wraps());
+        assert!(!field(true, Some(false), None).wraps());
+        assert!(
+            field(true, Some(true), Some(FieldOverflow::Clip)).wraps(),
+            "overflow means nothing to a multiline input"
+        );
+        for overflow in [
+            FieldOverflow::Scroll,
+            FieldOverflow::Ellipsis,
+            FieldOverflow::Clip,
+        ] {
+            let one_line = field(false, Some(true), Some(overflow));
+            assert!(
+                !one_line.wraps(),
+                "a single-line input never wraps once overflow is set"
+            );
+            assert!(one_line.clips());
+        }
+    }
+
+    #[test]
+    fn only_a_focused_input_follows_its_caret_and_clip_never_does() {
+        let scroll = field(false, None, Some(FieldOverflow::Scroll));
+        assert!(scroll.follows_caret(true) && !scroll.follows_caret(false));
+        assert!(scroll.resets_when_unfocused());
+        assert!(field(false, None, Some(FieldOverflow::Ellipsis)).follows_caret(true));
+        let clip = field(false, None, Some(FieldOverflow::Clip));
+        assert!(!clip.follows_caret(true) && !clip.resets_when_unfocused());
+        let wrapped = field(true, Some(true), None);
+        assert!(wrapped.follows_caret(true) && !wrapped.follows_caret(false));
+        assert!(
+            !wrapped.resets_when_unfocused(),
+            "a text area keeps its place when it loses the focus"
+        );
+        assert!(field(true, Some(false), None).follows_caret(true));
+    }
+
+    #[test]
+    fn overflow_names_round_trip() {
+        for (name, value) in FieldOverflow::ALL {
+            assert_eq!(FieldOverflow::parse(name), Some(value));
+            assert_eq!(value.name(), name);
+        }
+        assert_eq!(FieldOverflow::parse("fade"), None);
     }
 }

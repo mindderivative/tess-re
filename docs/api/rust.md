@@ -914,12 +914,19 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `last_inserted` | `Option<Range<usize>>` | The bytes the last edit inserted, for `caret_move`. |
 | `selection_fill` | `Option<Color>` | The selection highlight's color; `None` is `text_tint` at 30% alpha. |
 | `obscured` | `bool` | A password field — every character paints as a bullet, and its text never leaves through copy or cut. |
+| `wrap` | `Option<bool>` | `Some(true)` wraps a multiline input's lines at its width (by word); `Some(false)` keeps each line whole and scrolls sideways. |
+| `overflow` | `Option<FieldOverflow>` | How a single-line input shows a line longer than its box. |
+| `follow_stamp` | `u64` | What `follow_caret` last saw, so a field that did not change is not shaped again. |
 
 | Method | Description |
 | --- | --- |
+| `fn clips(&self) -> bool` | Whether the painted text is clipped to the box (every input but a legacy single line, which wraps inside it). |
 | `fn fit<'a>(&self, text: &'a str) -> &'a str` | `text` cut to what `room` allows, on a character boundary. |
+| `fn follows_caret(&self, focused: bool) -> bool` | Whether the scroll offsets follow the caret by the shaped layout (`follow_caret`), rather than the editor heuristic in… |
 | `fn new(content: impl Into<String>, font_family: impl Into<String>, font_weight: f32, font_size: f32) -> Self` | Creates a field with the caret at the end of the content. |
+| `fn resets_when_unfocused(&self) -> bool` | Whether a single-line input goes back to its start when it loses the focus. |
 | `fn room(&self) -> usize` | How many more characters an insertion could add now, counting the selection as replaced. |
+| `fn wraps(&self) -> bool` | Whether the input's lines are broken at its width (`true`) or each is laid out whole (`false`, and the box clips or scrolls it). |
 
 ### TextOptions { #textoptions }
 
@@ -1010,6 +1017,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn build_access_update_scaled(&self, root: NodeId, scale: f64) -> TreeUpdate` | `build_access_update` with every node's bounds multiplied by `scale`: layout is in logical pixels, and assistive technology wants the window's… |
 | `fn can_scroll(&self, id: NodeId, delta: f64) -> bool` | Returns whether a scroll view or list can move by the given amount along its axis. |
 | `fn cancel_press(&mut self) -> Option<NodeId>` | Ends the current press without a click and releases any pointer capture. |
+| `fn caret_following_fields(&self) -> Vec<NodeId>` | The text inputs whose scroll follows the caret by the shaped layout, which `engine-core` cannot do (no font), so the window's text renderer does… |
 | `fn children_in_paint_order(&self, id: NodeId) -> Cow<'_, [NodeId]>` | Returns a node's children bottom first, ordered by z-index then child order. |
 | `fn clear_focus(&mut self) -> Option<(Option<NodeId>, Option<NodeId>)>` | Leaves nothing focused and returns the old and new focus if it changed. |
 | `fn clear_text_selection(&mut self)` | Clears the selection in static text, wherever it is. |
@@ -1088,6 +1096,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn set_terminal_selection_start(&mut self, id: NodeId, row: u16, col: u16) -> bool` | Starts a terminal selection at a cell, collapsing any existing selection. |
 | `fn set_text_access_lines(&mut self, lines: HashMap<NodeId, Vec<AccessLine>>)` | Hands the tree the shaped lines of its text nodes, for their runs' bounds and character positions (the text renderer makes them; see `AccessLine`). |
 | `fn set_text_field_cursor(&mut self, field: NodeId, offset: usize) -> bool` | Moves a text field's cursor to a character offset and clears its selection. |
+| `fn set_text_field_scroll(&mut self, id: NodeId, horizontal: f64, vertical: f64, stamp: u64)` | Sets text input `id`'s scroll offsets (and the stamp of what they were worked out from), touching the node only when something changed, so a settled… |
 | `fn set_text_measure(&mut self, measure: TextMeasure)` | Sets how text is measured for `FitContent`. |
 | `fn set_text_selection(&mut self, id: NodeId, anchor: usize, focus: usize) -> bool` | Selects `anchor..focus` (bytes, either order, clamped to character boundaries) in a text node, clearing any other selection first. |
 | `fn set_text_selection_from_access(&mut self, selection: &TextSelection) -> bool` | A screen reader's `SetTextSelection`: selects the range it names in the one text node both ends are in. |
@@ -1341,6 +1350,23 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `FillRect` | `{ x: f64, y: f64, width: f64, height: f64, color: Color, gradient: Option<Gradient> }` | Fills a rectangle with a color. |
 | `FillCircle` | `{ cx: f64, cy: f64, radius: f64, color: Color, gradient: Option<Gradient> }` | Fills a circle with a color. |
 | `StrokePath` | `{ path: BezPath, color: Color, width: f64, gradient: Option<Gradient> }` | Strokes a path with a color and line width. |
+
+### FieldOverflow { #fieldoverflow }
+
+*enum.* How a single-line text input shows a line longer than its box (it is one line, however long): `Scroll` keeps the caret in view, `Ellipsis` cuts the…
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Scroll` |  |  |
+| `Ellipsis` |  |  |
+| `Clip` |  |  |
+
+| Method | Description |
+| --- | --- |
+| `fn name(self) -> &'static str` |  |
+| `fn parse(name: &str) -> Option<Self>` |  |
 
 ### FocusDirection { #focusdirection }
 
@@ -2143,6 +2169,7 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | `fn evict_stale_layouts(&mut self, tree: &Tree)` | Drops cached text layouts belonging to nodes that no longer exist in the tree. |
 | `fn field_caret_rect(&mut self, state: &TextFieldState, at: TextPlacement) -> Rect` | The caret's rectangle in the field's own coordinates (`at` placing the text in the node, scroll offsets already in it): the bar's, with… |
 | `fn field_range_rects(&mut self, state: &TextFieldState, at: TextPlacement, start: usize, end: usize) -> Vec<Rect>` | The rectangles covering `start..end` (bytes of `state.content`), one per line it crosses, in the field's coordinates. |
+| `fn follow_caret(&mut self, state: &TextFieldState, viewport: (f32, f32)) -> Option<(f64, f64, u64)>` | Where text input `state`'s scroll offsets should be so its caret is in view, for a content box of `viewport` (width, height) and the offsets it has… |
 | `fn glyph_cache(&self) -> bool` |  |
 | `fn hit_test_position(&mut self, state: &TextFieldState, at: TextPlacement, point: Point) -> usize` | Returns the character index in a text field that a local point falls on. |
 | `fn hit_test_text(&mut self, node_id: NodeId, state: &TextState, at: TextPlacement, point: Point) -> usize` | The byte offset in a text node's content nearest `point`, a local point in the node, resolved against the layout the node paints (`draw`): how a… |

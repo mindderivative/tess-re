@@ -1312,7 +1312,8 @@ fn draw_own(
                 color: text_color,
             };
             let show_caret = tree.focused() == Some(id);
-            if state.multiline {
+            // #285: a single-line input that does not wrap is clipped to its box too.
+            if state.clips() {
                 let clip = geometry.rounded_rect_fill(id, w, h, radius);
                 scene.push_layer(Some(clip), None, None, None, None);
                 text.draw_field(scene, resources, state, text_at, show_caret, id);

@@ -1737,6 +1737,11 @@ impl App {
                     },
                     py,
                 );
+                // #285: each input that follows its caret by its shaped text, now it has a box.
+                crate::text_interaction::follow_fields(
+                    &runtime.handles.tree,
+                    runtime.gpu.renderer.text(),
+                );
 
                 // 0.5.8 (#204): an `input_region="auto"` surface follows what is drawn.
                 #[cfg(target_os = "linux")]
