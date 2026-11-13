@@ -13,6 +13,8 @@ import textwrap
 
 import pytest
 
+from helpers import on_tiling_compositor
+
 from tess_re import Window
 
 MACOS = Window().get("platform") == "macos"
@@ -67,6 +69,8 @@ def test_simulating_the_inset_needs_both_edges():
 
 
 def test_live_decorations_and_inset():
+    if on_tiling_compositor():
+        pytest.skip("needs a floating compositor: a tiling one (sway) sets the window's size and decorations itself; runs on KWin and in CI")
     done = subprocess.run(
         [sys.executable, "-c", textwrap.dedent("""
             from tess_re import App, Window

@@ -32,6 +32,12 @@ macOS, MSRV and docs; the owner approved the `pypi` gate. Installed from PyPI in
 run from the PyPI install: a compositor placement. Not verified: the flip on KWin by pixels, compositors that resize a
 popup, macOS and Windows (no popups). #263, #264 and #266 are Done. Notes in `docs/migrating-0.6.md`.
 
+**T-015 / T-016 (tests, 2026-11-13):** the tiling-sway tests (`test_a_live_maximize_and_restore_fire_maximized`, `test_live_decorations_and_inset`) skip when
+`helpers.on_tiling_compositor()` (SWAYSOCK or a sway desktop), and `test_an_animating_window_is_paced_by_default` skips under a software adapter
+(`helpers.software_adapter_pinned()`), each with the stated reason; they still run on KWin and on a real GPU. The IME preview flake was the test, not the
+engine: the stand-in input method may only answer the `done` serial it last saw, the old test slept 8 s waiting for a `compose_update` that the first
+preedit (a `compose_start`) never raises, so the child (16 s of life) could be gone on a loaded machine. It now waits for each `done`; 12 of 12 runs pass in 2.2 s (was 10.2 s).
+
 **#273 (fixed in the tests, 2026-11-13):** `tests/test_gpu_shared_live.py`'s thirty-window test (0.88 vs 6.32 MiB, limit 1.5) was not a leak. With
 partial redraw on (the default) a window whose swapchain can be copied from keeps its last frame: 128 KiB at 200 x 100 on RADV (80 KiB on
 llvmpipe), so 29 extra windows add about 3.7 MiB of the 5.4. A headless sway cannot copy from its swapchain, so there no frame is kept and the
