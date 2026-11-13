@@ -6,6 +6,7 @@ root, so a test that just needs a node in the tree stays one line.
 whitespace.
 """
 
+import os
 from typing import Any
 
 from tess_re import MONOSPACE_FONT_FAMILY, Node, Window
@@ -23,3 +24,16 @@ def add(window: Window, kind: str, **props: Any) -> Node:
     node = window.create(kind, **props)
     window.root.add_child(node)
     return node
+
+
+def software_adapter_pinned() -> bool:
+    """Whether the environment asks for a software adapter (lavapipe, `tools/with_adapter.sh lvp`)."""
+    icd = os.environ.get("VK_ICD_FILENAMES", "") + os.environ.get("VK_DRIVER_FILES", "")
+    return bool(os.environ.get("TESS_RE_TEST_FORCE_FALLBACK")) or "lvp" in icd or "lavapipe" in icd
+
+
+def on_tiling_compositor() -> bool:
+    """Whether the session's compositor tiles new windows (sway, i3-style), which ignores the size, the
+    decorations and the maximize a test asks of a toplevel. A private `tools/sway_live.sh` is one."""
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    return bool(os.environ.get("SWAYSOCK")) or "sway" in desktop

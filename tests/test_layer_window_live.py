@@ -1141,14 +1141,23 @@ def test_an_input_method_composes_and_commits_into_a_layer_window_text_input(chi
 
 
 def test_the_preview_is_replaced_and_then_cleared(children):
+    """T-016: the input method may only answer the `done` serial it last saw (a protocol rule; a
+    stale one is dropped). So each step waits for the `done` the app's commit produces before it
+    sends the next one; sending the next at once used a stale serial, and the earlier wait for a
+    `compose_update` after the first preedit (which is `compose_start`) only hid that by sleeping
+    8 s, long enough for the child to die on a loaded machine."""
     method, child = _ime_session(children)
     try:
         assert method.wait_for("activated", timeout=10)
+        assert method.wait_for("done", timeout=10), "the activation's done"
         method.send("preedit k")
-        child.events(until="compose_update", timeout=8)
+        started = child.events(until="compose_start", timeout=8)
+        assert any(e["kind"] == "compose_start" and e["text"] == "k" for e in started), started
+        assert method.wait_for("done", timeout=8), "the app's commit after the first preedit"
         method.send("preedit ka")
         seen = child.events(until="compose_update", timeout=8)
         assert any(e["kind"] == "compose_update" and e["text"] == "ka" for e in seen), seen
+        assert method.wait_for("done", timeout=8), "the app's commit after the second preedit"
         method.send("clear")
         seen = child.events(until="compose_end", timeout=8)
         assert any(e["kind"] == "compose_end" for e in seen), seen

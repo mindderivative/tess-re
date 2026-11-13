@@ -18,6 +18,8 @@ import sys
 
 import pytest
 
+from helpers import software_adapter_pinned
+
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux") or not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")),
     reason="needs a display and a Linux DRM driver that reports per-process memory",
@@ -75,12 +77,6 @@ def run_child(**env):
     lines = [line for line in out if line.startswith("{")]
     assert lines, "the window printed nothing"
     return json.loads(lines[-1])
-
-
-def software_adapter_pinned():
-    """Whether the environment asks for a software adapter (lavapipe), which has no video memory."""
-    icd = os.environ.get("VK_ICD_FILENAMES", "") + os.environ.get("VK_DRIVER_FILES", "")
-    return bool(os.environ.get("TESS_RE_TEST_FORCE_FALLBACK")) or "lvp" in icd or "lavapipe" in icd
 
 
 def window_vram(**env):
