@@ -70,7 +70,7 @@ def test_simulating_the_inset_needs_both_edges():
 
 def test_live_decorations_and_inset():
     if on_tiling_compositor():
-        pytest.skip("needs a floating compositor: a tiling one (sway) sets the window's size and decorations itself; runs on KWin and in CI")
+        pytest.skip("needs a floating compositor: a tiling one (sway) sets the window's size and decorations itself; runs on KWin, by hand (CI has no display)")
     done = subprocess.run(
         [sys.executable, "-c", textwrap.dedent("""
             from tess_re import App, Window

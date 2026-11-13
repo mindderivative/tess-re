@@ -88,6 +88,6 @@ def test_an_animating_window_is_paced_by_default():
     (about 5 s of CPU); paced, a small fraction. The bound is loose, since
     CI runners differ, and what it separates is a core from a few percent."""
     if software_adapter_pinned():
-        pytest.skip("needs a real GPU: a software adapter (lavapipe) draws on the CPU, so CPU time says nothing about pacing; runs on hardware and in CI")
+        pytest.skip("needs a real GPU: a software adapter (lavapipe) draws on the CPU, so CPU time says nothing about pacing; runs on a real GPU, by hand (no CI job has one)")
     paced = animate_cpu_seconds(None)
     assert paced < 2.5, f"an animating window used {paced:.2f}s of CPU in 5s: not paced"

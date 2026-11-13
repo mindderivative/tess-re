@@ -168,6 +168,26 @@ putting it back; with no clipboard manager that text is lost when the test ends)
 `tools/sway_live.sh` the compositor is private, so `TESS_RE_PRIVATE_COMPOSITOR=1` is set and the clipboard
 test runs without being asked.
 
+## Tests that need hardware or KWin
+
+CI and a private headless sway cannot run every live test. The `live-sway` CI job runs the suite
+inside `tools/sway_live.sh` with lavapipe, so layer windows, popups, clipboard, hidden-window and the
+other compositor tests run on every pull request that runs Python tests. These skip there, each with
+its reason, and run **only by hand** (CI has no display, no real GPU and no KWin; there is no
+self-hosted runner). Run each group before a release, on a desktop you can watch, on the second
+monitor (HDMI-A-1). Each command opens windows.
+
+| Group | Tests | Why it cannot run in CI | Command |
+|---|---|---|---|
+| Floating compositor (KWin) | `test_window_controls.py::test_a_live_maximize_and_restore_fire_maximized`, `test_window_titlebar.py::test_live_decorations_and_inset` (2) | sway tiles the window and ignores its size, decorations and maximize | `.venv/bin/python -m pytest tests/test_window_controls.py tests/test_window_titlebar.py -q -rs` |
+| Real GPU, video memory | `test_gpu_memory_live.py` (3), `test_gpu_shared_live.py` (3) | `drm-total-vram` is a real driver's per-process figure; lavapipe has none | `env -u VK_ICD_FILENAMES .venv/bin/python -m pytest tests/test_gpu_memory_live.py tests/test_gpu_shared_live.py -q -rs` |
+| Real GPU, pacing | `test_present_mode.py::test_an_animating_window_is_paced_by_default` (1) | lavapipe draws on the CPU, so CPU time says nothing about pacing | `env -u VK_ICD_FILENAMES .venv/bin/python -m pytest tests/test_present_mode.py -q -rs` |
+| Synthetic input | `test_layer_window_live.py` (3 marked `live_input`) | `/dev/uinput` makes a system-wide device the **real** compositor reads: it moves the real pointer, clicks and types on your session. A private sway does not read it, so they must never run unattended or in CI | `TESS_RE_LIVE_INPUT=1 .venv/bin/python -m pytest tests/test_layer_window_live.py -q -rs -k "real_pointer or keyboard_none or negative_margin"` (watch the screen; keep other windows closed) |
+| Benchmark | `test_virtual_list_benchmark.py` (1) | a timing run, opt-in by design | `TESS_RE_RUN_BENCHMARK=1 .venv/bin/python -m pytest tests/test_virtual_list_benchmark.py -v -s` |
+
+These 13 are an explicit exception to "every test runs somewhere automatically": run them by hand and
+say in the release notes that you did, with the machine's GPU and compositor.
+
 ## Runners
 
 The Linux CI jobs run on `ubuntu-24.04`, not `ubuntu-latest`: on 26.04 the `engine-render` GPU tests
