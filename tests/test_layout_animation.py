@@ -215,4 +215,6 @@ def test_a_live_window_runs_a_layout_animation_to_its_end():
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout.strip().splitlines()[-1])
     assert data["seen"] == [["width", True, 180.0]], data
-    assert data["frames"] >= 3
+    # The first frame and the one that ends the animation: how many frames lie between depends on how
+    # fast the machine draws (a software renderer on a CI runner managed two in 200 ms), so it is not pinned.
+    assert data["frames"] >= 2

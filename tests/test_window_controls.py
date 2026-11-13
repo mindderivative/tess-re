@@ -154,7 +154,7 @@ def test_simulating_state_needs_its_value():
 
 def test_a_live_maximize_and_restore_fire_maximized():
     if on_tiling_compositor():
-        pytest.skip("needs a floating compositor: a tiling one (sway) sets the window's size and decorations itself; runs on KWin and in CI")
+        pytest.skip("needs a floating compositor: a tiling one (sway) sets the window's size and decorations itself; runs on KWin, by hand (CI has no display)")
     log = run_live("""
         from tess_re import App, Window
         w = Window(width=300, height=200, decorations=False)

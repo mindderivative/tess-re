@@ -248,6 +248,58 @@ jobs:
             timeout 120 python "$example"
           done
 
+  # T-020: the live tests, which skip on the runners above (no display). A private headless sway
+  # (tools/sway_live.sh) gives them a Wayland compositor with the layer shell, and lavapipe the GPU,
+  # so layer windows, popups, IME (when pywayland is present), clipboard and hidden-window tests run
+  # on every pull request that runs Python tests. What it cannot give: a floating compositor (KWin),
+  # a real GPU's per-process video memory, /dev/uinput (those tests move the real pointer and are
+  # never run here): see docs/contributing.md, "Tests that need hardware or KWin".
+  live-sway:
+    needs: plan
+    if: needs.plan.outputs.tier == 'full' || (needs.plan.outputs.tier == 'partial' && needs.plan.outputs.pytest_scope != 'none')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev \
+            libxi-dev libxcursor-dev libxinerama-dev libudev-dev \
+            libfontconfig1-dev pkg-config mesa-vulkan-drivers libgl1-mesa-dri \
+            sway xwayland grim libxkbcommon-tools
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show
+      - name: Restore cargo registry and build artifacts
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-v2-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Create and activate a venv
+        run: |
+          python -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+      - name: Install maturin and pytest
+        run: pip install "maturin>=1.7,<2.0" pytest
+      - name: Build and install the tess_re extension (maturin develop)
+        run: maturin develop
+      - name: Python tests in a private headless sway (lavapipe, pixman)
+        env:
+          TESS_RE_DAMAGE_VERIFY: "1"
+          SCOPE: ${{ needs.plan.outputs.tier == 'full' && 'all' || needs.plan.outputs.pytest_scope }}
+          FILES: ${{ needs.plan.outputs.pytest_files }}
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"; chmod 700 "$XDG_RUNTIME_DIR"
+          if [ "$SCOPE" = all ]; then TARGETS=tests/; else TARGETS="$FILES"; fi
+          tools/with_adapter.sh lvp -- tools/sway_live.sh --renderer pixman -- python -m pytest $TARGETS -v -rs
+
   # The full tier is the jobs below, as they were: Linux (tests, clippy, fmt, mypy, stubtest, pytest,
   # every example), Windows, macOS and the MSRV. They run only when the plan says `full`.
   # The MSRV the root Cargo.toml's `rust-version` states, enforced: the
@@ -534,7 +586,7 @@ jobs:
   result:
     name: CI result
     if: always()
-    needs: [plan, docs, partial, msrv, test, test-windows, test-macos]
+    needs: [plan, docs, partial, live-sway, msrv, test, test-windows, test-macos]
     runs-on: ubuntu-24.04
     steps:
       - name: Check every job that ran

@@ -36,7 +36,11 @@ def test_default_run_with_no_rust_log_emits_no_tracing_noise():
     result = run_with_env({})
     assert result.returncode == 0
     assert "done" in result.stdout
-    assert result.stderr == "", (
+    # wgpu probes the GLES backend's EGL at start-up and logs an ERROR when the machine has no GL
+    # driver (a CI runner with a private X server does not): the driver's, not tess_re's, and not what
+    # this pins. Everything else must be silent.
+    own = [line for line in result.stderr.splitlines() if "wgpu_hal::gles" not in line]
+    assert own == [], (
         f"with no RUST_LOG set, the default ERROR-level filter must suppress every "
         f"INFO-level event -- got stderr: {result.stderr!r}"
     )

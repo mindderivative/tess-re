@@ -27,7 +27,13 @@ pytestmark = pytest.mark.skipif(
     reason="needs a Wayland compositor with the layer-shell protocol",
 )
 
-LIVE_INPUT = os.environ.get("TESS_RE_LIVE_INPUT") == "1" and os.access("/dev/uinput", os.W_OK)
+# Never under a private compositor (`tools/sway_live.sh` sets TESS_RE_PRIVATE_COMPOSITOR): the virtual device is
+# read by the REAL compositor, so there it would drive the real session and reach nothing in the private one.
+LIVE_INPUT = (
+    os.environ.get("TESS_RE_LIVE_INPUT") == "1"
+    and not os.environ.get("TESS_RE_PRIVATE_COMPOSITOR")
+    and os.access("/dev/uinput", os.W_OK)
+)
 # A desktop panel on the bottom edge (KDE's, say) sits below a bottom layer bar, which the compositor
 # stacks above the panel's reserved strip. Set this to the panel's height so the pointer clicks the bar.
 BOTTOM_INSET = int(os.environ.get("TESS_RE_LIVE_BOTTOM_INSET", "0"))
@@ -1289,7 +1295,7 @@ def test_layer_windows_and_an_ordinary_window_run_in_one_app(children):
 
 # ---- real input (TESS_RE_LIVE_INPUT=1) ----
 
-live_input = pytest.mark.skipif(not LIVE_INPUT, reason="set TESS_RE_LIVE_INPUT=1 (and have write access to /dev/uinput)")
+live_input = pytest.mark.skipif(not LIVE_INPUT, reason="needs KWin and your say-so: TESS_RE_LIVE_INPUT=1, write access to /dev/uinput, not a private sway (it drives the real pointer); run by hand, see docs/contributing.md")
 
 
 def drive(output_name, steps):
