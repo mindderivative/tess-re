@@ -194,3 +194,10 @@ without asking for it.
   clicking one input twice) selects a word: advance the clock between clicks. A multiline input with no `wrap` keeps
   its 0.6.6 Up, Down, Home, End and Page keys. See
   [Keys, rows and clicks](guide/text.md#keys-rows-and-clicks-in-a-text-input-067).
+
+## After 0.6.7 (unreleased)
+
+- **Setting a text input's `text` to the text it already holds changes nothing (T-037).** It used to move the caret to
+  the end and drop the selection, so a framework that binds `text` two-way and sets it again after every keystroke
+  threw the caret to the end whenever you typed in the middle. The caret and the selection now stay, and no `change`
+  event fires. Setting a *different* text is as before: the caret goes to its end and the selection is cleared.
