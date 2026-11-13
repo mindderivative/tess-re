@@ -27,13 +27,22 @@ needs_display = pytest.mark.skipif(
     reason="needs a display for the event loop",
 )
 
+# `say` is called from the main thread and from helper threads at once (a watcher that calls
+# `stop()` races the `returned` line of the thread that ran the loop). `print` writes the text and
+# its newline separately, so two threads could interleave into one line holding two JSON objects
+# (`{...}{...}`), which the parent then failed to parse. One `write` of a whole line, under a lock,
+# cannot be split.
 PRELUDE = """
 import json, os, sys, threading, time
 from tess_re import App, LayerWindow, Window
 import tess_re
 T0 = time.monotonic()
+_SAY = threading.Lock()
 def say(**kw):
-    print(json.dumps({"t": round(time.monotonic() - T0, 2), **kw}), flush=True)
+    line = json.dumps({"t": round(time.monotonic() - T0, 2), **kw}) + "\\n"
+    with _SAY:
+        sys.stdout.write(line)
+        sys.stdout.flush()
 """
 
 
