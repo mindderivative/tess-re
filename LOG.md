@@ -37,6 +37,11 @@ runs the Python tests inside `tools/sway_live.sh` with lavapipe on every PR that
 cannot run in a private sway: the virtual device is read by the real compositor, so a run there drove the maintainer's real pointer and keyboard (my mistake, T-021); they now
 skip under `TESS_RE_PRIVATE_COMPOSITOR`. `tools/sway_live.sh` now also unsets `DISPLAY` and points the session bus at nothing: it passed the real X server and bus through, so the plain-`Window()` clipboard tests could reach the real clipboard (D-019). `docs/contributing.md` has "Tests that need hardware or KWin": the 13 skips, why, and one command per group, run by hand.
 
+**T-024 (real-session guard, 2026-11-13):** `tests/conftest.py` removes `DISPLAY` and `WAYLAND_DISPLAY` for the whole run on Linux unless `TESS_RE_PRIVATE_COMPOSITOR=1`
+(`tools/sway_live.sh`) or `TESS_RE_ALLOW_REAL_SESSION=1` (the maintainer's hand run), so window and clipboard tests skip instead of acting on the desktop. Finding: with the
+real `DISPLAY` stripped 12 tests skipped (`needs an X display`): every earlier \"private sway\" run had run them on the real X server. `sway_live.sh` now starts a private
+Xwayland (rootless, as a client of the private sway) and gives the command that `DISPLAY`, and its own `XDG_RUNTIME_DIR`, so they run again, privately.
+
 **T-015 / T-016 (tests, 2026-11-13):** the tiling-sway tests (`test_a_live_maximize_and_restore_fire_maximized`, `test_live_decorations_and_inset`) skip when
 `helpers.on_tiling_compositor()` (SWAYSOCK or a sway desktop), and `test_an_animating_window_is_paced_by_default` skips under a software adapter
 (`helpers.software_adapter_pinned()`), each with the stated reason; they still run on KWin and on a real GPU. The IME preview flake was the test, not the
