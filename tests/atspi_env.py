@@ -21,7 +21,11 @@ import sys
 import tempfile
 import time
 
-REGISTRYD = "/usr/lib/at-spi2-registryd"
+# Arch keeps it in /usr/lib, Debian and Ubuntu in /usr/libexec.
+REGISTRYD = next(
+    (p for p in ("/usr/lib/at-spi2-registryd", "/usr/libexec/at-spi2-registryd") if os.path.exists(p)),
+    "/usr/lib/at-spi2-registryd",
+)
 CONFIG = """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
