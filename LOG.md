@@ -32,9 +32,13 @@ macOS, MSRV and docs; the owner approved the `pypi` gate. Installed from PyPI in
 run from the PyPI install: a compositor placement. Not verified: the flip on KWin by pixels, compositors that resize a
 popup, macOS and Windows (no popups). #263, #264 and #266 are Done. Notes in `docs/migrating-0.6.md`.
 
-**Held issue #273:** `tests/test_gpu_shared_live.py`'s thirty-window memory test fails every time on the real GPU, 0.88 MiB for one
-window and 6.32 MiB for thirty (limit 1.5), identically on `main` at `6747f257` and on the 0.6.4 branches; not a flake.
-Cause undetermined. It needs the real GPU, so it is run only with the maintainer's say-so.
+**#273 (fixed in the tests, 2026-11-13):** `tests/test_gpu_shared_live.py`'s thirty-window test (0.88 vs 6.32 MiB, limit 1.5) was not a leak. With
+partial redraw on (the default) a window whose swapchain can be copied from keeps its last frame: 128 KiB at 200 x 100 on RADV (80 KiB on
+llvmpipe), so 29 extra windows add about 3.7 MiB of the 5.4. A headless sway cannot copy from its swapchain, so there no frame is kept and the
+test passed by accident. Measured offscreen on RADV with a throwaway probe (no window; `MemoryUsage` hints, 200 x 100): with the kept frame each
+extra window adds 267 KiB (a stand-in swapchain image of 133 KiB is the probe's own), without it about 6 KiB. The test now sets `partial_redraw=False`
+on its windows so it measures what it claims (the shared renderer); the kept frame is `tests/test_gpu_memory_live.py`'s. Those VRAM tests now skip as
+hardware-gated when a software adapter is pinned. Not run: the thirty-window test in an app on the real GPU (it opens windows on the desktop).
 
 **0.6.2 released (2026-11-06, PR #265, tag `v0.6.2` on `84d28fd`, PyPI `tesserae-engine==0.6.2`):** an unsized text node
 measures to its content, a fit width is the text plus 2 px (#263), and a change to another window made in a timer or

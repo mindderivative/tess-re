@@ -54,7 +54,14 @@ def vram():
 app = App()
 windows = []
 for _ in range(int(os.environ["TESS_RE_TEST_WINDOWS"])):
+    # No kept frame (#273): with partial redraw on (the default) a window whose swapchain can be
+    # copied from keeps its last frame, a window's worth of video memory (128 KiB at 200 x 100 on
+    # RADV, 80 KiB on llvmpipe), so thirty windows differ from one by thirty frames, which has
+    # nothing to do with the renderer these tests are about. (A headless sway cannot copy from its
+    # swapchain, so there the frame is never kept and the test passed by accident.)
+    # `test_gpu_memory_live.py` covers the kept frame itself.
     w = Window(width=200, height=100)
+    w.set(partial_redraw=False)
     w.root.set(fill=(200, 60, 60, 255))
     app.add_window(w)
     windows.append(w)
@@ -128,7 +135,9 @@ def allocated_mib(result):
 def test_windows_share_one_vello_renderer_so_the_device_holds_no_more_for_thirty_than_for_one():
     """(#235) A renderer of its own cost each window about 0.2 MiB of device memory (and 4 MiB of
     process memory and 9 ms); shared, thirty windows use what one does. Read from the device's
-    allocator, so it needs no per-process driver keys."""
+    allocator, so it needs no per-process driver keys. Measured offscreen on the real GPU (RADV,
+    `MemoryHints::MemoryUsage`, #273): with no kept frame each extra window adds about 6 KiB of
+    device memory, so thirty windows are about 0.2 MiB over one, inside the 1.5 MiB limit."""
     one = allocated_mib(run_memory(1))
     if one is None:
         pytest.skip("this backend has no allocator report")
