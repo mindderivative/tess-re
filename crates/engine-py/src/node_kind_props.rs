@@ -430,7 +430,10 @@ fn parse_known(
             let text = string(value, name)?;
             change(move |node| match &mut node.kind {
                 NodeKind::Text(state) => state.content = text,
-                NodeKind::TextField(state) => {
+                // The same text again (a framework that binds text two-way sets it after every
+                // keystroke) leaves the caret and the selection where they are; a different one
+                // puts the caret at its end.
+                NodeKind::TextField(state) if state.content != text => {
                     state.cursor = text.len();
                     state.selection_anchor = None;
                     state.content = text;

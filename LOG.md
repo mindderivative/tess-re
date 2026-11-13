@@ -42,6 +42,9 @@ skip under `TESS_RE_PRIVATE_COMPOSITOR`. `tools/sway_live.sh` now also unsets `D
 real `DISPLAY` stripped 12 tests skipped (`needs an X display`): every earlier \"private sway\" run had run them on the real X server. `sway_live.sh` now starts a private
 Xwayland (rootless, as a client of the private sway) and gives the command that `DISPLAY`, and its own `XDG_RUNTIME_DIR`, so they run again, privately.
 
+**T-037 (2026-11-13):** `set(text=X)` on a `text_input` that already holds exactly X no longer moves the caret to the end or clears the selection (a two-way
+binding echoing the text after each keystroke made typing in the middle jump to the end). A different text still puts the caret at its end. `docs/migrating-0.6.md`, "After 0.6.7".
+
 **T-015 / T-016 (tests, 2026-11-13):** the tiling-sway tests (`test_a_live_maximize_and_restore_fire_maximized`, `test_live_decorations_and_inset`) skip when
 `helpers.on_tiling_compositor()` (SWAYSOCK or a sway desktop), and `test_an_animating_window_is_paced_by_default` skips under a software adapter
 (`helpers.software_adapter_pinned()`), each with the stated reason; they still run on KWin and on a real GPU. The IME preview flake was the test, not the
