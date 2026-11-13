@@ -1,5 +1,7 @@
 # Standing Instructions
 
+**Precedence.** `CLAUDE.md` imports the Tesserae Shell Directive (`/home/phil/Projects/Tesserae-Shell-Directive.md`) first and this file second. Where the two conflict, **the directive wins** (the user, 2026-11-13). The user's own words in chat win over both.
+
 ## Project Policy
 * **GitHub Project:** Update and maintain the GitHub project `Tesserae Rendering Engine`. Each issue is a milestone and each phase is a task with steps as subtasks. Use comments to keep track of the findings, error, failures, and the fixes.
 * **Backlog:** Draft issues, fixes, updates, features, and recommendations then place them into the `Backlog`.
@@ -44,7 +46,7 @@
 * CI has three tiers picked by `tools/ci_plan.py` (docs-only, partial for code, full for a release or a build-config change or the `full-ci` label); see `docs/contributing.md`. `python3 tools/ci_plan.py --base origin/main` shows which one a branch gets. The job to read is `CI result`.
 * Before calling work done run the tests the change needs and, for the merge gate, the full set (see "Testing Policy"). `tools/verify.sh` and `--cross` are allowed.
 * A version bump or tag is a release, so none is made under the directive. If a release is ever asked for, run `python3 tools/check_version.py --expect <version> --pypi` first: every place the version lives must agree and PyPI must not have it yet.
-* Agent instructions live in `AGENTS.md`; `CLAUDE.md` only imports it. Do not run `graphify claude install`; after upgrading graphify run `python3 tools/graphify_agents.py` (it writes the graphify section to `AGENTS.md` and keeps the hooks). If any tool adds a section to `CLAUDE.md`, run `python3 tools/check_agent_docs.py --fix`.
+* Agent instructions live in `AGENTS.md` and the directive; `CLAUDE.md` only imports them (the directive, then `AGENTS.md`). Do not run `graphify claude install`; after upgrading graphify run `python3 tools/graphify_agents.py` (it writes the graphify section to `AGENTS.md` and keeps the hooks). If any tool adds a section to `CLAUDE.md`, run `python3 tools/check_agent_docs.py --fix`.
 * Only Linux is testable here (AMD RADV and llvmpipe). Mark Mac, Windows and other-GPU checks as unverified, not passed. The held issues are listed in the "Status" section of `LOG.md`.
 
 ## Session Start
