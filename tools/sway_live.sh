@@ -68,6 +68,11 @@ fi
 # This compositor is private, with a clipboard of its own: tests that would overwrite a real desktop's
 # clipboard (tests/test_clipboard_layer_live.py) may run without being asked.
 export SWAYSOCK="$sock" WAYLAND_DISPLAY TESS_RE_PRIVATE_COMPOSITOR=1
+# A private compositor isolates nothing else of the session (D-019): without these two lines the command
+# still sees the real X server (DISPLAY, an XWayland of the real desktop: windows and the clipboard
+# fall back to it) and the real session bus. Tests that need a bus start their own throwaway one.
+unset DISPLAY
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/nonexistent"
 WAYLAND_DISPLAY=$(cat "$work/display")
 echo "sway_live: pid $pid, WAYLAND_DISPLAY=$WAYLAND_DISPLAY, renderer $renderer" >&2
 "$@"

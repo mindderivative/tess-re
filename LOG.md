@@ -35,7 +35,7 @@ popup, macOS and Windows (no popups). #263, #264 and #266 are Done. Notes in `do
 **T-019..T-022 (CI and skips, 2026-11-13):** the three reason strings no longer say the tests run in CI (Linux CI has no display, so they never did). New CI job `live-sway`
 runs the Python tests inside `tools/sway_live.sh` with lavapipe on every PR that runs Python tests, so the live tests run there instead of skipping. The three `uinput` tests
 cannot run in a private sway: the virtual device is read by the real compositor, so a run there drove the maintainer's real pointer and keyboard (my mistake, T-021); they now
-skip under `TESS_RE_PRIVATE_COMPOSITOR`. `docs/contributing.md` has "Tests that need hardware or KWin": the 13 skips, why, and one command per group, run by hand.
+skip under `TESS_RE_PRIVATE_COMPOSITOR`. `tools/sway_live.sh` now also unsets `DISPLAY` and points the session bus at nothing: it passed the real X server and bus through, so the plain-`Window()` clipboard tests could reach the real clipboard (D-019). `docs/contributing.md` has "Tests that need hardware or KWin": the 13 skips, why, and one command per group, run by hand.
 
 **T-015 / T-016 (tests, 2026-11-13):** the tiling-sway tests (`test_a_live_maximize_and_restore_fire_maximized`, `test_live_decorations_and_inset`) skip when
 `helpers.on_tiling_compositor()` (SWAYSOCK or a sway desktop), and `test_an_animating_window_is_paced_by_default` skips under a software adapter
