@@ -267,7 +267,7 @@ jobs:
             libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev \
             libxi-dev libxcursor-dev libxinerama-dev libudev-dev \
             libfontconfig1-dev pkg-config mesa-vulkan-drivers libgl1-mesa-dri \
-            sway grim libxkbcommon-tools
+            sway xwayland grim libxkbcommon-tools
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup show
       - name: Restore cargo registry and build artifacts
