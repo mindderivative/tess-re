@@ -268,7 +268,8 @@ jobs:
             libxi-dev libxcursor-dev libxinerama-dev libudev-dev \
             libfontconfig1-dev pkg-config mesa-vulkan-drivers libgl1-mesa-dri \
             sway xwayland grim libxkbcommon-tools \
-            wayland-utils wayland-protocols wtype wl-clipboard dbus at-spi2-core
+            wayland-utils wayland-protocols wtype wl-clipboard dbus at-spi2-core \
+            fonts-noto-cjk
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup show
       - name: Restore cargo registry and build artifacts
