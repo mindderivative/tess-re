@@ -254,6 +254,16 @@ def bar_child(children, *bars, **options):
     return children(BAR, BAR_ARGS=json.dumps({"bars": list(bars), **options}))
 
 
+def layer_shell_version():
+    """The `zwlr_layer_shell_v1` version this compositor offers (0 if it offers none or wayland-info is missing)."""
+    try:
+        text = subprocess.run(["wayland-info", "-i", "zwlr_layer_shell_v1"], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    found = re.search(r"interface: 'zwlr_layer_shell_v1',\s*version:\s*(\d+)", text)
+    return int(found.group(1)) if found else 0
+
+
 def outputs():
     """`{connector name: (x, y, width, height)}` from `wayland-info`, or skips."""
     try:
@@ -355,6 +365,11 @@ def test_the_exclusive_zone_shortens_a_maximised_window_by_the_zone(children):
 )
 def test_a_corner_surface_reserves_space_on_the_edge_it_names(children, edge, expected):
     name = next(iter(outputs()))
+    if edge and layer_shell_version() < 5:
+        pytest.skip(
+            "needs a compositor with wlr-layer-shell v5 (exclusive_edge: sway 1.10+, KWin, Hyprland); "
+            f"this one offers v{layer_shell_version()}. Runs on the maintainer's sway and KWin"
+        )
     spec = dict(output=name, anchor=("top", "right"), size=(120, 28), zone=28)
     if edge:
         spec["edge"] = edge
