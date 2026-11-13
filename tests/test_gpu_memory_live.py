@@ -77,7 +77,20 @@ def run_child(**env):
     return json.loads(lines[-1])
 
 
+def software_adapter_pinned():
+    """Whether the environment asks for a software adapter (lavapipe), which has no video memory."""
+    icd = os.environ.get("VK_ICD_FILENAMES", "") + os.environ.get("VK_DRIVER_FILES", "")
+    return bool(os.environ.get("TESS_RE_TEST_FORCE_FALLBACK")) or "lvp" in icd or "lavapipe" in icd
+
+
 def window_vram(**env):
+    # Hardware-gated (#273): `drm-total-vram` is the GPU driver's own per-process figure, so it
+    # means something only when the window draws on that GPU. With a software adapter pinned
+    # (a private headless sway on lavapipe, `tools/with_adapter.sh lvp`) the process still holds
+    # a small, unrelated amount on the driver, the same with or without the setting under test,
+    # and these tests would fail for a reason that is not the code's. They run on a real GPU.
+    if software_adapter_pinned():
+        pytest.skip("hardware-gated: needs a real GPU's per-process video memory, not a software adapter")
     return run_child(**env)["first"]
 
 
