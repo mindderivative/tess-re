@@ -1311,6 +1311,14 @@ impl App {
                                         },
                                     );
                                 }
+                                LayerNotice::ActivationToken(request, token) => {
+                                    crate::activation::deliver(
+                                        &handles.activation,
+                                        request,
+                                        token,
+                                        py,
+                                    );
+                                }
                                 LayerNotice::MarginMoved(margin) => {
                                     if let Some(layer) = &handles.layer {
                                         // The drag moved the surface; the window's own record
@@ -2229,6 +2237,10 @@ impl App {
                             focused,
                             WindowEventType::Active,
                         );
+                    }
+                    // T-051: the answer to `request_activation_token` on a window.
+                    InputEvent::ActivationToken { token } => {
+                        crate::activation::deliver_winit(&runtime.handles.activation, token, py);
                     }
                     // 0.5.10 (#246): completely hidden, or showing again.
                     InputEvent::Occluded { occluded } => {

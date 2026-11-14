@@ -159,6 +159,7 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 | `off(event: str) -> None` | Removes the window's listener for `event`, if any. |
 | `on(event: str, handler: Callable[..., object]) -> None` | Registers `handler` for a window event. |
 | `read_clipboard() -> str \| None` | Returns the OS clipboard's text, or `None` when there is none or it can't be reached. |
+| `request_activation_token(callback: Callable[[str \| None], object], app_id: str \| None=None) -> None` | (unreleased, T-051) Asks the system for an activation token (`xdg_activation_v1` on Wayland, a startup-notification id on X11)… |
 | `resize(width: int, height: int) -> None` | Sets the window's size from code; the root's layout box follows. |
 | `restore() -> None` | Restores a minimized or maximized window to its normal size; before `App.run()`, undoes `minimize()`/`maximize()`. |
 | `set(*, title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded) -> None` | Sets window properties by name, all at once; a bad value raises and changes nothing. |

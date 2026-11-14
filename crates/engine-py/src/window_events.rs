@@ -452,6 +452,35 @@ impl PyWindow {
 }
 
 impl PyWindow {
+    /// T-051: sends request `id` for a token to whoever can answer: the layer thread for a
+    /// layer surface, `winit` for an ordinary window. `false`: nobody could be asked (not
+    /// Linux, the window not open, or the system has no activation).
+    fn ask_activation_token(&self, id: u64, app_id: Option<String>) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            use winit::platform::startup_notify::WindowExtStartupNotify;
+            if let Some(layer) = &self.handles.layer {
+                let controller = layer.controller.borrow();
+                return match (controller.as_ref(), layer.id.get()) {
+                    (Some(controller), Some(surface)) => {
+                        controller.request_activation_token(surface, id, app_id);
+                        true
+                    }
+                    _ => false,
+                };
+            }
+            if let Some(window) = self.handles.os_window.borrow().as_ref()
+                && window.request_activation_token().is_ok()
+            {
+                self.handles.activation.borrow_mut().queue_winit(id);
+                return true;
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = (id, app_id);
+        false
+    }
+
     /// The window's size, as layout's available space.
     fn available(&self) -> Size<AvailableSpace> {
         let (width, height) = self.handles.logical_size();
@@ -774,6 +803,43 @@ impl PyWindow {
             r#fn,
             py,
         )
+    }
+
+    /// T-051: asks the system for an activation token (`xdg_activation_v1` on Wayland, a
+    /// startup-notification id on X11) and calls `callback(token)` on the loop's thread
+    /// when it comes, or `callback(None)` when the system has none to give (no such
+    /// protocol, the window not open, or the request failed). Start the app you launch with
+    /// `XDG_ACTIVATION_TOKEN` set to the token and the compositor can focus its window.
+    /// Ask from the handler of the click or key that launches: the token names the last
+    /// input of this app, and a compositor ignores one that is stale. `app_id` names the
+    /// app being launched (a layer surface only; an ordinary window reports its own).
+    #[pyo3(signature = (callback, app_id=None))]
+    fn request_activation_token(
+        &self,
+        py: Python<'_>,
+        callback: Py<PyAny>,
+        app_id: Option<String>,
+    ) -> PyResult<()> {
+        if !callback.bind(py).is_callable() {
+            return Err(PyValueError::new_err(
+                "request_activation_token: callback must be callable",
+            ));
+        }
+        let id = self.handles.activation.borrow_mut().add(callback);
+        let asked = self.ask_activation_token(id, app_id);
+        if !asked {
+            // Nothing was asked, so nothing will answer: say `None` on the next turn.
+            let callback = self.handles.activation.borrow_mut().forget(id);
+            if let Some(callback) = callback {
+                let partial = py
+                    .import("functools")?
+                    .getattr("partial")?
+                    .call1((callback, py.None()))?
+                    .unbind();
+                self.after(py, 0.0, partial)?;
+            }
+        }
+        Ok(())
     }
 
     /// 0.5.0 M2 (issue #28): minimizes the window -- once `App.run()` opens

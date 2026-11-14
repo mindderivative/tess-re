@@ -75,8 +75,9 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::ZwlrLay
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1::{
     self, ZwlrLayerSurfaceV1,
 };
+use smithay_client_toolkit::activation::{ActivationHandler, ActivationState, RequestDataExt};
 use smithay_client_toolkit::{
-    delegate_compositor, delegate_output, delegate_pointer, delegate_xdg_popup,
+    delegate_activation, delegate_compositor, delegate_output, delegate_pointer, delegate_xdg_popup,
     delegate_registry, delegate_relative_pointer, delegate_seat, delegate_touch, registry_handlers,
 };
 use wayland_backend::client::Backend;
@@ -134,6 +135,9 @@ pub enum LayerNotice {
     PopupPlaced(i32, i32),
     /// A setting the compositor cannot take: `(key, message)`.
     Warning(&'static str, String),
+    /// T-051: the answer to an activation-token request: `(request, token)`, `None` when
+    /// the compositor has no `xdg_activation_v1`.
+    ActivationToken(u64, Option<String>),
 }
 
 /// The host's side of the loop for layer surfaces.
@@ -217,6 +221,13 @@ pub enum LayerEvent {
         key: &'static str,
         message: String,
     },
+    /// T-051: the answer to [`LayerController::request_activation_token`]: the token, or
+    /// `None` when the compositor has no `xdg_activation_v1`.
+    ActivationToken {
+        id: u64,
+        request: u64,
+        token: Option<String>,
+    },
 }
 
 /// Why the layer side could not start.
@@ -245,6 +256,7 @@ enum Command {
     Margin(u64, (i32, i32, i32, i32)),
     BeginMarginDrag(u64),
     Ime(u64, Option<ImeInfo>),
+    ActivationToken(u64, u64, Option<String>),
     Destroy(u64),
     Shutdown,
 }
@@ -324,6 +336,15 @@ impl LayerController {
     /// `MarginMoved`). A surface that cannot move on either axis ignores this.
     pub fn begin_margin_drag(&self, id: u64) {
         self.send(Command::BeginMarginDrag(id));
+    }
+
+    /// T-051: asks the compositor for an `xdg_activation_v1` token for the surface `id`, so an
+    /// app this one starts (`XDG_ACTIVATION_TOKEN`) can take focus. The answer comes back as
+    /// [`LayerEvent::ActivationToken`] with the same `request`. The token names the serial
+    /// of the last pointer press, key press or touch on one of this app's surfaces, which is
+    /// what a compositor checks, so ask from the handler of the click or key that launches.
+    pub fn request_activation_token(&self, id: u64, request: u64, app_id: Option<String>) {
+        self.send(Command::ActivationToken(id, request, app_id));
     }
 
     /// Tells the input method about the surface's focused text input (`None`: none has focus):
@@ -669,6 +690,8 @@ struct State {
     drag: Option<MarginDrag>,
     /// `xdg_wm_base`, for popups (none: this compositor cannot make one).
     xdg_shell: Option<XdgShell>,
+    /// `xdg_activation_v1` (none: this compositor has no focus-passing).
+    activation: Option<ActivationState>,
     /// The serial of the last pointer press, key press or touch on one of our surfaces: what a
     /// popup's grab has to name.
     last_serial: u32,
@@ -725,6 +748,40 @@ impl State {
         if !(self.on_event)(event) {
             self.alive = false;
         }
+    }
+
+    /// T-051: asks for an activation token, naming the surface, the first seat and the last
+    /// input serial. Without the global the answer is `None`, at once.
+    fn request_activation_token(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        id: u64,
+        request: u64,
+        app_id: Option<String>,
+    ) {
+        let (Some(activation), Some(surf)) = (&self.activation, self.surfaces.get(&id)) else {
+            self.emit(LayerEvent::ActivationToken {
+                id,
+                request,
+                token: None,
+            });
+            return;
+        };
+        let seat_and_serial = self
+            .seats
+            .seats()
+            .next()
+            .map(|seat| (seat, self.last_serial));
+        activation.request_token_with_data::<Self, ActivationRequest>(
+            qh,
+            ActivationRequest {
+                id,
+                request,
+                app_id,
+                seat_and_serial,
+                surface: Some(surf.surface.clone()),
+            },
+        );
     }
 
     fn input(&mut self, id: u64, event: InputEvent) {
@@ -2045,6 +2102,42 @@ impl ProvidesRegistryState for State {
     registry_handlers![OutputState, SeatState];
 }
 
+/// What a token request carries until the compositor answers.
+struct ActivationRequest {
+    id: u64,
+    request: u64,
+    app_id: Option<String>,
+    seat_and_serial: Option<(wl_seat::WlSeat, u32)>,
+    surface: Option<wl_surface::WlSurface>,
+}
+
+impl RequestDataExt for ActivationRequest {
+    fn app_id(&self) -> Option<&str> {
+        self.app_id.as_deref()
+    }
+    fn seat_and_serial(&self) -> Option<(&wl_seat::WlSeat, u32)> {
+        self.seat_and_serial
+            .as_ref()
+            .map(|(seat, serial)| (seat, *serial))
+    }
+    fn surface(&self) -> Option<&wl_surface::WlSurface> {
+        self.surface.as_ref()
+    }
+}
+
+impl ActivationHandler for State {
+    type RequestData = ActivationRequest;
+
+    fn new_token(&mut self, token: String, data: &ActivationRequest) {
+        self.emit(LayerEvent::ActivationToken {
+            id: data.id,
+            request: data.request,
+            token: Some(token),
+        });
+    }
+}
+
+delegate_activation!(State, ActivationRequest);
 delegate_compositor!(State);
 delegate_output!(State);
 delegate_seat!(State);
@@ -2301,6 +2394,7 @@ fn run(
         pointer_local: (0.0, 0.0),
         drag: None,
         xdg_shell: XdgShell::bind(&globals, &qh).ok(),
+        activation: ActivationState::bind(&globals, &qh).ok(),
         last_serial: 0,
         text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
         text_input: None,
@@ -2372,6 +2466,9 @@ fn run(
                         surf.config.margin = margin;
                         layer.commit();
                     }
+                }
+                Command::ActivationToken(id, request, app_id) => {
+                    state.request_activation_token(&qh, id, request, app_id)
                 }
                 Command::Destroy(id) => state.destroy(id),
                 Command::Shutdown => shutdown = true,

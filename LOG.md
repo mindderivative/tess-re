@@ -42,6 +42,11 @@ skip under `TESS_RE_PRIVATE_COMPOSITOR`. `tools/sway_live.sh` now also unsets `D
 real `DISPLAY` stripped 12 tests skipped (`needs an X display`): every earlier \"private sway\" run had run them on the real X server. `sway_live.sh` now starts a private
 Xwayland (rootless, as a client of the private sway) and gives the command that `DISPLAY`, and its own `XDG_RUNTIME_DIR`, so they run again, privately.
 
+**T-051 (2026-11-13):** `Window.request_activation_token(callback, app_id=None)` on `Window` and `LayerWindow`: an `xdg_activation_v1` token (X11: startup id) for a launcher to pass to an app it starts as
+`XDG_ACTIVATION_TOKEN`. No new dependency (sctk 0.19.2's activation module, already in the lock). A layer surface asks through the layer thread with the last input serial and the first seat; an
+ordinary window through winit (`ActivationTokenDone`, new `InputEvent::ActivationToken`, answered in request order). `None` when nothing could be asked. Token round-trip tested in a private sway;
+whether KWin focuses the launched window is the maintainer's hand check (`docs/contributing.md`).
+
 **T-037 (2026-11-13):** `set(text=X)` on a `text_input` that already holds exactly X no longer moves the caret to the end or clears the selection (a two-way
 binding echoing the text after each keystroke made typing in the middle jump to the end). A different text still puts the caret at its end. `docs/migrating-0.6.md`, "After 0.6.7".
 

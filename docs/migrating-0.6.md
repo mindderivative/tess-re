@@ -201,3 +201,8 @@ without asking for it.
   the end and drop the selection, so a framework that binds `text` two-way and sets it again after every keystroke
   threw the caret to the end whenever you typed in the middle. The caret and the selection now stay, and no `change`
   event fires. Setting a *different* text is as before: the caret goes to its end and the selection is cleared.
+
+- **`Window.request_activation_token(callback, app_id=None)` (T-051, new, nothing to migrate).** A launcher asks for an
+  `xdg_activation_v1` token and starts the program it launches with `XDG_ACTIVATION_TOKEN` set to it, so the
+  compositor focuses the new window. Works on a `Window` and a `LayerWindow`; the callback gets the token, or `None`.
+  See [Launching an app and giving it focus](guide/bars-and-panels.md#launching-an-app-and-giving-it-focus).
