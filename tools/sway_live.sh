@@ -10,7 +10,7 @@
 # on its IPC socket, exports WAYLAND_DISPLAY and SWAYSOCK for the command, runs it, and on the way
 # out asks sway to exit, then TERM, then KILL, by the pid it started (never by a name pattern).
 # The command's exit status is returned. It gets a private XDG_RUNTIME_DIR, a private Xwayland (DISPLAY), and no
-# session bus, so nothing it starts reaches the real session (D-019).
+# session bus, so nothing it starts reaches the real session.
 #
 # --renderer gles2 (the default) matches the earlier live runs and uses the real GPU for the
 # compositor; pixman keeps the compositor off the GPU. The tests' own windows still render with
@@ -32,7 +32,7 @@ done
 command -v sway >/dev/null || { echo "sway_live.sh: sway is not installed" >&2; exit 2; }
 command -v swaymsg >/dev/null || { echo "sway_live.sh: swaymsg is not installed" >&2; exit 2; }
 work=$(mktemp -d "${TMPDIR:-/tmp}/sway-live.XXXXXX")
-# Its own runtime dir (D-019): sway's sockets, and everything that looks in XDG_RUNTIME_DIR, stay apart
+# Its own runtime dir: sway's sockets, and everything that looks in XDG_RUNTIME_DIR, stay apart
 # from the real session's (its wayland-0, bus, pipewire and pulse sockets).
 runtime="$work/run"
 mkdir -m 700 "$runtime"
@@ -76,7 +76,7 @@ fi
 # This compositor is private, with a clipboard of its own: tests that would overwrite a real desktop's
 # clipboard (tests/test_clipboard_layer_live.py) may run without being asked.
 export SWAYSOCK="$sock" WAYLAND_DISPLAY TESS_RE_PRIVATE_COMPOSITOR=1
-# A private compositor isolates nothing else of the session (D-019): without these two lines the command
+# A private compositor isolates nothing else of the session: without these two lines the command
 # still sees the real X server (DISPLAY, an XWayland of the real desktop: windows and the clipboard
 # fall back to it) and the real session bus. Tests that need a bus start their own throwaway one.
 unset DISPLAY

@@ -160,7 +160,7 @@ claims to, not just that the code compiles.
 
 ## Live tests that touch the desktop
 
-**Safety first (D-019).** `tests/conftest.py` keeps a test run away from your real session: on Linux, unless
+**Safety first.** `tests/conftest.py` keeps a test run away from your real session: on Linux, unless
 `TESS_RE_PRIVATE_COMPOSITOR=1` (`tools/sway_live.sh` sets it) or `TESS_RE_ALLOW_REAL_SESSION=1` is in the
 environment, it removes `DISPLAY` and `WAYLAND_DISPLAY` for the whole run, so every test that opens a window or
 uses the clipboard skips ("no display reachable") instead of acting on the desktop. **The maintainer sets
