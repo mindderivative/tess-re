@@ -42,6 +42,8 @@ skip under `TESS_RE_PRIVATE_COMPOSITOR`. `tools/sway_live.sh` now also unsets `D
 real `DISPLAY` stripped 12 tests skipped (`needs an X display`): every earlier \"private sway\" run had run them on the real X server. `sway_live.sh` now starts a private
 Xwayland (rootless, as a client of the private sway) and gives the command that `DISPLAY`, and its own `XDG_RUNTIME_DIR`, so they run again, privately.
 
+**Directive removed (2026-11-14, the maintainer's word):** the Tesserae Shell Directive is archived (`/home/phil/Projects/Tesserae-Shell-Directive.archived-2026-11-14.md`). `CLAUDE.md` imports only `AGENTS.md`, restored to its pre-directive text (no push without the maintainer's word, merge only on "merge", no full suites without his say-so), plus one rule: a test run must not reach the real session. The `live-sway` CI job, `tests/conftest.py` and `sway_live.sh` stay.
+
 **T-051 (2026-11-13):** `Window.request_activation_token(callback, app_id=None)` on `Window` and `LayerWindow`: an `xdg_activation_v1` token (X11: startup id) for a launcher to pass to an app it starts as
 `XDG_ACTIVATION_TOKEN`. No new dependency (sctk 0.19.2's activation module, already in the lock). A layer surface asks through the layer thread with the last input serial and the first seat; an
 ordinary window through winit (`ActivationTokenDone`, new `InputEvent::ActivationToken`, answered in request order). `None` when nothing could be asked. Token round-trip tested in a private sway;

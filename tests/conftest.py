@@ -1,4 +1,4 @@
-"""Keeps the test run away from the real desktop session (D-019, D-021).
+"""Keeps the test run away from the real desktop session.
 
 A test that opens a window, or writes the clipboard, acts on the session it can reach, and a
 private compositor does not change which session `DISPLAY` or `WAYLAND_DISPLAY` name unless the
