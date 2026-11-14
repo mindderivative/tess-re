@@ -134,6 +134,8 @@ pub(crate) struct WindowHandles {
     pub(crate) skip_taskbar: Rc<Cell<bool>>,
     /// 0.5.6 (#163): `Window.after` / `every` timers, on this window's clock.
     pub(crate) timers: crate::timers::SharedTimers,
+    /// T-051: the callbacks of `request_activation_token`, waiting for their token.
+    pub(crate) activation: crate::activation::SharedActivation,
     /// 0.5.6 (#163): wakes the loop for the earliest timer; set while it runs.
     pub(crate) alarm: crate::timers::SharedAlarm,
     /// 0.5.4 (#146): the font generation this window's SVG text was last
@@ -353,6 +355,7 @@ impl PyWindow {
                 resizable: Rc::new(Cell::new(true)),
                 skip_taskbar: Rc::new(Cell::new(false)),
                 timers: Rc::new(RefCell::new(crate::timers::TimerQueue::default())),
+                activation: Rc::new(RefCell::new(Default::default())),
                 alarm: Rc::new(RefCell::new(None)),
                 svg_font_generation: Rc::new(Cell::new(0)),
                 maximized: Rc::new(Cell::new(false)),
@@ -421,6 +424,10 @@ impl PyWindow {
         for callback in self.handles.timers.borrow().callbacks() {
             visit.call(callback)?;
         }
+        // T-051: and activation-token callbacks.
+        for callback in self.handles.activation.borrow().callbacks() {
+            visit.call(callback)?;
+        }
         Ok(())
     }
 
@@ -431,6 +438,7 @@ impl PyWindow {
         self.handles.handlers.borrow_mut().clear();
         self.handles.completions.borrow_mut().entries.clear();
         self.handles.timers.borrow_mut().clear();
+        self.handles.activation.borrow_mut().clear();
         self.handles.window_listeners.borrow_mut().clear();
     }
 }

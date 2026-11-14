@@ -6,6 +6,7 @@
 //! `Node` unchanged by the split. See `app.rs`/`window.rs`'s own
 //! module doc comments for the `PyApp`/`PyWindow` split this step made.
 
+mod activation;
 mod app;
 mod canvas;
 mod caret;

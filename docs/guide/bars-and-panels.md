@@ -124,6 +124,33 @@ focus it with a click, and it keeps keys until they click elsewhere; give the no
 should receive them `focusable=True`. `"exclusive"` takes the keyboard when the surface
 opens and keeps it until it closes: for a lock screen or a launcher, not a bar.
 
+## Launching an app and giving it focus
+
+A launcher on a bar starts programs, and a compositor that guards against focus stealing
+(KWin does) keeps the new window in the background unless the launcher passes it an
+activation token. Ask for one from the handler of the click or key that launches, and start
+the program with it in `XDG_ACTIVATION_TOKEN`:
+
+```python
+import os, subprocess
+
+def launch(command):
+    def go(token):
+        env = dict(os.environ, **({"XDG_ACTIVATION_TOKEN": token} if token else {}))
+        subprocess.Popen(command, env=env)
+    bar.request_activation_token(go, app_id="org.example.app")  # or any Window
+
+button.on("click", lambda e: launch(["firefox"]))
+```
+
+`callback` runs on the loop's thread, with the token, or with `None` when there is none to
+give (the compositor has no `xdg_activation_v1`, the window is not open, or the request
+failed): launch without it then. The token names the last pointer press, key press or touch
+of this app, which is what the compositor checks, so a request made long after the click is
+refused. It works on a `Window` and a `LayerWindow`; `app_id` (the launched app's id, a
+desktop-file name) is used for a `LayerWindow` only. Linux only (Wayland and X11); elsewhere
+the callback gets `None`.
+
 ## In tests
 
 A `LayerWindow` is a `Window`, so `simulate`, `advance` and `snapshot` work with no

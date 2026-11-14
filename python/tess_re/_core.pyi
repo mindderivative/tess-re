@@ -492,6 +492,18 @@ class Window:
         tick missed because the loop was busy is skipped, not replayed. An
         exception in `fn` is logged and the timer goes on."""
         ...
+    def request_activation_token(
+        self, callback: Callable[[str | None], object], app_id: str | None = None
+    ) -> None:
+        """(unreleased, T-051) Asks the system for an activation token (`xdg_activation_v1` on
+        Wayland, a startup-notification id on X11) and calls `callback(token)` on the loop's
+        thread when it comes: `callback(None)` when there is none to give (no such protocol,
+        the window not open, not Linux, or the request failed). Start the app you launch with
+        `XDG_ACTIVATION_TOKEN` set to the token and the compositor can focus its window. Ask
+        from the handler of the click or key that launches: the token names the last input of
+        this app and a compositor ignores a stale one. `app_id` names the app being launched
+        (a `LayerWindow` only). Works on a `Window` and a `LayerWindow`."""
+        ...
     def minimize(self) -> None:
         """(0.5.0) Minimizes the window -- or, before `App.run()`, opens it
         minimized."""

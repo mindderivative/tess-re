@@ -193,6 +193,11 @@ monitor (HDMI-A-1). Each command opens windows.
 | Synthetic input | `test_layer_window_live.py` (3 marked `live_input`) | `/dev/uinput` makes a system-wide device the **real** compositor reads: it moves the real pointer, clicks and types on your session. A private sway does not read it, so they must never run unattended or in CI | `TESS_RE_ALLOW_REAL_SESSION=1 TESS_RE_LIVE_INPUT=1 .venv/bin/python -m pytest tests/test_layer_window_live.py -q -rs -k "real_pointer or keyboard_none or negative_margin"` (watch the screen; keep other windows closed) |
 | Benchmark | `test_virtual_list_benchmark.py` (1) | a timing run, opt-in by design | `TESS_RE_ALLOW_REAL_SESSION=1 TESS_RE_RUN_BENCHMARK=1 .venv/bin/python -m pytest tests/test_virtual_list_benchmark.py -v -s` |
 
+One more check is the maintainer's by hand, and has no test: whether KWin actually **focuses** a window launched with
+a token from `request_activation_token` (the token round-trip itself is tested in `tests/test_activation_token.py`).
+Launch an app from a `LayerWindow` button with the token in `XDG_ACTIVATION_TOKEN` and see that its window is
+focused, then without the token and see that KWin holds it back.
+
 These 13 are an explicit exception to "every test runs somewhere automatically": run them by hand and
 say in the release notes that you did, with the machine's GPU and compositor.
 

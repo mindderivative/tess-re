@@ -305,6 +305,12 @@ pub enum InputEvent {
     Occluded {
         occluded: bool,
     },
+    /// T-051: the OS answered `Window.request_activation_token` with this token
+    /// (`winit::WindowEvent::ActivationTokenDone`). `Tree::dispatch` ignores it; `engine-py`
+    /// hands it to the callback that asked.
+    ActivationToken {
+        token: String,
+    },
     /// M32 Phase 2 (§4, §5): the OS-level window client area genuinely
     /// changed size -- `winit::WindowEvent::Resized`, translated in
     /// `engine-platform`, in the same window-client-pixel space every

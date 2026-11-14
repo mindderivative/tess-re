@@ -300,6 +300,12 @@ where
                     self.notice(wid, token, LayerNotice::MarginMoved(margin));
                 }
             }
+            LayerEvent::ActivationToken { id, request, token } => {
+                let wid = window_id(id);
+                if let Some(token_id) = self.layers.get(&wid).map(|l| l.token) {
+                    self.notice(wid, token_id, LayerNotice::ActivationToken(request, token));
+                }
+            }
             LayerEvent::Warning { id, key, message } => {
                 let wid = window_id(id);
                 if let Some(token) = self.layers.get(&wid).map(|l| l.token) {

@@ -1570,6 +1570,15 @@ where
             // 0.5.10 (#246): fully hidden or showing again (X11 and macOS only; Wayland has no
             // such event and is paced by frame callbacks, see `pre_present_notify`). A window
             // that shows again draws at once.
+            // T-051: the answer to `request_activation_token` on the window.
+            WindowEvent::ActivationTokenDone { token, .. } => {
+                on_input(
+                    window_id,
+                    InputEvent::ActivationToken {
+                        token: token.into_raw(),
+                    },
+                );
+            }
             WindowEvent::Occluded(occluded) => {
                 on_input(window_id, InputEvent::Occluded { occluded });
                 if !occluded {
