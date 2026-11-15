@@ -974,7 +974,9 @@ class LayerWindow(Window):
         ...
     def close(self) -> None:
         """Closes the surface on the loop's next turn: `close_requested` first (a listener may
-        cancel it with `event.cancel()`), then `closed` with reason `"app"`."""
+        cancel it with `event.cancel()`), then `closed` with reason `"app"`. Called before the
+        compositor has made the surface (the app running, the surface not yet configured), the close is
+        remembered and made the moment it exists, so the surface never lingers (unreleased, TRE-REQ-019)."""
         ...
 
 @final
@@ -1052,7 +1054,9 @@ class PopupWindow(Window):
         ...
     def close(self) -> None:
         """Closes the popup on the loop's next turn: `close_requested` first, then `closed` with
-        reason `"app"`."""
+        reason `"app"`. Called before the compositor has placed the popup (in the same loop turn as
+        `App.add_window`, say), the close is remembered and made when it is placed: the popup never
+        stays on screen with no owner, and a second `close()` is harmless (unreleased, TRE-REQ-019)."""
         ...
 
 @final

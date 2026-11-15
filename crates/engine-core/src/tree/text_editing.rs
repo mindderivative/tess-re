@@ -503,7 +503,9 @@ impl Tree {
             // defocuses before per-element delivery" precedent, so Tab
             // capture never traps the keyboard.
             Key::Tab => {
-                if state.multiline {
+                // `tab_navigates` (T-018): Tab leaves a multi-line input too, so a keyboard user
+                // is not held in the field. `None` is "not mine": focus traversal takes it.
+                if state.multiline && !state.tab_navigates {
                     if state.fit("\t").is_empty() {
                         return Some(DispatchOutcome::None);
                     }

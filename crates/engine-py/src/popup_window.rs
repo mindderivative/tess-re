@@ -355,16 +355,16 @@ impl PyPopupWindow {
     }
 
     /// Closes the popup: `close_requested` first (a listener may cancel it), then `closed` with
-    /// reason `"app"`. It happens on the loop's next turn.
+    /// reason `"app"`. It happens on the loop's next turn. Called before the compositor has placed
+    /// the popup, the close is remembered and made when it is: the popup never stays on screen.
     fn close(slf: &Bound<'_, Self>) {
         #[cfg(target_os = "linux")]
         {
             let base = slf.as_super().borrow();
             if let (Some(layer), Some(waker)) =
                 (&base.handles.layer, base.handles.waker.borrow().as_ref())
-                && let Some(id) = layer.id.get()
             {
-                waker.close_window(engine_platform::layer_window_id(id));
+                layer.close(waker);
             }
         }
         #[cfg(not(target_os = "linux"))]

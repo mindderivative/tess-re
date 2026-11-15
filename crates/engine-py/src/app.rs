@@ -1224,6 +1224,12 @@ impl App {
                                 opened,
                             );
                             handles.tree.borrow_mut().mark_dirty();
+                            // `close()` came before this surface existed (TRE-REQ-019): do it now.
+                            if layer.close_early.take()
+                                && let Some(waker) = handles.waker.borrow().as_ref()
+                            {
+                                waker.close_window(window_id);
+                            }
                             layer.last_configure.set(Some((
                                 (width * 1000.0).round() / 1000.0,
                                 (height * 1000.0).round() / 1000.0,

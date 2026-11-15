@@ -206,3 +206,12 @@ without asking for it.
   `xdg_activation_v1` token and starts the program it launches with `XDG_ACTIVATION_TOKEN` set to it, so the
   compositor focuses the new window. Works on a `Window` and a `LayerWindow`; the callback gets the token, or `None`.
   See [Launching an app and giving it focus](guide/bars-and-panels.md#launching-an-app-and-giving-it-focus).
+
+- **`tab_navigates` on a multiline `text_input` (T-018, TRE-REQ-018, new, nothing to migrate).** Set it and Tab and
+  Shift+Tab move focus out of the input instead of typing a tab character, as from a single-line input. Off by
+  default, so every existing multiline input behaves as before. See [Text input](guide/text.md#text-input).
+- **A popup or layer window closed before it is placed now closes (T-019, TRE-REQ-019, a fix).** `close()` called in the
+  same loop turn as `App.add_window`, before the compositor's first configure, used to be ignored: the surface appeared
+  and stayed, and neither `close_requested` nor `closed` came. The close is now remembered and made when the surface
+  exists, with the same events (`closed`, reason `"app"`). Code that worked around it by guarding its own close can
+  drop the guard.
