@@ -159,7 +159,7 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 | `off(event: str) -> None` | Removes the window's listener for `event`, if any. |
 | `on(event: str, handler: Callable[..., object]) -> None` | Registers `handler` for a window event. |
 | `read_clipboard() -> str \| None` | Returns the OS clipboard's text, or `None` when there is none or it can't be reached. |
-| `request_activation_token(callback: Callable[[str \| None], object], app_id: str \| None=None) -> None` | (unreleased, T-051) Asks the system for an activation token (`xdg_activation_v1` on Wayland, a startup-notification id on X11)… |
+| `request_activation_token(callback: Callable[[str \| None], object], app_id: str \| None=None) -> None` | Asks the system for an activation token (`xdg_activation_v1` on Wayland, a startup-notification id on X11) and calls… |
 | `resize(width: int, height: int) -> None` | Sets the window's size from code; the root's layout box follows. |
 | `restore() -> None` | Restores a minimized or maximized window to its normal size; before `App.run()`, undoes `minimize()`/`maximize()`. |
 | `set(*, title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded) -> None` | Sets window properties by name, all at once; a bad value raises and changes nothing. |
@@ -345,7 +345,7 @@ A handle to one node in a window's tree: properties, animation, events, structur
 | `font_family`, `font_weight`, `font_size` | name / 1–1000 / pixels | Font. |
 | `line_height`, `text_align`, `font_style`, `letter_spacing`, `wrap`, `max_lines`, `overflow` | see the text guide | Text layout (`text` nodes). |
 | `multiline`, `selection`, `show_whitespace`, `syntax_spans`, `folded_ranges` | — | Text input editing and decoration. |
-| `tab_navigates` (text input) | `bool` | Tab and Shift+Tab move focus out of a multiline input instead of typing a tab character (unreleased, TRE-REQ-018). Off by default. |
+| `tab_navigates` (text input) | `bool` | Tab and Shift+Tab move focus out of a multiline input instead of typing a tab character (0.6.8). Off by default. |
 | `overwrite` (text input) | `bool` | Overwrite mode: a typed character replaces the one after the caret; Insert toggles it (0.6.7). |
 | `wrap`, `overflow` (text input) | `"word"`/`"none"`; `"scroll"`/`"ellipsis"`/`"clip"`; or `None` | How a text input shows a long line: `wrap` for a multiline input, `overflow` for a single-line one; `None` is as before (0.6.6). |
 | `placeholder`, `placeholder_fill`, `caret_color`, `selection_fill`, `obscured` | — | Text input colors and password mode. |

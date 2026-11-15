@@ -2,6 +2,12 @@
 
 ## Status
 
+**0.6.8 (2026-11-15, branch `0.6.8`; not tagged or released until the maintainer says so):** `Window.request_activation_token(callback, app_id=None)` on `Window` and `LayerWindow` (T-051) so a launcher can pass `XDG_ACTIVATION_TOKEN` to the app it starts;
+`tab_navigates` on a multiline `text_input` (TRE-REQ-018) so Tab leaves it; fixes: `set(text=X)` with the text already held keeps the caret and selection (T-037), and a `PopupWindow` or `LayerWindow` closed before the compositor
+made it now closes (TRE-REQ-019). The rest of the release is test and CI work (the `live-sway` job, the real-session guard, SHA-pinned workflows). Verified on Linux: `cargo test --workspace` 850/0, full pytest in a private
+headless sway 1574 passed and 13 skipped (the hand-run set), the token round-trip and the deferred close in sway 1.12; CI full tier on the release PR. Not verified: KWin (does it focus a launched app; does the popup close),
+the X11 token path, macOS, Windows (#187, #188), a real IME.
+
 **0.6.7 released (2026-11-11, PR #289, tag `v0.6.7` on `8e57a6ab`, PyPI `tesserae-engine==0.6.7`; installed in a clean Linux venv: row keys, Ctrl+Shift+End, Insert overwrite with its event and a double click all work headless):** a text input's caret keys by visual row (multiline with a `wrap`), Ctrl word and edge keys,
 the Insert key with an `overwrite` mode and `overwrite_change` event, and double and triple click selection (TRE-REQ-017). Behavior
 changes in every text input: Ctrl+Left/Right/Backspace/Delete go by word, Ctrl+Home/End by the whole text, two quick clicks select a word.

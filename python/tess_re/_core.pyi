@@ -495,7 +495,7 @@ class Window:
     def request_activation_token(
         self, callback: Callable[[str | None], object], app_id: str | None = None
     ) -> None:
-        """(unreleased, T-051) Asks the system for an activation token (`xdg_activation_v1` on
+        """(0.6.8) Asks the system for an activation token (`xdg_activation_v1` on
         Wayland, a startup-notification id on X11) and calls `callback(token)` on the loop's
         thread when it comes: `callback(None)` when there is none to give (no such protocol,
         the window not open, not Linux, or the request failed). Start the app you launch with
@@ -976,7 +976,7 @@ class LayerWindow(Window):
         """Closes the surface on the loop's next turn: `close_requested` first (a listener may
         cancel it with `event.cancel()`), then `closed` with reason `"app"`. Called before the
         compositor has made the surface (the app running, the surface not yet configured), the close is
-        remembered and made the moment it exists, so the surface never lingers (unreleased, TRE-REQ-019)."""
+        remembered and made the moment it exists, so the surface never lingers (0.6.8, TRE-REQ-019)."""
         ...
 
 @final
@@ -1056,7 +1056,7 @@ class PopupWindow(Window):
         """Closes the popup on the loop's next turn: `close_requested` first, then `closed` with
         reason `"app"`. Called before the compositor has placed the popup (in the same loop turn as
         `App.add_window`, say), the close is remembered and made when it is placed: the popup never
-        stays on screen with no owner, and a second `close()` is harmless (unreleased, TRE-REQ-019)."""
+        stays on screen with no owner, and a second `close()` is harmless (0.6.8, TRE-REQ-019)."""
         ...
 
 @final
