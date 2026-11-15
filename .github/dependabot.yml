@@ -1,0 +1,8 @@
+# Keeps the SHA-pinned actions in .github/workflows current: one pull request a week for every action with a new release.
+# Each is reviewed and merged like any other change; nothing here publishes anything.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
