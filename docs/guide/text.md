@@ -250,7 +250,7 @@ field.on("change", lambda e: validate(e.new_value))
 | `text` | the content; setting it fires no `change` |
 | `placeholder`, `placeholder_fill` | the hint shown while it's empty |
 | `multiline` | Enter inserts a newline, and Tab a tab character |
-| `tab_navigates` | (unreleased) a multiline input: `True` makes Tab and Shift+Tab move focus out of it, typing nothing, as they do from a single-line input; `False` (the default) keeps Tab as indentation. A keyboard user is otherwise held in the field, with Escape the only way out |
+| `tab_navigates` | (0.6.8) a multiline input: `True` makes Tab and Shift+Tab move focus out of it, typing nothing, as they do from a single-line input; `False` (the default) keeps Tab as indentation. A keyboard user is otherwise held in the field, with Escape the only way out |
 | `wrap` | (0.6.6) a multiline input: `"word"` breaks lines at its width, `"none"` keeps each line whole and scrolls sideways; `None` (the default) is as before. See [Long lines](#long-lines-in-a-text-input-066) |
 | `overflow` | (0.6.6) a single-line input: `"scroll"`, `"ellipsis"` or `"clip"` for a line longer than the box, which then stays one line; `None` (the default) is as before |
 | `selection` | `(start, end)` as UTF-8 byte offsets; equal ends are a caret |

@@ -195,7 +195,9 @@ without asking for it.
   its 0.6.6 Up, Down, Home, End and Page keys. See
   [Keys, rows and clicks](guide/text.md#keys-rows-and-clicks-in-a-text-input-067).
 
-## After 0.6.7 (unreleased)
+## 0.6.8 (2026-11-15)
+
+Nothing you have written breaks. A new text-input property, a new launcher call, and two fixes:
 
 - **Setting a text input's `text` to the text it already holds changes nothing (T-037).** It used to move the caret to
   the end and drop the selection, so a framework that binds `text` two-way and sets it again after every keystroke
