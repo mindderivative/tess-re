@@ -2007,7 +2007,8 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
         overflow,
         follow_stamp: _, // bookkeeping, not paint
         overwrite,
-        goal_x: _, // where a vertical run holds the caret, not what is drawn
+        tab_navigates: _, // what Tab does, not what is drawn
+        goal_x: _,        // where a vertical run holds the caret, not what is drawn
     } = state;
     caret_visible.hash(h);
     caret_width.to_bits().hash(h);

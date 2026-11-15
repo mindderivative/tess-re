@@ -97,6 +97,9 @@ pub(crate) struct LayerState {
     pub(crate) popup: Option<PopupSpec>,
     /// Where the compositor last placed a popup, in its parent's coordinates (logical px).
     pub(crate) popup_position: Cell<Option<(i32, i32)>>,
+    /// `close()` was called while the app runs but before the compositor made the surface: the
+    /// close is carried out as soon as it exists (T-019, TRE-REQ-019).
+    pub(crate) close_early: Cell<bool>,
 }
 
 /// A `PopupWindow`'s placement, and the parent it hangs off.
@@ -106,6 +109,16 @@ pub(crate) struct PopupSpec {
 }
 
 impl LayerState {
+    /// Closes the surface on the loop's next turn (`close_requested`, then `closed`, reason
+    /// `"app"`). Before the surface exists the close is remembered and made when it does.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn close(&self, waker: &engine_platform::EventLoopWaker) {
+        match self.id.get() {
+            Some(id) => waker.close_window(engine_platform::layer_window_id(id)),
+            None => self.close_early.set(true),
+        }
+    }
+
     /// The state of a `PopupWindow`: the layer settings are unused, the `popup` field is filled in.
     pub(crate) fn new_popup() -> Self {
         Self::new(
@@ -233,6 +246,7 @@ impl LayerState {
             motion: RefCell::new([0, 1, 2, 3].map(|_| Animated::new(0.0))),
             popup: None,
             popup_position: Cell::new(None),
+            close_early: Cell::new(false),
             closed_reason: RefCell::new(None),
             pending_warnings: RefCell::new(warnings),
             #[cfg(target_os = "linux")]
@@ -780,16 +794,17 @@ impl PyLayerWindow {
 
     /// Closes the surface: `close_requested` first (a listener may cancel it with
     /// `event.cancel()`), then `closed` with reason `"app"`. It happens on the loop's next
-    /// turn. A window that is not open has nothing to close.
+    /// turn. Called before the compositor has made the surface (the app running, the surface not
+    /// yet configured), the close is remembered and made the moment it exists, so the surface
+    /// never lingers. Called before `App.run()`, there is nothing to close.
     fn close(slf: &Bound<'_, Self>) {
         #[cfg(target_os = "linux")]
         {
             let base = slf.as_super().borrow();
             if let (Some(layer), Some(waker)) =
                 (&base.handles.layer, base.handles.waker.borrow().as_ref())
-                && let Some(id) = layer.id.get()
             {
-                waker.close_window(engine_platform::layer_window_id(id));
+                layer.close(waker);
             }
         }
         #[cfg(not(target_os = "linux"))]

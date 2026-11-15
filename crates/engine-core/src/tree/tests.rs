@@ -4003,6 +4003,23 @@ fn tab_on_a_multiline_field_inserts_a_real_tab_character_instead_of_moving_focus
     );
 }
 
+/// T-018 (TRE-REQ-018): with `tab_navigates` a multiline field does not claim `Tab`: nothing is
+/// typed, the field is not reported as changed, and focus traversal takes the key.
+#[test]
+fn tab_on_a_multiline_field_with_tab_navigates_types_nothing() {
+    let (mut tree, root, field) = multiline_field_scene("ab");
+    let NodeKind::TextField(state) = &mut tree.get_mut(field).unwrap().kind else {
+        panic!("expected a TextField node");
+    };
+    state.tab_navigates = true;
+    let outcome = dispatch_key(&mut tree, root, Key::Tab);
+    assert!(
+        !matches!(outcome, DispatchOutcome::Changed { .. }),
+        "Tab must not edit a field that asked to be left: {outcome:?}"
+    );
+    assert_eq!(field_state(&tree, field).content, "ab");
+}
+
 #[test]
 fn tab_on_a_multiline_field_with_a_real_selection_replaces_it_instead_of_inserting_beside_it() {
     // The same real `delete_selection`-then-insert shape `Space`/

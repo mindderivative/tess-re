@@ -728,6 +728,9 @@ pub struct TextFieldState {
     /// #288: overwrite mode (the Insert key toggles it): a typed character replaces the one
     /// after the caret instead of being added before it. Off by default.
     pub overwrite: bool,
+    /// T-018 (TRE-REQ-018): Tab and Shift+Tab move focus out of a multi-line input instead of
+    /// typing a tab character, as they do from a single-line one. Off by default.
+    pub tab_navigates: bool,
     /// #288: the x (in pixels along the text) Up, Down, Page Up and Page Down hold across a run
     /// of vertical moves, so passing a short row does not lose the column. `None` between runs.
     pub goal_x: Option<f32>,
@@ -927,6 +930,7 @@ impl TextFieldState {
             overflow: None,
             follow_stamp: 0,
             overwrite: false,
+            tab_navigates: false,
             goal_x: None,
             obscured: false,
         }
