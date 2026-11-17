@@ -144,6 +144,7 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 | `add_dock_zone(side: str, container: Node, size: float) -> None` | Registers `container` as the dock zone for `side`. |
 | `advance(ms: float) -> None` | Moves the window's clock forward by `ms`, running animations, callbacks and layout. |
 | `after(ms: float, fn: Callable[[], object]) -> TimerHandle` | Calls `fn` once, `ms` milliseconds from now, on the loop's thread. |
+| `announce(text: str, politeness: str='polite') -> None` | (unreleased, TRE-REQ-021) Raises one live announcement for this window through the accessibility tree, with no node of yours: a… |
 | `apply(changes: Sequence[tuple[Node, dict[str, Any]]]) -> None` | Changes properties on many nodes in one call: a sequence of `(node, props)` pairs, each `props` what `node.set(**props)` takes. |
 | `build(spec: dict[str, Any]) -> tuple[Node, dict[str, Node]]` | Makes a whole detached subtree from one nested description and returns `(root, nodes)`: the root and a dict of every node that… |
 | `center() -> bool` | Centres the open window on its monitor. |

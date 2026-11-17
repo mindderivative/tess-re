@@ -842,6 +842,33 @@ impl PyWindow {
         Ok(())
     }
 
+    /// TRE-REQ-021: raises one live announcement for this window through the accessibility
+    /// tree, with no node of the caller's, so a screen reader reads `text`. `politeness` is
+    /// `"polite"` (waits for the reader to finish) or `"assertive"` (interrupts). It works for a
+    /// hidden module and for a message said twice running; removing duplicates is the caller's
+    /// job. Nothing is heard unless a screen reader is connected.
+    #[pyo3(signature = (text, politeness="polite"))]
+    fn announce(&self, text: &str, politeness: &str) -> PyResult<()> {
+        let assertive = match politeness {
+            "polite" => false,
+            "assertive" => true,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "announce: politeness must be \"polite\" or \"assertive\", not {other:?}"
+                )));
+            }
+        };
+        if text.trim().is_empty() {
+            return Err(PyValueError::new_err("announce: text must not be empty"));
+        }
+        self.handles.tree.borrow_mut().announce(text, assertive);
+        // An update follows a drawn frame: wake a running loop to draw one.
+        if let Some(waker) = self.handles.waker.borrow().as_ref() {
+            waker.wake();
+        }
+        Ok(())
+    }
+
     /// 0.5.0 M2 (issue #28): minimizes the window -- once `App.run()` opens
     /// it, if it isn't open yet.
     fn minimize(&self) {

@@ -49,6 +49,38 @@ def available():
     return bool(shutil.which("dbus-daemon") and shutil.which("busctl") and os.path.exists(REGISTRYD))
 
 
+class SignalLog:
+    """What a `busctl monitor` printed. `busctl` buffers its output when piped and writes it when it
+    exits, so reading stops the monitor first: call `lines()` or `announcements()` once, at the end."""
+
+    def __init__(self, process):
+        self._process = process
+        self._lines = None
+
+    def lines(self):
+        if self._lines is None:
+            self._process.terminate()
+            try:
+                out, _ = self._process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                out, _ = self._process.communicate()
+            self._lines = [line.strip() for line in out.splitlines()]
+        return list(self._lines)
+
+    def announcements(self):
+        """`[(text, politeness), ...]` of the `Announcement` signals so far (1 polite, 2 assertive)."""
+        out = []
+        for line in self.lines():
+            try:
+                data = json.loads(line)["payload"]["data"]
+            except (ValueError, KeyError, TypeError):
+                continue
+            if len(data) >= 4 and isinstance(data[3], dict) and data[3].get("type") == "s":
+                out.append((data[3]["data"], data[1]))
+        return out
+
+
 class AtspiEnvironment:
     def __init__(self):
         self.dir = tempfile.mkdtemp(prefix="tre-atspi-")
@@ -127,6 +159,17 @@ class AtspiEnvironment:
             for child_destination, child_path in self.children(destination, path):
                 out += self.tree(child_destination, child_path, depth + 1, limit)
         return out
+
+    def monitor(self, member):
+        """Starts listening on the a11y bus for the `org.a11y.atspi.Event.Object` signal `member`
+        (`Announcement`, say). Returns a `SignalLog`: its `.lines()` are the JSON of each one so far."""
+        process = subprocess.Popen(
+            ["busctl", "--address=" + self.a11y, "--json=short", "monitor", "--match",
+             f"type='signal',interface='org.a11y.atspi.Event.Object',member='{member}'"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        )
+        self.processes.append(process)
+        return SignalLog(process)
 
     def close(self):
         for process in reversed(self.processes):
