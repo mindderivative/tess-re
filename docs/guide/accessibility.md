@@ -127,7 +127,7 @@ A live node announces only when its name changes or when it enters the tree. So 
 cannot say that the last window closed once its module is hidden, it says nothing the
 second time the same message comes, and two nodes with one message say it twice.
 `window.announce(text, politeness="polite")` raises one announcement for the window with
-no node of yours (unreleased, TRE-REQ-021):
+no node of yours (0.6.9):
 
 ```python
 bar.announce("Connected")                       # polite: waits for the reader to finish

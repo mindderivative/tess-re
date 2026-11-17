@@ -505,7 +505,7 @@ class Window:
         (a `LayerWindow` only). Works on a `Window` and a `LayerWindow`."""
         ...
     def announce(self, text: str, politeness: str = "polite") -> None:
-        """(unreleased, TRE-REQ-021) Raises one live announcement for this window through the accessibility
+        """(0.6.9, TRE-REQ-021) Raises one live announcement for this window through the accessibility
         tree, with no node of yours: a screen reader reads `text`. `politeness` is `"polite"` (waits for the
         reader to finish) or `"assertive"` (interrupts). It works for a hidden module and for the same
         message twice running, which a live node cannot do (its name does not change); each call is
