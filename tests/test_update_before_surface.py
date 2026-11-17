@@ -6,7 +6,8 @@ without keyboard focus. The stored configuration is now sent as soon as the surf
 it was made.
 
 The child runs with `WAYLAND_DEBUG=1`, and the test reads the requests the new surface sent. Needs a
-Wayland compositor with the layer shell: runs in a private sway (`tools/sway_live.sh`).
+Wayland compositor with the layer shell: runs in a private sway (`tools/sway_live.sh`). libwayland prints an
+object as `name#id` or `name@id` depending on its version (CI's is older than a rolling distro's), so both are read.
 """
 
 import os
@@ -54,7 +55,7 @@ def run(change, read):
     )
     got = next((line[4:] for line in done.stdout.splitlines() if line.startswith("GET ")), None)
     made = re.search(
-        r'get_layer_surface\(new id zwlr_layer_surface_v1#(\d+), wl_surface#(\d+), [^"]*"update-early"\)',
+        r'get_layer_surface\(new id zwlr_layer_surface_v1[#@](\d+), wl_surface[#@](\d+), [^"]*"update-early"\)',
         done.stderr,
     )
     assert made, done.stderr[-2000:]
@@ -65,14 +66,14 @@ def run(change, read):
 def test_a_keyboard_mode_set_before_the_surface_exists_reaches_the_compositor():
     got, layer, _, trace = run('late.set(keyboard="exclusive")', 'late.get("keyboard")')
     assert got == "exclusive"
-    modes = re.findall(rf"zwlr_layer_surface_v1#{layer}\.set_keyboard_interactivity\((\d)\)", trace)
+    modes = re.findall(rf"zwlr_layer_surface_v1[#@]{layer}\.set_keyboard_interactivity\((\d)\)", trace)
     assert modes and modes[-1] == "1", modes  # exclusive, and last
 
 
 def test_an_input_region_set_before_the_surface_exists_reaches_the_compositor():
     got, _, surface, trace = run("late.set(input_region=[(0, 0, 10, 10)])", 'late.get("input_region")')
     assert got is not None
-    regions = re.findall(rf"wl_surface#{surface}\.set_input_region\(([^)]*)\)", trace)
+    regions = re.findall(rf"wl_surface[#@]{surface}\.set_input_region\(([^)]*)\)", trace)
     assert regions and regions[-1].startswith("wl_region"), regions  # a rectangle, not "nil", and last
 
 
@@ -80,5 +81,5 @@ def test_several_sets_before_the_surface_exists_arrive_as_the_last_one():
     _, layer, _, trace = run(
         'late.set(keyboard="exclusive"); late.set(keyboard="on_demand")', 'late.get("keyboard")'
     )
-    modes = re.findall(rf"zwlr_layer_surface_v1#{layer}\.set_keyboard_interactivity\((\d)\)", trace)
+    modes = re.findall(rf"zwlr_layer_surface_v1[#@]{layer}\.set_keyboard_interactivity\((\d)\)", trace)
     assert modes and modes[-1] == "2", modes  # on_demand
