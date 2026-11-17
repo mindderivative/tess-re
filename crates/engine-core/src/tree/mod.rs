@@ -73,6 +73,8 @@ pub enum LayoutAnimError {
 
 pub struct Tree {
     nodes: Nodes,
+    /// TRE-REQ-021: announcements waiting to be raised by the next accessibility update.
+    announcements: std::cell::RefCell<access::Announcements>,
     /// 0.5.8 (#198): whether a node may be a window drag region. `false` for the tree
     /// of a layer surface, which the compositor places: there is no window to move.
     window_drag_allowed: bool,
@@ -243,6 +245,7 @@ impl Tree {
     pub fn new() -> Self {
         Self {
             nodes: Nodes::new(),
+            announcements: Default::default(),
             window_drag_allowed: true,
             margin_drag_allowed: false,
             layout_epoch: 0,

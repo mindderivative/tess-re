@@ -217,3 +217,15 @@ Nothing you have written breaks. A new text-input property, a new launcher call,
   and stayed, and neither `close_requested` nor `closed` came. The close is now remembered and made when the surface
   exists, with the same events (`closed`, reason `"app"`). Code that worked around it by guarding its own close can
   drop the guard.
+
+## After 0.6.8 (unreleased)
+
+- **`Window.announce(text, politeness="polite")` (TRE-REQ-021, new, nothing to migrate).** Raises one live announcement
+  for a window through the accessibility tree with no node, on a `Window`, a `LayerWindow` and a `PopupWindow`. It works
+  for a hidden module and for a repeated message, which a live node cannot do. A shell that announces through a hidden
+  1x1 live box can use it instead. See [Announcing without a node](guide/accessibility.md#announcing-without-a-node).
+- **A `LayerWindow.set(...)` made before the surface exists is now applied (TRE-REQ-020, a fix).** `set()` right after
+  `App.add_window`, before the surface was created, was stored and read back by `get()` but never sent to the
+  compositor: a launcher's `keyboard="exclusive"` could be lost, and so could an `input_region`, margin, anchor, size or
+  exclusive zone. The stored configuration is now sent as soon as the surface exists, in the order it was made. Code
+  that sends the setting again at the first `configure` to work around it can drop that.

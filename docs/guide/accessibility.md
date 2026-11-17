@@ -121,6 +121,27 @@ announces changes to it — a snackbar's message, a form's error. `a11y_hidden`
 hides a node from assistive technology while it stays on screen, for purely
 decorative parts; `visible=False` hides it from everyone.
 
+### Announcing without a node
+
+A live node announces only when its name changes or when it enters the tree. So it
+cannot say that the last window closed once its module is hidden, it says nothing the
+second time the same message comes, and two nodes with one message say it twice.
+`window.announce(text, politeness="polite")` raises one announcement for the window with
+no node of yours (unreleased, TRE-REQ-021):
+
+```python
+bar.announce("Connected")                       # polite: waits for the reader to finish
+bar.announce("Battery critical", "assertive")   # assertive: interrupts
+bar.announce("Connected")                       # said again: a new call is a new announcement
+```
+
+Each call is one announcement, so removing duplicates is yours. It works on a `Window`, a
+`LayerWindow` and a `PopupWindow`, and for a module that is hidden from the accessibility tree.
+An empty text or any politeness other than `"polite"` and `"assertive"` raises `ValueError`.
+Nothing is heard unless a screen reader is connected, and the message is raised with the next
+frame the window draws. It has been checked against AT-SPI's `Announcement` signal on a private
+bus; it has not been tried with Orca, NVDA or VoiceOver.
+
 ## Testing
 
 `window.simulate("a11y_action", node=..., action=..., value=...)` sends an

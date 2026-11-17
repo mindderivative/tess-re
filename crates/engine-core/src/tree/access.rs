@@ -2,7 +2,64 @@
 
 use super::*;
 
+/// TRE-REQ-021: the messages `Window.announce` has raised and the update has not carried yet.
+///
+/// AccessKit has no announce call: a screen reader hears a live node when its name changes or
+/// when it enters the tree. So each message becomes a node of its own, a live group child of the
+/// root with no bounds and no place in the layout, present in exactly one update and gone from
+/// the next. A fresh node for every message is what makes a repeated text announce again, and it
+/// hangs off the root, not off a module, so a hidden module can still be heard.
+#[derive(Default)]
+pub(super) struct Announcements {
+    next: u64,
+    pending: Vec<Announcement>,
+}
+
+struct Announcement {
+    id: u64,
+    text: String,
+    live: accesskit::Live,
+    /// Carried by an update already: removed by the next one.
+    sent: bool,
+}
+
+/// Bit 62 marks the id of an announcement node: a real node's slot version never gets that large,
+/// and bit 63 is the text parts'.
+const ANNOUNCEMENT: u64 = 1 << 62;
+/// A reader that never connects must not make the queue grow without bound.
+const MAX_PENDING: usize = 16;
+
 impl Tree {
+    /// TRE-REQ-021: raises one live announcement through the accessibility tree, with no node of
+    /// the caller's. Assertive interrupts; polite waits its turn. The next update carries it.
+    pub fn announce(&mut self, text: &str, assertive: bool) {
+        {
+            let mut queue = self.announcements.borrow_mut();
+            queue.next += 1;
+            let id = queue.next;
+            let live = if assertive {
+                accesskit::Live::Assertive
+            } else {
+                accesskit::Live::Polite
+            };
+            queue.pending.push(Announcement {
+                id,
+                text: text.to_string(),
+                live,
+                sent: false,
+            });
+            let excess = queue.pending.len().saturating_sub(MAX_PENDING);
+            queue.pending.drain(..excess);
+        }
+        // An update follows a drawn frame, so one must be drawn.
+        self.dirty = true;
+    }
+
+    /// Whether an announcement is waiting for an update (so the window wakes to send it).
+    pub fn has_pending_announcements(&self) -> bool {
+        self.announcements.borrow().pending.iter().any(|a| !a.sent)
+    }
+
     /// Builds a fresh `accesskit::TreeUpdate` from the current `Node`
     /// tree (§10: "built fresh... every frame, not maintained as a
     /// separate parallel structure that can drift out of sync"). `root`
@@ -15,6 +72,7 @@ impl Tree {
         let mut nodes = Vec::new();
         self.collect_access_nodes(root, 0.0, 0.0, &mut nodes);
         let root_id = to_access_id(root);
+        self.add_announcements(root_id, &mut nodes);
         let focus = self.focused.map(to_access_id).unwrap_or(root_id);
         accesskit::TreeUpdate {
             nodes,
@@ -22,6 +80,36 @@ impl Tree {
             tree_id: accesskit::TreeId::ROOT,
             focus,
         }
+    }
+
+    /// TRE-REQ-021: adds this update's announcement nodes under the root. Those an earlier update
+    /// carried are dropped first, so they leave the tree.
+    fn add_announcements(
+        &self,
+        root_id: accesskit::NodeId,
+        nodes: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        let mut queue = self.announcements.borrow_mut();
+        queue.pending.retain(|a| !a.sent);
+        if queue.pending.is_empty() {
+            return;
+        }
+        let mut made = Vec::new();
+        for a in &mut queue.pending {
+            // A group, whose name is its label: a label's comes from its value, and would be empty.
+            let mut node = accesskit::Node::new(accesskit::Role::Group);
+            node.set_label(a.text.clone());
+            node.set_live(a.live);
+            made.push((accesskit::NodeId(ANNOUNCEMENT | a.id), node));
+            a.sent = true;
+        }
+        let Some((_, root)) = nodes.iter_mut().find(|(id, _)| *id == root_id) else {
+            return;
+        };
+        let mut children = root.children().to_vec();
+        children.extend(made.iter().map(|(id, _)| *id));
+        root.set_children(children);
+        nodes.extend(made);
     }
 
     /// 0.5.4 (#102): [`build_access_update`](Self::build_access_update) with

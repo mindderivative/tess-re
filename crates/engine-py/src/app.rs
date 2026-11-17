@@ -1172,6 +1172,12 @@ impl App {
                             layer.scale.set(info.scale);
                             layer.id.set(Some(info.id));
                             *layer.controller.borrow_mut() = Some(info.controller.clone());
+                            // A `set()` made before this point (TRE-REQ-020) was only stored: tell the
+                            // surface now, in the order it was made, before anything later.
+                            if layer.update_early.take() {
+                                info.controller
+                                    .update(info.id, layer.config.borrow().clone());
+                            }
                             handles.refresh_scale();
                             let gpu = match GpuState::new(
                                 SurfaceSource::Layer {

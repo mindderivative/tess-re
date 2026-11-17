@@ -8723,3 +8723,111 @@ fn two_trees_sharing_an_animating_shader_both_draw_the_last_value() {
     assert!(!b.shader_frame_owed());
     assert!(!b.tick_all(t0 + Duration::from_millis(400)).0 && !b.take_dirty());
 }
+
+// ---- TRE-REQ-021: `Tree::announce` ------------------------------------------------------------
+
+type Announced = (accesskit::NodeId, String, accesskit::Live);
+
+fn announcement_nodes(update: &accesskit::TreeUpdate) -> Vec<Announced> {
+    update
+        .nodes
+        .iter()
+        .filter(|(id, _)| id.0 & (1 << 62) != 0)
+        .map(|(id, node)| {
+            (
+                *id,
+                node.label().unwrap_or_default().to_string(),
+                node.live().unwrap(),
+            )
+        })
+        .collect()
+}
+
+fn announce_scene() -> (Tree, NodeId) {
+    let mut tree = Tree::new();
+    let (_, style, paint) = leaf(200.0, 100.0);
+    let root = tree.insert(NodeKind::Container, style, paint);
+    tree.compute_layout(
+        root,
+        Size {
+            width: AvailableSpace::Definite(200.0),
+            height: AvailableSpace::Definite(100.0),
+        },
+    );
+    (tree, root)
+}
+
+#[test]
+fn an_announcement_is_one_live_node_under_the_root_in_exactly_one_update() {
+    let (mut tree, root) = announce_scene();
+    tree.announce("Connected", false);
+    assert!(tree.has_pending_announcements());
+    let first = tree.build_access_update(root);
+    let made = announcement_nodes(&first);
+    assert_eq!(made.len(), 1);
+    assert_eq!(
+        (made[0].1.as_str(), made[0].2),
+        ("Connected", accesskit::Live::Polite)
+    );
+    let (_, root_node) = first
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == to_access_id(root))
+        .unwrap();
+    assert!(
+        root_node.children().contains(&made[0].0),
+        "it hangs off the root"
+    );
+    assert!(
+        !tree.has_pending_announcements(),
+        "carried: nothing is waiting any more"
+    );
+    // The next update does not have it: AccessKit removes the node, so it is said once.
+    assert!(announcement_nodes(&tree.build_access_update(root)).is_empty());
+}
+
+#[test]
+fn the_same_text_twice_is_two_nodes_and_assertive_is_kept() {
+    let (mut tree, root) = announce_scene();
+    tree.announce("Connected", false);
+    let first = announcement_nodes(&tree.build_access_update(root));
+    tree.announce("Connected", false);
+    tree.announce("Battery low", true);
+    let second = announcement_nodes(&tree.build_access_update(root));
+    assert_eq!(
+        second.len(),
+        2,
+        "both pending messages ride the same update"
+    );
+    assert_ne!(
+        first[0].0, second[0].0,
+        "a repeated text is a new node, so it is heard again"
+    );
+    assert_eq!(second[1].2, accesskit::Live::Assertive);
+}
+
+#[test]
+fn an_announcement_does_not_need_any_module_to_be_visible() {
+    let (mut tree, root) = announce_scene();
+    let (_, style, paint) = leaf(10.0, 10.0);
+    let module = tree.insert(NodeKind::Container, style, paint);
+    tree.add_child(root, module);
+    tree.get_mut(module).unwrap().visible = false;
+    tree.announce("The last window closed", false);
+    assert_eq!(announcement_nodes(&tree.build_access_update(root)).len(), 1);
+}
+
+#[test]
+fn a_reader_that_never_connects_cannot_grow_the_queue_without_bound() {
+    let (mut tree, root) = announce_scene();
+    for i in 0..100 {
+        tree.announce(&format!("message {i}"), false);
+    }
+    let made = announcement_nodes(&tree.build_access_update(root));
+    assert_eq!(made.len(), 16);
+    assert_eq!(
+        made.last().unwrap().1,
+        "message 99",
+        "the newest are the ones kept"
+    );
+}

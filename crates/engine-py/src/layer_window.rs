@@ -100,6 +100,9 @@ pub(crate) struct LayerState {
     /// `close()` was called while the app runs but before the compositor made the surface: the
     /// close is carried out as soon as it exists (T-019, TRE-REQ-019).
     pub(crate) close_early: Cell<bool>,
+    /// `set()` changed the configuration while the surface id was not known yet, so the platform
+    /// thread never heard of it: the created hook sends the stored configuration (TRE-REQ-020).
+    pub(crate) update_early: Cell<bool>,
 }
 
 /// A `PopupWindow`'s placement, and the parent it hangs off.
@@ -247,6 +250,7 @@ impl LayerState {
             popup: None,
             popup_position: Cell::new(None),
             close_early: Cell::new(false),
+            update_early: Cell::new(false),
             closed_reason: RefCell::new(None),
             pending_warnings: RefCell::new(warnings),
             #[cfg(target_os = "linux")]
@@ -655,10 +659,10 @@ impl PyLayerWindow {
                 base.handles.tree.borrow_mut().mark_dirty();
             }
             #[cfg(target_os = "linux")]
-            if let (Some(controller), Some(id)) =
-                (state.controller.borrow().as_ref(), state.id.get())
-            {
-                controller.update(id, config.clone());
+            match (state.controller.borrow().as_ref(), state.id.get()) {
+                (Some(controller), Some(id)) => controller.update(id, config.clone()),
+                // The surface is being made: its creation did not see this change.
+                _ => state.update_early.set(true),
             }
             for (key, message) in warnings {
                 listeners::deliver_window(

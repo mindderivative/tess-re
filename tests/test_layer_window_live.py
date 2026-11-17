@@ -1210,6 +1210,50 @@ def test_a_plain_field_is_a_normal_text_input(children):
         method.close()
 
 
+ANNOUNCE_CHILD = """
+import json, os, threading, time
+from tess_re import App, LayerWindow
+app = App()
+bar = LayerWindow("announce-test", anchor=("top", "left", "right"), size=(0, 40), exclusive_zone=40, output=%r)
+bar.root.set(fill=(30, 30, 30, 255))
+# A module that is hidden from the accessibility tree: a node could not announce for it.
+hidden = bar.create("box", width=10, height=10, role="group", label="hidden module", a11y_hidden=True)
+bar.root.add_child(hidden)
+button = bar.create("box", width=80, height=28, fill=(232, 180, 76, 255), role="button", label="Save",
+                    focusable=True)
+bar.root.add_child(button)
+app.add_window(bar)
+handle = app.thread_handle()
+
+def announce_all():
+    time.sleep(8.0)  # the screen reader is connected by now
+    for text, politeness in (("Connected", "polite"), ("Connected", "polite"), ("Battery low", "assertive")):
+        handle.call_soon(lambda t=text, p=politeness: bar.announce(t, p))
+        time.sleep(1.5)
+    print(json.dumps({"kind": "announced"}), flush=True)
+    time.sleep(6)
+    os._exit(0)
+
+threading.Thread(
+    target=lambda: (time.sleep(2.0), print(json.dumps({"kind": "ready"}), flush=True), announce_all()), daemon=True
+).start()
+app.run()
+"""
+
+
+def test_announce_reaches_a_screen_reader_once_per_call_with_its_politeness(children, screen_reader):
+    log = screen_reader.monitor("Announcement")
+    name = next(iter(outputs()))
+    child = children(ANNOUNCE_CHILD % name, DBUS_SESSION_BUS_ADDRESS=screen_reader.session)
+    child.events(until="ready", timeout=20)
+    screen_reader.enable()
+    child.events(until="announced", timeout=40)
+    time.sleep(1.0)
+    heard = log.announcements()
+    # Polite is 1 and assertive 2. The repeated text is heard twice: each call is one announcement.
+    assert heard == [("Connected", 1), ("Connected", 1), ("Battery low", 2)], heard
+
+
 A11Y_CHILD = """
 import json, os, threading, time
 from tess_re import App, LayerWindow

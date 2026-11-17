@@ -504,6 +504,15 @@ class Window:
         this app and a compositor ignores a stale one. `app_id` names the app being launched
         (a `LayerWindow` only). Works on a `Window` and a `LayerWindow`."""
         ...
+    def announce(self, text: str, politeness: str = "polite") -> None:
+        """(unreleased, TRE-REQ-021) Raises one live announcement for this window through the accessibility
+        tree, with no node of yours: a screen reader reads `text`. `politeness` is `"polite"` (waits for the
+        reader to finish) or `"assertive"` (interrupts). It works for a hidden module and for the same
+        message twice running, which a live node cannot do (its name does not change); each call is
+        one announcement, and removing duplicates is the caller's job. Nothing is heard unless a screen
+        reader is connected. Also on `LayerWindow` and `PopupWindow`. Raises `ValueError` for an empty
+        text or another politeness."""
+        ...
     def minimize(self) -> None:
         """(0.5.0) Minimizes the window -- or, before `App.run()`, opens it
         minimized."""
