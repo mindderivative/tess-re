@@ -254,6 +254,9 @@ enum Command {
     Cursor(u64, CursorIcon),
     InputRegion(u64, Option<Vec<crate::layer_config::Rect>>),
     Margin(u64, (i32, i32, i32, i32)),
+    /// TRE-REQ-022: a new size alone (a content-sized surface follows its content), so nothing
+    /// else of the surface's configuration is touched, a margin animation included.
+    Size(u64, (u32, u32)),
     BeginMarginDrag(u64),
     Ime(u64, Option<ImeInfo>),
     ActivationToken(u64, u64, Option<String>),
@@ -329,6 +332,12 @@ impl LayerController {
     /// commit per animation step, with no other property re-sent.
     pub fn set_margin(&self, id: u64, margin: (i32, i32, i32, i32)) {
         self.send(Command::Margin(id, margin));
+    }
+
+    /// TRE-REQ-022: asks the compositor for a new size (logical pixels) for the surface `id` and
+    /// nothing else; the compositor answers with a configure, which the app hears as usual.
+    pub fn set_size(&self, id: u64, size: (u32, u32)) {
+        self.send(Command::Size(id, size));
     }
 
     /// Starts moving the surface by its margins with the pointer, which must be pressed on
@@ -2456,6 +2465,15 @@ fn run(
                     }
                     if state.ime_focus == Some(id) {
                         state.sync_ime();
+                    }
+                }
+                Command::Size(id, size) => {
+                    if let Some(surf) = state.surfaces.get_mut(&id)
+                        && let Some(layer) = surf.role.layer()
+                    {
+                        layer.set_size(size.0, size.1);
+                        surf.config.size = size;
+                        layer.commit();
                     }
                 }
                 Command::Margin(id, margin) => {

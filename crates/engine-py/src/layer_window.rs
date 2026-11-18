@@ -23,6 +23,8 @@ use crate::listeners::{self, WindowEventType};
 use crate::window::PyWindow;
 use engine_core::{Animated, CompletionHandle, MotionCurve};
 use std::time::{Duration, Instant};
+use taffy::prelude::{AvailableSpace, Size};
+use taffy::style::Dimension;
 
 pyo3::create_exception!(
     tess_re,
@@ -63,6 +65,8 @@ const LIVE: &[&str] = &[
     "layer",
     "anchor",
     "size",
+    "min_size",
+    "max_size",
     "exclusive_zone",
     "exclusive_edge",
     "margin",
@@ -103,6 +107,16 @@ pub(crate) struct LayerState {
     /// `set()` changed the configuration while the surface id was not known yet, so the platform
     /// thread never heard of it: the created hook sends the stored configuration (TRE-REQ-020).
     pub(crate) update_early: Cell<bool>,
+    /// TRE-REQ-022: what `size` was given: pixels or `"content"` for each axis. `config.size` holds the
+    /// size last asked of the compositor (for a content axis, the measured one).
+    pub(crate) size_spec: Cell<[Axis; 2]>,
+    pub(crate) min_size: Cell<[Option<u32>; 2]>,
+    pub(crate) max_size: Cell<[Option<u32>; 2]>,
+    /// The root is `auto` on these axes because we made it so (and must be put back).
+    pub(crate) root_auto: Cell<[bool; 2]>,
+    /// A new size has been asked for and the compositor has not answered yet: no frame is
+    /// drawn meanwhile, so the new content is never shown at the old size.
+    pub(crate) awaiting_since: Cell<Option<Instant>>,
 }
 
 /// A `PopupWindow`'s placement, and the parent it hangs off.
@@ -239,6 +253,133 @@ impl LayerState {
         }
     }
 
+    /// Whether either axis of `size` follows the content.
+    pub(crate) fn has_content_axis(&self) -> bool {
+        self.size_spec.get().contains(&Axis::Content)
+    }
+
+    /// From layout pixels to the surface's logical ones.
+    fn to_logical(&self, handles: &crate::window::WindowHandles) -> f64 {
+        handles.scale.get() / self.scale.get().max(0.01)
+    }
+
+    /// TRE-REQ-022, before a frame's layout: the root is `auto` on a content axis (so it is the size of
+    /// what is in it, padding included) and the space it lays out in is unbounded there (or the maximum).
+    /// `None`: nothing to do, lay out in the window's size as usual. Puts the root back to a fixed
+    /// size on an axis that has stopped following its content.
+    pub(crate) fn content_available(
+        &self,
+        handles: &crate::window::WindowHandles,
+    ) -> Option<Size<AvailableSpace>> {
+        let spec = self.size_spec.get();
+        let now = [spec[0] == Axis::Content, spec[1] == Axis::Content];
+        let before = self.root_auto.get();
+        if now == [false, false] && before == [false, false] {
+            return None;
+        }
+        let factor = self.to_logical(handles);
+        let (width, height) = handles.logical_size();
+        let current = [width, height];
+        let max = self.max_size.get();
+        {
+            let mut tree = handles.tree.borrow_mut();
+            if let Some(style) = tree.get(handles.root).map(|n| n.layout_style.clone()) {
+                let mut want = style.clone();
+                let dim = |i: usize| {
+                    if now[i] {
+                        Some(Dimension::auto())
+                    } else if before[i] {
+                        Some(taffy::prelude::length(current[i] as f32))
+                    } else {
+                        None
+                    }
+                };
+                if let Some(d) = dim(0) {
+                    want.size.width = d;
+                }
+                if let Some(d) = dim(1) {
+                    want.size.height = d;
+                }
+                if want.size != style.size {
+                    tree.set_layout_style(handles.root, want);
+                }
+            }
+        }
+        self.root_auto.set(now);
+        let space = |i: usize| {
+            if now[i] {
+                match max[i] {
+                    Some(m) => AvailableSpace::Definite((f64::from(m) / factor) as f32),
+                    None => AvailableSpace::MaxContent,
+                }
+            } else {
+                AvailableSpace::Definite(current[i] as f32)
+            }
+        };
+        Some(Size {
+            width: space(0),
+            height: space(1),
+        })
+    }
+
+    /// TRE-REQ-022, after a frame's layout: measures the root, clamps it, and asks the compositor for
+    /// that size when it is not the one last asked for. `true`: hold this frame (draw nothing): a size has
+    /// been asked for and the compositor has not answered, so the new content is not drawn at the old size.
+    /// Only a change in the measured size asks again, so steady content asks for nothing (no resize loop).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn content_settle(&self, handles: &crate::window::WindowHandles) -> bool {
+        if !self.has_content_axis() {
+            self.awaiting_since.set(None);
+            return false;
+        }
+        if let Some(since) = self.awaiting_since.get() {
+            // A compositor that never answers must not freeze the surface.
+            if since.elapsed() < Duration::from_millis(500) {
+                return true;
+            }
+            self.awaiting_since.set(None);
+        }
+        let factor = self.to_logical(handles);
+        let measured = {
+            let tree = handles.tree.borrow();
+            let layout = tree.layout(handles.root);
+            [layout.size.width, layout.size.height]
+        };
+        let (spec, min, max) = (
+            self.size_spec.get(),
+            self.min_size.get(),
+            self.max_size.get(),
+        );
+        let mut config = self.config.borrow_mut();
+        let mut want = [config.size.0, config.size.1];
+        for i in 0..2 {
+            if spec[i] == Axis::Content {
+                // Whole logical pixels, rounded up so a fractional scale never clips; the
+                // small allowance is float noise, not content.
+                let mut pixels = (f64::from(measured[i]) * factor - 1e-3).ceil().max(1.0) as u32;
+                if let Some(lo) = min[i] {
+                    pixels = pixels.max(lo);
+                }
+                if let Some(hi) = max[i] {
+                    pixels = pixels.min(hi);
+                }
+                want[i] = pixels;
+            }
+        }
+        if (want[0], want[1]) == config.size {
+            return false;
+        }
+        config.size = (want[0], want[1]);
+        match (self.controller.borrow().as_ref(), self.id.get()) {
+            (Some(controller), Some(id)) => {
+                controller.set_size(id, config.size);
+                self.awaiting_since.set(Some(Instant::now()));
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) fn new(config: LayerConfig, warnings: Vec<(String, String)>) -> Self {
         Self {
             config: RefCell::new(config),
@@ -251,6 +392,11 @@ impl LayerState {
             popup_position: Cell::new(None),
             close_early: Cell::new(false),
             update_early: Cell::new(false),
+            size_spec: Cell::new([Axis::Fixed(0); 2]),
+            min_size: Cell::new([None; 2]),
+            max_size: Cell::new([None; 2]),
+            root_auto: Cell::new([false; 2]),
+            awaiting_since: Cell::new(None),
             closed_reason: RefCell::new(None),
             pending_warnings: RefCell::new(warnings),
             #[cfg(target_os = "linux")]
@@ -309,12 +455,100 @@ fn extract_edge(key: &'static str, value: &Bound<'_, PyAny>) -> PyResult<Option<
         .ok_or_else(|| names_error(key, &format!("edge {name:?}"), &Anchors::NAMES))
 }
 
-fn extract_size(value: &Bound<'_, PyAny>) -> PyResult<(u32, u32)> {
-    value.extract::<(u32, u32)>().map_err(|_| {
+/// TRE-REQ-022: one axis of a layer window's `size`: a number of pixels, or `"content"`, the size
+/// of what is inside (padding included), followed as it changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Axis {
+    Fixed(u32),
+    Content,
+}
+
+fn extract_axis(value: &Bound<'_, PyAny>) -> PyResult<Axis> {
+    if let Ok(word) = value.extract::<String>() {
+        return if word == "content" {
+            Ok(Axis::Content)
+        } else {
+            Err(PyValueError::new_err(format!(
+                "LayerWindow size: a text axis must be \"content\", not {word:?}"
+            )))
+        };
+    }
+    value.extract::<u32>().map(Axis::Fixed).map_err(|_| {
         PyValueError::new_err(
-            "LayerWindow size: must be (width, height), two whole numbers of pixels, zero or more",
+            "LayerWindow size: each of (width, height) is a whole number of pixels, zero or more, or \"content\"",
         )
     })
+}
+
+fn extract_size_spec(value: &Bound<'_, PyAny>) -> PyResult<[Axis; 2]> {
+    let items: Vec<Bound<'_, PyAny>> = value.extract().map_err(|_| {
+        PyValueError::new_err(
+            "LayerWindow size: must be (width, height), each a whole number of pixels or \"content\"",
+        )
+    })?;
+    match items.as_slice() {
+        [w, h] => Ok([extract_axis(w)?, extract_axis(h)?]),
+        _ => Err(PyValueError::new_err(
+            "LayerWindow size: must be (width, height), each a whole number of pixels or \"content\"",
+        )),
+    }
+}
+
+/// Writes into `config.size` what a `size`, `min_size` and `max_size` say. A fixed axis is its pixels. A
+/// content axis keeps the size last asked of the compositor (the measured one), or starts at a
+/// placeholder of 1 pixel (the least a surface can be) until the first layout measures it.
+fn resolve_size(
+    config: &mut LayerConfig,
+    spec: [Axis; 2],
+    min: [Option<u32>; 2],
+    max: [Option<u32>; 2],
+) -> PyResult<()> {
+    for (i, name) in ["width", "height"].into_iter().enumerate() {
+        if let (Some(lo), Some(hi)) = (min[i], max[i])
+            && lo > hi
+        {
+            return Err(PyValueError::new_err(format!(
+                "LayerWindow min_size: the {name} minimum {lo} is above the maximum {hi}"
+            )));
+        }
+    }
+    let mut size = [config.size.0, config.size.1];
+    for i in 0..2 {
+        match spec[i] {
+            Axis::Fixed(n) => size[i] = n,
+            Axis::Content if size[i] == 0 => size[i] = min[i].unwrap_or(1).max(1),
+            Axis::Content => {}
+        }
+    }
+    config.size = (size[0], size[1]);
+    Ok(())
+}
+
+/// `min_size` or `max_size`: `None`, or `(width, height)` with `None` or a whole number of pixels
+/// above 0 for each.
+fn extract_limit(name: &str, value: &Bound<'_, PyAny>) -> PyResult<[Option<u32>; 2]> {
+    if value.is_none() {
+        return Ok([None, None]);
+    }
+    let bad = || {
+        PyValueError::new_err(format!(
+            "LayerWindow {name}: must be None or (width, height), each None or a whole number of pixels above 0"
+        ))
+    };
+    let items: Vec<Bound<'_, PyAny>> = value.extract().map_err(|_| bad())?;
+    let [w, h] = items.as_slice() else {
+        return Err(bad());
+    };
+    let one = |v: &Bound<'_, PyAny>| -> PyResult<Option<u32>> {
+        if v.is_none() {
+            return Ok(None);
+        }
+        match v.extract::<u32>() {
+            Ok(n) if n > 0 => Ok(Some(n)),
+            _ => Err(bad()),
+        }
+    };
+    Ok([one(w)?, one(h)?])
 }
 
 fn extract_margin(value: &Bound<'_, PyAny>) -> PyResult<(i32, i32, i32, i32)> {
@@ -475,6 +709,8 @@ impl PyLayerWindow {
         layer = "top",
         anchor = None,
         size = None,
+        min_size = None,
+        max_size = None,
         exclusive_zone = None,
         exclusive_edge = None,
         margin = None,
@@ -489,6 +725,8 @@ impl PyLayerWindow {
         layer: &str,
         anchor: Option<&Bound<'_, PyAny>>,
         size: Option<&Bound<'_, PyAny>>,
+        min_size: Option<&Bound<'_, PyAny>>,
+        max_size: Option<&Bound<'_, PyAny>>,
         exclusive_zone: Option<&Bound<'_, PyAny>>,
         exclusive_edge: Option<&Bound<'_, PyAny>>,
         margin: Option<&Bound<'_, PyAny>>,
@@ -505,7 +743,7 @@ impl PyLayerWindow {
             namespace: namespace.to_string(),
             layer: parse_layer(layer)?,
             anchor: anchor.map(extract_anchor).transpose()?.unwrap_or_default(),
-            size: size.map(extract_size).transpose()?.unwrap_or((0, 0)),
+            size: (0, 0),
             exclusive_zone: exclusive_zone.map(extract_zone).transpose()?.unwrap_or(0),
             exclusive_edge: exclusive_edge
                 .map(|v| extract_edge("exclusive_edge", v))
@@ -519,8 +757,21 @@ impl PyLayerWindow {
             output: output.map(extract_output).transpose()?.flatten(),
             input_region: None,
         };
+        let spec = size
+            .map(extract_size_spec)
+            .transpose()?
+            .unwrap_or([Axis::Fixed(0); 2]);
+        let min = min_size
+            .map(|v| extract_limit("min_size", v))
+            .transpose()?
+            .unwrap_or([None; 2]);
+        let max = max_size
+            .map(|v| extract_limit("max_size", v))
+            .transpose()?
+            .unwrap_or([None; 2]);
         let region = resolve_region(Region::Rects(None), input_region, click_through)?;
         let mut config = config;
+        resolve_size(&mut config, spec, min, max)?;
         let auto = region == Region::Auto;
         config.input_region = match region {
             Region::Rects(rects) => rects,
@@ -536,6 +787,27 @@ impl PyLayerWindow {
         handles.dpi_scaling.set(true);
         handles.transparent.set(true);
         let layer = LayerState::new(config, warnings);
+        layer.size_spec.set(spec);
+        layer.min_size.set(min);
+        layer.max_size.set(max);
+        // A content axis starts with the root the size of what is in it, so a headless read agrees.
+        if layer.has_content_axis() {
+            let mut tree = handles.tree.borrow_mut();
+            if let Some(style) = tree.get(handles.root).map(|n| n.layout_style.clone()) {
+                let mut want = style;
+                if spec[0] == Axis::Content {
+                    want.size.width = Dimension::auto();
+                }
+                if spec[1] == Axis::Content {
+                    want.size.height = Dimension::auto();
+                }
+                tree.set_layout_style(handles.root, want);
+            }
+            drop(tree);
+            layer
+                .root_auto
+                .set([spec[0] == Axis::Content, spec[1] == Axis::Content]);
+        }
         layer.auto_region.set(auto);
         layer.snap_margin(layer.config.borrow().margin, Instant::now());
         handles.layer = Some(Rc::new(layer));
@@ -562,6 +834,7 @@ impl PyLayerWindow {
         let mut margin_given = false;
         let mut auto_now = None;
         let mut through_given = None;
+        let (mut spec_given, mut min_given, mut max_given) = (None, None, None);
         if let Some(props) = props {
             for (name, value) in props.iter() {
                 let name: String = name.extract()?;
@@ -573,7 +846,9 @@ impl PyLayerWindow {
                         config.layer = parse_layer(&name)?;
                     }
                     "anchor" => config.anchor = extract_anchor(&value)?,
-                    "size" => config.size = extract_size(&value)?,
+                    "size" => spec_given = Some(extract_size_spec(&value)?),
+                    "min_size" => min_given = Some(extract_limit("min_size", &value)?),
+                    "max_size" => max_given = Some(extract_limit("max_size", &value)?),
                     "exclusive_zone" => config.exclusive_zone = extract_zone(&value)?,
                     "exclusive_edge" => {
                         let edge = extract_edge("exclusive_edge", &value)?;
@@ -632,6 +907,16 @@ impl PyLayerWindow {
                 Region::Auto => Some(Vec::new()),
             };
         }
+        // TRE-REQ-022: `size`, `min_size` and `max_size` together say what the compositor is asked.
+        let size_change = if spec_given.is_some() || min_given.is_some() || max_given.is_some() {
+            let spec = spec_given.unwrap_or(state.size_spec.get());
+            let min = min_given.unwrap_or(state.min_size.get());
+            let max = max_given.unwrap_or(state.max_size.get());
+            resolve_size(&mut config, spec, min, max)?;
+            Some((spec, min, max))
+        } else {
+            None
+        };
         let warnings = warnings_of(&config)?;
         // The shared keys first: Window.set is itself all-or-nothing, so an error
         // here leaves the layer settings alone too.
@@ -653,6 +938,14 @@ impl PyLayerWindow {
                 }
             }
             *state.config.borrow_mut() = config.clone();
+            if let Some((spec, min, max)) = size_change {
+                state.size_spec.set(spec);
+                state.min_size.set(min);
+                state.max_size.set(max);
+                state.awaiting_since.set(None);
+                // A changed size asks again on the next frame's measure.
+                base.handles.tree.borrow_mut().mark_dirty();
+            }
             if margin_given {
                 // A step change cancels a running margin animation.
                 state.snap_margin(config.margin, crate::clock::now(&base.handles.tree));
@@ -698,7 +991,31 @@ impl PyLayerWindow {
                 .unbind(),
             "layer" => config.layer.name().into_pyobject(py)?.into_any().unbind(),
             "anchor" => PyTuple::new(py, config.anchor.names())?.into_any().unbind(),
-            "size" => config.size.into_pyobject(py)?.into_any().unbind(),
+            "size" => {
+                // What was given: pixels, or the word `"content"` kept as the word.
+                let spec = state.size_spec.get();
+                let axis = |i: usize, pixels: u32| -> PyResult<Py<PyAny>> {
+                    Ok(match spec[i] {
+                        Axis::Content => "content".into_pyobject(py)?.into_any().unbind(),
+                        Axis::Fixed(_) => pixels.into_pyobject(py)?.into_any().unbind(),
+                    })
+                };
+                PyTuple::new(py, [axis(0, config.size.0)?, axis(1, config.size.1)?])?
+                    .into_any()
+                    .unbind()
+            }
+            "min_size" | "max_size" => {
+                let limit = if name == "min_size" {
+                    state.min_size.get()
+                } else {
+                    state.max_size.get()
+                };
+                if limit == [None, None] {
+                    py.None()
+                } else {
+                    PyTuple::new(py, limit)?.into_any().unbind()
+                }
+            }
             "exclusive_zone" => config.exclusive_zone.into_pyobject(py)?.into_any().unbind(),
             "exclusive_edge" => config
                 .exclusive_edge

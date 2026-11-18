@@ -906,7 +906,9 @@ class LayerWindow(Window):
 
     `namespace` says what the surface is for. `layer` is `"background"`, `"bottom"`,
     `"top"` or `"overlay"`. `anchor` is a sequence of edge names (`"top"`, `"bottom"`,
-    `"left"`, `"right"`). `size` is `(width, height)` in logical pixels; a 0 stretches
+    `"left"`, `"right"`). `size` is `(width, height)` in logical pixels, or (unreleased, TRE-REQ-022) `"content"` for an axis, which
+    makes the surface the size of what is in it, the root's padding included, followed as the content changes
+    (see `min_size` and `max_size`, which clamp it); a 0 stretches
     between the two edges anchored on that axis, which must both be in `anchor`.
     `exclusive_zone` is how many pixels to reserve along the anchored edge (0 reserves
     none, -1 ignores other surfaces' zones). `exclusive_edge` is which anchored edge a
@@ -943,7 +945,9 @@ class LayerWindow(Window):
         *,
         layer: Literal["background", "bottom", "top", "overlay"] = ...,
         anchor: str | Sequence[str] | None = ...,
-        size: tuple[int, int] | None = ...,
+        size: tuple[int | Literal["content"], int | Literal["content"]] | None = ...,
+        min_size: tuple[int | None, int | None] | None = ...,
+        max_size: tuple[int | None, int | None] | None = ...,
         exclusive_zone: int | None = ...,
         exclusive_edge: Literal["top", "bottom", "left", "right"] | None = ...,
         margin: int | tuple[int, int, int, int] | None = ...,

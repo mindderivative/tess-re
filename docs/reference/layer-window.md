@@ -28,15 +28,17 @@ app.run()
 
 ## The settings
 
-**`LayerWindow(namespace, *, layer="top", anchor=None, size=(0, 0), exclusive_zone=0,
-margin=0, keyboard="none", output=None, input_region=None)`**
+**`LayerWindow(namespace, *, layer="top", anchor=None, size=(0, 0), min_size=None,
+max_size=None, exclusive_zone=0, margin=0, keyboard="none", output=None,
+input_region=None)`**
 
 | Setting | Meaning |
 |---|---|
 | `namespace` | What the surface is for (`"tesserae-shell.bar"`); the protocol's namespace. Required and not empty. Constructor only. |
 | `layer` | Where it stacks: `"background"`, `"bottom"`, `"top"` or `"overlay"`. Windows sit between `"bottom"` and `"top"`; a fullscreen window may cover `"top"`. |
 | `anchor` | The edges it is attached to: a sequence of `"top"`, `"bottom"`, `"left"`, `"right"` (or one name). Nothing anchored floats, centred by the compositor. |
-| `size` | `(width, height)` in logical pixels. A `0` stretches between the two edges anchored on that axis, so a `0` width needs `"left"` and `"right"` in `anchor`, and a `0` height needs `"top"` and `"bottom"`. |
+| `size` | `(width, height)` in logical pixels, each a number or `"content"` (below). A `0` stretches between the two edges anchored on that axis, so a `0` width needs `"left"` and `"right"` in `anchor`, and a `0` height needs `"top"` and `"bottom"`. |
+| `min_size`, `max_size` | (unreleased) `None`, or `(width, height)` with `None` or a whole number of pixels above 0 for each axis: a floor and a ceiling for a `"content"` axis. A minimum above its maximum raises `ValueError`. |
 | `exclusive_zone` | Pixels to reserve along the anchored edge (for a corner, the `exclusive_edge`), so maximised windows stop short of it. `0` reserves none; `-1` ignores other surfaces' zones and takes the whole output. A positive zone counts only for a surface anchored to one edge, or to one edge and both edges across it (a bar anchored `"top"`, `"left"`, `"right"`); with any other `anchor` the compositor treats it as `0`, and a `warning` event says so. |
 | `margin` | `(top, right, bottom, left)` in logical pixels, or one number for all four. Negative is accepted and moves the surface past the screen edge. |
 | `keyboard` | `"none"`: never gets key events. `"on_demand"`: gets them when the user focuses it (a click). `"exclusive"`: takes the keyboard on opening, and nothing else gets keys until it closes. |
@@ -60,7 +62,36 @@ highest version the compositor offers.
 the named edge of a corner surface, and reserve nothing for a corner surface with no edge (checked
 live on both, 2026-10-25).
 
-**`set(**props)`** changes `layer`, `anchor`, `size`, `exclusive_zone`, `margin` and
+### A surface the size of its content
+
+(Unreleased, TRE-REQ-022.) `size=("content", "content")`, or one axis, `(480, "content")`, makes the surface
+the size of what is in it and keeps it that size as the content changes (a result list that grows as the
+user types):
+
+```python
+panel = LayerWindow("launcher", anchor=("bottom",), size=(480, "content"),
+                    max_size=(None, 400))
+panel.root.set(padding=16, flex_direction="vertical")   # 16 around 200 x 80 of content: 232 x 112
+```
+
+- The size is the **root node's outer size, padding included**: padding 16 around a 200 by 80 box makes the
+  surface 232 by 112. The root is laid out unconstrained on a `"content"` axis (or up to `max_size`), so
+  give it no size of its own there.
+- Sizes are whole logical pixels, rounded up so a fractional scale never clips content, then clamped by
+  `min_size` and `max_size`. Content past `max_size` is clipped: put it in a scroll view.
+- tre asks the compositor for the new size when the content's size changes, **once per change**, and holds
+  the frame that shows the new content until the compositor has answered (the `configure` event), so the
+  new content is never drawn at the old size. Steady content asks for nothing, so there is no resize loop.
+  Before the first layout the surface is 1 pixel (or `min_size`) and nothing is drawn.
+- The edge the surface is anchored to stays where it is, so a bottom-anchored panel grows upward; an
+  unanchored one stays centred. A compositor may lay the surface out at the new size one frame before the new
+  buffer reaches it, so for that one frame the old content sits where the new size puts it (half a step off
+  centre for a centred surface). It is the protocol's order, not something an app can avoid.
+- `get("size")` gives what was set, with `"content"` kept as the word; `configure` gives the size the compositor
+  set. `set(size=...)`, `set(min_size=...)` and `set(max_size=...)` work while the surface is open, in either
+  direction. Headless, `get("layout_width")` and `get("layout_height")` of the root read the content size.
+
+**`set(**props)`** changes `layer`, `anchor`, `size`, `min_size`, `max_size`, `exclusive_zone`, `margin` and
 `keyboard` live, in one commit, and the keys `Window.set` has that mean something to a
 placed surface (`touch_slop`, `partial_redraw`, `present_mode`, ...). A bad value raises
 `ValueError` and changes nothing, the layer keys included. The window keys that mean

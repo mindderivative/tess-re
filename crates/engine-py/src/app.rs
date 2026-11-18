@@ -1740,14 +1740,36 @@ impl App {
                     runtime.handles.root,
                     {
                         let (width, height) = runtime.handles.logical_size();
-                        Size {
+                        let window = Size {
                             width: AvailableSpace::Definite(width as f32),
                             height: AvailableSpace::Definite(height as f32),
-                        }
+                        };
+                        // TRE-REQ-022: a content-sized layer surface lays out in the space its
+                        // content asks for, not the surface's own.
+                        #[cfg(target_os = "linux")]
+                        let space = runtime
+                            .handles
+                            .layer
+                            .as_ref()
+                            .and_then(|layer| layer.content_available(&runtime.handles))
+                            .unwrap_or(window);
+                        #[cfg(not(target_os = "linux"))]
+                        let space = window;
+                        space
                     },
                     &runtime.handles.handlers,
                     py,
                 );
+                // TRE-REQ-022: the content's size is known now. A new size is asked of the compositor and
+                // this frame is held (nothing drawn) until it answers, so the new content is never shown at
+                // the old size. The frame is wanted again as soon as the configure arrives.
+                #[cfg(target_os = "linux")]
+                if let Some(layer) = &runtime.handles.layer
+                    && layer.content_settle(&runtime.handles)
+                {
+                    runtime.handles.tree.borrow_mut().mark_dirty();
+                    return true;
+                }
                 // 0.5.7 (#178): `layout` for every watched node the layout changed.
                 crate::listeners::fire_layout_changes(
                     &crate::event::NodeContext {
@@ -2324,6 +2346,10 @@ impl App {
                         // it can differ in the last bits.
                         let round = |v: f32| (f64::from(v) * 1000.0).round() / 1000.0;
                         let size = (round(width), round(height));
+                        // TRE-REQ-022: the compositor has answered: the held frame may be drawn.
+                        if let Some(layer) = &runtime.handles.layer {
+                            layer.awaiting_since.set(None);
+                        }
                         if runtime.handles.layer.as_ref().is_some_and(|layer| {
                             layer.last_configure.replace(Some(size)) != Some(size)
                         }) {
