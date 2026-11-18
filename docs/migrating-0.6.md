@@ -242,3 +242,9 @@ Nothing you have written breaks. One new call and one fix:
   changes, with one request to the compositor per change and the new content held until the compositor answers.
   `min_size` and `max_size` clamp it. A fixed `size` behaves as before. See
   [A surface the size of its content](reference/layer-window.md#a-surface-the-size-of-its-content).
+
+- **A click-away and keyboard-leave recipe for a panel that holds the keyboard (TRE-REQ-024, documentation and tests, no
+  new API).** A `LayerWindow`'s `active` event is the compositor's keyboard enter and leave, and a transparent 1x1
+  `PopupWindow(grab=True)` hung off the panel reports a click on another application as its `closed` (reason
+  `"dismissed"`), with the panel keeping the keyboard. See
+  [Knowing the keyboard left, or the user clicked elsewhere](reference/layer-window.md#knowing-the-keyboard-left-or-the-user-clicked-elsewhere).
