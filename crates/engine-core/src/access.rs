@@ -27,11 +27,17 @@ pub struct AccessExtra {
     pub value_text: Option<String>,
     pub described_by: Vec<crate::NodeId>,
     pub controls: Vec<crate::NodeId>,
+    /// TRE-REQ-023: the node a screen reader treats as this one's current item while keyboard
+    /// focus stays here (a text field and the row selected in the list under it).
+    pub active_descendant: Option<crate::NodeId>,
 }
 
 impl AccessExtra {
     fn is_empty(&self) -> bool {
-        self.value_text.is_none() && self.described_by.is_empty() && self.controls.is_empty()
+        self.value_text.is_none()
+            && self.described_by.is_empty()
+            && self.controls.is_empty()
+            && self.active_descendant.is_none()
     }
 }
 

@@ -14,6 +14,7 @@ import json
 import os
 import re
 import select
+import shutil
 import subprocess
 import sys
 import time
@@ -1252,6 +1253,71 @@ def test_announce_reaches_a_screen_reader_once_per_call_with_its_politeness(chil
     heard = log.announcements()
     # Polite is 1 and assertive 2. The repeated text is heard twice: each call is one announcement.
     assert heard == [("Connected", 1), ("Connected", 1), ("Battery low", 2)], heard
+
+
+ACTIVE_CHILD = """
+import json, os, threading, time
+from tess_re import App, LayerWindow
+app = App()
+bar = LayerWindow("active-test", anchor=("top", "left", "right"), size=(0, 120), exclusive_zone=0,
+                  keyboard="exclusive", output=%r)
+bar.root.set(fill=(30, 30, 30, 255), flex_direction="vertical")
+field = bar.create("text_input", width=300, height=30, text="fire", focusable=True)
+first = bar.create("box", width=300, height=24, role="listitem", label="Firefox")
+second = bar.create("box", width=300, height=24, role="listitem", label="Files")
+for node in (field, first, second):
+    bar.root.add_child(node)
+app.add_window(bar)
+handle = app.thread_handle()
+
+def say(kind, **kw):
+    print(json.dumps({"kind": kind, **kw}), flush=True)
+
+def go():
+    time.sleep(2.0)
+    handle.call_soon(field.focus)
+    say("ready")
+    time.sleep(8.0)  # the screen reader is connected and the surface has the keyboard
+    for target in (first, second, None):
+        handle.call_soon(lambda t=target: field.set(active_descendant=t))
+        time.sleep(2.0)
+    handle.call_soon(lambda: say("done", focused=field.get("focused")))
+    time.sleep(3.0)
+    os._exit(0)
+
+threading.Thread(target=go, daemon=True).start()
+app.run()
+"""
+
+
+def test_an_active_descendant_moves_the_screen_readers_focus_to_the_row_not_the_keyboards(children, screen_reader):
+    if not shutil.which("wtype"):
+        pytest.skip("needs wtype: a virtual keyboard, so the private compositor's seat has one to focus")
+    log = screen_reader.monitor("StateChanged")
+    name = next(iter(outputs()))
+    keyboard = subprocess.Popen(["wtype", "a", "-s", "30000", "b"])  # holds the seat's keyboard for the test
+    try:
+        child = children(ACTIVE_CHILD % name, DBUS_SESSION_BUS_ADDRESS=screen_reader.session)
+        child.events(until="ready", timeout=20)
+        screen_reader.enable()
+        done = child.events(until="done", timeout=40)[-1]
+        time.sleep(1.0)
+    finally:
+        keyboard.kill()
+    assert done.get("focused") is True, "tre's own keyboard focus never left the field"
+    focus = [(detail, path) for kind, detail, path in log.signals() if kind == "focused"]
+    assert len(focus) >= 7, focus
+    field = focus[0][1]
+    assert focus[0][0] == 1, focus
+    # AccessKit says an active descendant by moving the focused state to it: row 1, row 2, then back to the field.
+    rest = focus[1:7]
+    steps = [{(d, p) for d, p in rest[i : i + 2]} for i in (0, 2, 4)]
+    first_row = next(p for d, p in steps[0] if d == 1)
+    second_row = next(p for d, p in steps[1] if d == 1)
+    assert first_row != field and second_row not in (field, first_row), steps
+    assert steps[0] == {(1, first_row), (0, field)}, steps
+    assert steps[1] == {(1, second_row), (0, first_row)}, steps
+    assert steps[2] == {(1, field), (0, second_row)}, steps
 
 
 A11Y_CHILD = """

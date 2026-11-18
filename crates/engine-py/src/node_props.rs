@@ -26,7 +26,7 @@ use crate::node_layout::{LAYOUT_PROPS, StyleEdit, parse_layout, read_layout};
 
 /// Every property `set` accepts besides the layout ones
 /// (`node_layout::LAYOUT_PROPS`), in the order its error lists them.
-const SETTABLE: [&str; 75] = [
+const SETTABLE: [&str; 76] = [
     // 0.5.7 (#179): placed against another node.
     "anchor",
     "placement",
@@ -95,6 +95,7 @@ const SETTABLE: [&str; 75] = [
     "description",
     "describedby",
     "controls",
+    "active_descendant",
     "value_now",
     "value_text",
     "focusable",
@@ -195,6 +196,8 @@ pub(crate) enum Change {
     ValueText(Option<String>),
     DescribedBy(Vec<NodeId>),
     Controls(Vec<NodeId>),
+    /// TRE-REQ-023.
+    ActiveDescendant(Option<NodeId>),
     Focusable(bool),
     TabIndex(i32),
     Cursor(Option<Cursor>),
@@ -1606,6 +1609,15 @@ pub(crate) fn parse_all(
                 changes.push(parse_anchor(&name, &value, tree)?);
                 continue;
             }
+            if name == "active_descendant" {
+                // One node or `None`: the relation names the single current item.
+                if !value.is_none() && value.cast::<Node>().is_err() {
+                    return Err(invalid(&name, "a Node or None"));
+                }
+                let ids = parse_related(&name, &value, tree)?;
+                changes.push(Change::ActiveDescendant(ids.first().copied()));
+                continue;
+            }
             if name == "describedby" || name == "controls" {
                 let ids = parse_related(&name, &value, tree)?;
                 changes.push(if name == "controls" {
@@ -1872,6 +1884,20 @@ impl Node {
                     .into_pyobject(py)?
                     .into_any()
                     .unbind(),
+                "active_descendant" => {
+                    // A destroyed target reads as `None`.
+                    let tree = self.tree.borrow();
+                    let target = access
+                        .extra
+                        .as_ref()
+                        .and_then(|x| x.active_descendant)
+                        .filter(|id| tree.get(*id).is_some());
+                    drop(tree);
+                    any(target
+                        .map(|id| self.handle_to(id))
+                        .into_pyobject(py)?
+                        .into_any())
+                }
                 "describedby" | "controls" => {
                     let empty = Vec::new();
                     let ids = access.extra.as_ref().map_or(&empty, |x| {
@@ -2306,6 +2332,7 @@ impl Node {
                 Change::ValueText(text) => access.edit_extra(|x| x.value_text = text),
                 Change::DescribedBy(ids) => access.edit_extra(|x| x.described_by = ids),
                 Change::Controls(ids) => access.edit_extra(|x| x.controls = ids),
+                Change::ActiveDescendant(id) => access.edit_extra(|x| x.active_descendant = id),
                 Change::Focusable(focusable) => access.focusable = Some(focusable),
                 Change::TabIndex(index) => access.tab_index = index,
                 Change::Cursor(cursor) => node.cursor = cursor,

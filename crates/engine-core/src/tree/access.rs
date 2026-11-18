@@ -230,6 +230,13 @@ impl Tree {
                 .map(to_access_id)
                 .collect()
         };
+        // TRE-REQ-023: only a target the update reaches (this tree's, alive, visible).
+        if let Some(target) = access.extra.as_ref().and_then(|x| x.active_descendant)
+            && target != id
+            && self.in_access_tree(target)
+        {
+            access_node.set_active_descendant(to_access_id(target));
+        }
         let described_by = related(access.extra.as_ref().map_or(&[], |x| &x.described_by));
         if !described_by.is_empty() {
             access_node.set_described_by(described_by);

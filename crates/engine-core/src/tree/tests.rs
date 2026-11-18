@@ -8831,3 +8831,77 @@ fn a_reader_that_never_connects_cannot_grow_the_queue_without_bound() {
         "the newest are the ones kept"
     );
 }
+
+// ---- TRE-REQ-023: `active_descendant` ---------------------------------------------------------
+
+fn active_descendant_scene() -> (Tree, NodeId, NodeId, NodeId) {
+    let mut tree = Tree::new();
+    let (_, style, paint) = leaf(200.0, 100.0);
+    let root = tree.insert(NodeKind::Container, style, paint);
+    let (_, style, paint) = leaf(100.0, 20.0);
+    let field = tree.insert(NodeKind::Container, style, paint);
+    let (_, style, paint) = leaf(100.0, 20.0);
+    let row = tree.insert(NodeKind::Container, style, paint);
+    tree.add_child(root, field);
+    tree.add_child(root, row);
+    tree.compute_layout(
+        root,
+        Size {
+            width: AvailableSpace::Definite(200.0),
+            height: AvailableSpace::Definite(100.0),
+        },
+    );
+    (tree, root, field, row)
+}
+
+fn active_of(update: &accesskit::TreeUpdate, node: NodeId) -> Option<accesskit::NodeId> {
+    update
+        .nodes
+        .iter()
+        .find(|(id, _)| *id == to_access_id(node))
+        .and_then(|(_, n)| n.active_descendant())
+}
+
+#[test]
+fn an_active_descendant_reaches_the_access_update_and_leaves_with_its_target() {
+    let (mut tree, root, field, row) = active_descendant_scene();
+    assert_eq!(active_of(&tree.build_access_update(root), field), None);
+    tree.get_mut(field)
+        .unwrap()
+        .access
+        .edit_extra(|x| x.active_descendant = Some(row));
+    assert_eq!(
+        active_of(&tree.build_access_update(root), field),
+        Some(to_access_id(row))
+    );
+    // Hidden, the target is not in the update, so the relation is left out, not dangling.
+    tree.get_mut(row).unwrap().visible = false;
+    assert_eq!(active_of(&tree.build_access_update(root), field), None);
+    tree.get_mut(row).unwrap().visible = true;
+    assert_eq!(
+        active_of(&tree.build_access_update(root), field),
+        Some(to_access_id(row))
+    );
+}
+
+#[test]
+fn a_node_is_never_its_own_active_descendant_and_focus_stays_put() {
+    let (mut tree, root, field, row) = active_descendant_scene();
+    tree.set_focus_to(field);
+    tree.get_mut(field)
+        .unwrap()
+        .access
+        .edit_extra(|x| x.active_descendant = Some(field));
+    assert_eq!(active_of(&tree.build_access_update(root), field), None);
+    tree.get_mut(field)
+        .unwrap()
+        .access
+        .edit_extra(|x| x.active_descendant = Some(row));
+    let update = tree.build_access_update(root);
+    assert_eq!(
+        update.focus,
+        to_access_id(field),
+        "tre's focus is still the field"
+    );
+    assert_eq!(tree.focused(), Some(field));
+}

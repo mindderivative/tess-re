@@ -231,3 +231,8 @@ Nothing you have written breaks. One new call and one fix:
   compositor: a launcher's `keyboard="exclusive"` could be lost, and so could an `input_region`, margin, anchor, size or
   exclusive zone. The stored configuration is now sent as soon as the surface exists, in the order it was made. Code
   that sends the setting again at the first `configure` to work around it can drop that.
+
+- **`active_descendant` on any node (TRE-REQ-023, new, nothing to migrate).** `field.set(active_descendant=row)` tells
+  assistive technology which node is the current item of a node that keeps keyboard focus (a search field and its
+  result list); `None` clears it. Focus does not move. See
+  [Active descendant](guide/accessibility.md#active-descendant).

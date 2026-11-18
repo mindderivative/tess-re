@@ -68,6 +68,18 @@ class SignalLog:
             self._lines = [line.strip() for line in out.splitlines()]
         return list(self._lines)
 
+    def signals(self):
+        """`[(kind, detail1, object path), ...]` of every signal so far: for `StateChanged`, the state's
+        name, 1 or 0, and the node it happened to."""
+        out = []
+        for line in self.lines():
+            try:
+                data = json.loads(line)
+                out.append((data["payload"]["data"][0], data["payload"]["data"][1], data["path"]))
+            except (ValueError, KeyError, TypeError, IndexError):
+                continue
+        return out
+
     def announcements(self):
         """`[(text, politeness), ...]` of the `Announcement` signals so far (1 polite, 2 assertive)."""
         out = []
