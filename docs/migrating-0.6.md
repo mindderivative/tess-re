@@ -218,7 +218,9 @@ Nothing you have written breaks. A new text-input property, a new launcher call,
   exists, with the same events (`closed`, reason `"app"`). Code that worked around it by guarding its own close can
   drop the guard.
 
-## After 0.6.8 (unreleased)
+## 0.6.9 (2026-11-16)
+
+Nothing you have written breaks. One new call and one fix:
 
 - **`Window.announce(text, politeness="polite")` (TRE-REQ-021, new, nothing to migrate).** Raises one live announcement
   for a window through the accessibility tree with no node, on a `Window`, a `LayerWindow` and a `PopupWindow`. It works
