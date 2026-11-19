@@ -36,6 +36,10 @@ save = window.create("box", width=96, height=40, corner_radius=20,
   describe this one and the nodes it controls (a button and the panel it
   opens). A node that is hidden or removed is left out for assistive
   technology.
+- Active descendant (unreleased) — `active_descendant` names one node, or
+  `None`: the current item of a node that keeps the keyboard, such as the
+  row selected in a list under a search field. See
+  [Active descendant](#active-descendant) below.
 
 A text input and a terminal are `"textbox"` from the start, and a text
 input's value is its text.
@@ -141,6 +145,28 @@ An empty text or any politeness other than `"polite"` and `"assertive"` raises `
 Nothing is heard unless a screen reader is connected, and the message is raised with the next
 frame the window draws. It has been checked against AT-SPI's `Announcement` signal on a private
 bus; it has not been tried with Orca, NVDA or VoiceOver.
+
+### Active descendant
+
+A text field with a list under it keeps the keyboard, and Up and Down move a selection in the list.
+A screen reader reads the field, not the row. `active_descendant` tells it which row is current
+(unreleased, TRE-REQ-023):
+
+```python
+field.set(active_descendant=rows[2])   # the screen reader now reads this row as the current item
+field.set(active_descendant=None)      # back to the field
+```
+
+It takes one node of the same window, or `None`, on any node, and reads back with `get`. **Keyboard focus
+does not move**: `field.get("focused")` stays `True` and no `focus` or `unfocus` event fires. Give the row
+its `role` (`"listitem"`) and `label` so there is something to read. A target that is hidden is left out
+of the accessibility tree, and one that is destroyed reads back as `None`.
+
+How a platform says it differs. AccessKit expresses the relation by moving the *focused state* from the
+field to the row, so on Linux a screen reader sees AT-SPI `StateChanged(focused)` move to the row and back
+(checked on a private bus); it does not send `ActiveDescendantChanged` for it. Use it with the polite
+`announce` as a fallback where a platform does not deliver the relation. Not tried with Orca, NVDA or
+VoiceOver.
 
 ## Testing
 
