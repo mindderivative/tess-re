@@ -153,9 +153,49 @@ Window events apply, with these additions (see [Events](events.md)):
 | `output_changed` | The surface entered an output | `output`: its connector name |
 | `warning` | A setting the protocol accepts but ignores | `key` (the setting), `message` |
 | `moved` | A margin drag ended (see below) | `margin`: the final `(top, right, bottom, left)` |
+| `active` | The keyboard entered or left the surface: the compositor's keyboard enter and leave (see [Knowing the keyboard left, or the user clicked elsewhere](#knowing-the-keyboard-left-or-the-user-clicked-elsewhere)) | `active`: `True` when the surface has the keyboard |
 
 After `closed` with reason `"compositor"` or `"output_removed"` the window is dead; make a
 new `LayerWindow` for a new output.
+
+## Knowing the keyboard left, or the user clicked elsewhere
+
+A panel that holds the keyboard exclusively (a launcher: `keyboard="exclusive"`) cannot be left by clicking
+elsewhere the way a menu is, and wants to close itself when that happens. There are two signals, and
+what tre gives for each (TRE-REQ-024):
+
+**The keyboard leaves: the `active` event.** A `LayerWindow` is told by the compositor when it gains and
+loses the keyboard, and `window.on("active", ...)` hears it (`event.active`). With another exclusive surface
+taking the keyboard (a lock screen, a second panel) it is `False`; when that surface closes it is `True`
+again. Checked in a private sway with two exclusive surfaces: `True`, `False`, then `True` on the first as the
+second opened and closed. A click elsewhere does **not** fire it while the surface holds the keyboard
+exclusively, because the compositor does not take the keyboard away for a click; with `keyboard="on_demand"` a
+click on another window does move focus away, and `active` is `False`.
+
+**A press lands outside: a grabbing popup, no new event.** Hang a transparent 1x1 `PopupWindow` with
+`grab=True` off the panel and listen for its `closed`:
+
+```python
+catcher = PopupWindow(launcher, size=(1, 1), anchor_rect=(0, 0, 1, 1), grab=True)
+catcher.root.set(fill=(0, 0, 0, 0))
+catcher.on("closed", lambda e: hide_launcher() if e.reason == "dismissed" else None)
+app.add_window(catcher)        # from a handler, with the launcher open
+```
+
+A press on another application's surface or on the empty desktop dismisses it: `closed` arrives with
+reason `"dismissed"`. The panel keeps its keyboard throughout (checked: a key typed after the click still reaches
+its text input). What to know before relying on it:
+
+- **The press is the popup's, not the application's below.** Wayland gives a client no way to see a press on
+  another client's surface without taking it, so the click that dismisses is not delivered to what is under
+  it. The user clicks again. This holds for any such mechanism (a full-output transparent surface under the
+  panel would take the press too), which is why tre has no `outside_press` option: it could only wrap this.
+- **It is one-shot.** After a dismissal the grab is gone; make a new popup to listen again.
+- **A click on another surface of the same application** is delivered normally and does not dismiss it: the
+  grab belongs to the client.
+- **It needs a recent input serial** from the panel for a compositor to accept the grab. sway accepted it with
+  no prior input to the panel in the test; KWin is not verified, so test a launcher opened by a global shortcut
+  there before relying on it.
 
 ## Dragging a surface by its margin
 
