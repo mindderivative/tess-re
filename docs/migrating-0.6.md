@@ -236,3 +236,9 @@ Nothing you have written breaks. One new call and one fix:
   assistive technology which node is the current item of a node that keeps keyboard focus (a search field and its
   result list); `None` clears it. Focus does not move. See
   [Active descendant](guide/accessibility.md#active-descendant).
+
+- **`LayerWindow(size=("content", ...), min_size=, max_size=)` (TRE-REQ-022, new, nothing to migrate).** An axis of `size`
+  can be `"content"`: the surface is the root node's outer size, padding included, and follows the content as it
+  changes, with one request to the compositor per change and the new content held until the compositor answers.
+  `min_size` and `max_size` clamp it. A fixed `size` behaves as before. See
+  [A surface the size of its content](reference/layer-window.md#a-surface-the-size-of-its-content).
