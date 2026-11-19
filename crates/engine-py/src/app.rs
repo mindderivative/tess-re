@@ -1619,6 +1619,14 @@ impl App {
                 } else {
                     any_active
                 };
+                // TRE-REQ-027: each accessibility update carries one announcement, so a window with
+                // messages waiting keeps drawing frames until the last one has been sent.
+                let any_active = if runtime.handles.tree.borrow().has_pending_announcements() {
+                    runtime.handles.tree.borrow_mut().mark_dirty();
+                    true
+                } else {
+                    any_active
+                };
                 // 0.4.2 M12: an animated or `set` scroll offset reports
                 // its change here, once a frame.
                 crate::listeners::fire_scroll_changes(

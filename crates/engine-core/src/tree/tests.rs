@@ -8793,17 +8793,37 @@ fn the_same_text_twice_is_two_nodes_and_assertive_is_kept() {
     let first = announcement_nodes(&tree.build_access_update(root));
     tree.announce("Connected", false);
     tree.announce("Battery low", true);
+    // One message per update, oldest first: the repeat, then the assertive one.
     let second = announcement_nodes(&tree.build_access_update(root));
-    assert_eq!(
-        second.len(),
-        2,
-        "both pending messages ride the same update"
-    );
+    let third = announcement_nodes(&tree.build_access_update(root));
+    assert_eq!((second.len(), third.len()), (1, 1));
     assert_ne!(
         first[0].0, second[0].0,
         "a repeated text is a new node, so it is heard again"
     );
-    assert_eq!(second[1].2, accesskit::Live::Assertive);
+    assert_eq!(second[0].1, "Connected");
+    assert_eq!(
+        (third[0].1.as_str(), third[0].2),
+        ("Battery low", accesskit::Live::Assertive)
+    );
+}
+
+/// TRE-REQ-027: AccessKit announces the nodes one update adds in hash order, so each update carries
+/// one, the oldest, and calls are heard in the order they were made.
+#[test]
+fn announcements_leave_one_per_update_in_call_order() {
+    let (mut tree, root) = announce_scene();
+    for i in 1..=6 {
+        tree.announce(&format!("A{i}"), false);
+    }
+    let mut heard = Vec::new();
+    while tree.has_pending_announcements() {
+        let made = announcement_nodes(&tree.build_access_update(root));
+        assert_eq!(made.len(), 1, "never two in one update");
+        heard.push(made[0].1.clone());
+    }
+    assert_eq!(heard, ["A1", "A2", "A3", "A4", "A5", "A6"]);
+    assert!(announcement_nodes(&tree.build_access_update(root)).is_empty());
 }
 
 #[test]
@@ -8823,12 +8843,16 @@ fn a_reader_that_never_connects_cannot_grow_the_queue_without_bound() {
     for i in 0..100 {
         tree.announce(&format!("message {i}"), false);
     }
-    let made = announcement_nodes(&tree.build_access_update(root));
-    assert_eq!(made.len(), 16);
+    let mut heard = Vec::new();
+    while tree.has_pending_announcements() {
+        heard.extend(announcement_nodes(&tree.build_access_update(root)));
+    }
+    assert_eq!(heard.len(), 16);
+    assert_eq!(heard.first().unwrap().1, "message 84");
     assert_eq!(
-        made.last().unwrap().1,
+        heard.last().unwrap().1,
         "message 99",
-        "the newest are the ones kept"
+        "the newest are the ones kept, in order"
     );
 }
 

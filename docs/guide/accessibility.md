@@ -139,7 +139,10 @@ bar.announce("Battery critical", "assertive")   # assertive: interrupts
 bar.announce("Connected")                       # said again: a new call is a new announcement
 ```
 
-Each call is one announcement, so removing duplicates is yours. It works on a `Window`, a
+Each call is one announcement, so removing duplicates is yours. Calls are heard in the order they
+were made (0.6.10), even several in one loop turn: tre sends one per accessibility update and the
+window draws a frame for each, so six messages take six frames (about 100 ms at 60 Hz). The queue
+holds 16; the newest are kept. It works on a `Window`, a
 `LayerWindow` and a `PopupWindow`, and for a module that is hidden from the accessibility tree.
 An empty text or any politeness other than `"polite"` and `"assertive"` raises `ValueError`.
 Nothing is heard unless a screen reader is connected, and the message is raised with the next

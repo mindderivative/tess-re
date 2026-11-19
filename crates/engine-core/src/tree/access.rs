@@ -2,13 +2,18 @@
 
 use super::*;
 
-/// TRE-REQ-021: the messages `Window.announce` has raised and the update has not carried yet.
+/// TRE-REQ-021, TRE-REQ-027: the messages `Window.announce` has raised and the update has not carried yet.
 ///
 /// AccessKit has no announce call: a screen reader hears a live node when its name changes or
 /// when it enters the tree. So each message becomes a node of its own, a live group child of the
 /// root with no bounds and no place in the layout, present in exactly one update and gone from
 /// the next. A fresh node for every message is what makes a repeated text announce again, and it
 /// hangs off the root, not off a module, so a hidden module can still be heard.
+///
+/// **One message per update** (TRE-REQ-027): AccessKit keeps the nodes one update adds in a hash
+/// set, so several in one update are announced in hash order, not call order. Each update carries
+/// the oldest waiting message, and the window keeps drawing frames until the queue is empty, so
+/// calls are heard in the order they were made (six messages take six frames).
 #[derive(Default)]
 pub(super) struct Announcements {
     next: u64,
@@ -95,7 +100,8 @@ impl Tree {
             return;
         }
         let mut made = Vec::new();
-        for a in &mut queue.pending {
+        // Only the oldest unsent one: see `Announcements`.
+        if let Some(a) = queue.pending.first_mut() {
             // A group, whose name is its label: a label's comes from its value, and would be empty.
             let mut node = accesskit::Node::new(accesskit::Role::Group);
             node.set_label(a.text.clone());

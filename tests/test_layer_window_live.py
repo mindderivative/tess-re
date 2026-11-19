@@ -1290,6 +1290,36 @@ app.run()
 """
 
 
+
+
+BURST_CHILD = """
+import json, os, threading, time
+from tess_re import App, LayerWindow
+app = App()
+bar = LayerWindow("burst-test", anchor=("top", "left", "right"), size=(0, 40), exclusive_zone=40, output=%r)
+bar.root.set(fill=(30, 30, 30, 255))
+app.add_window(bar)
+handle = app.thread_handle()
+
+def burst():
+    for i in range(1, 7):
+        bar.announce("A%%d" %% i)  # six calls in ONE loop turn
+
+def go():
+    time.sleep(2.0)
+    print(json.dumps({"kind": "ready"}), flush=True)
+    time.sleep(8.0)
+    handle.call_soon(burst)
+    time.sleep(3.0)
+    print(json.dumps({"kind": "done"}), flush=True)
+    time.sleep(1.0)
+    os._exit(0)
+
+threading.Thread(target=go, daemon=True).start()
+app.run()
+"""
+
+
 def test_an_active_descendant_moves_the_screen_readers_focus_to_the_row_not_the_keyboards(children, screen_reader):
     if not shutil.which("wtype"):
         pytest.skip("needs wtype: a virtual keyboard, so the private compositor's seat has one to focus")
@@ -1318,6 +1348,19 @@ def test_an_active_descendant_moves_the_screen_readers_focus_to_the_row_not_the_
     assert steps[0] == {(1, first_row), (0, field)}, steps
     assert steps[1] == {(1, second_row), (0, first_row)}, steps
     assert steps[2] == {(1, field), (0, second_row)}, steps
+
+
+def test_announcements_made_in_one_loop_turn_are_heard_in_call_order(children, screen_reader):
+    """TRE-REQ-027: AccessKit announces the nodes one update adds in hash order, so tre sends one per update."""
+    log = screen_reader.monitor("Announcement")
+    name = next(iter(outputs()))
+    child = children(BURST_CHILD % name, DBUS_SESSION_BUS_ADDRESS=screen_reader.session)
+    child.events(until="ready", timeout=20)
+    screen_reader.enable()
+    child.events(until="done", timeout=40)
+    time.sleep(0.5)
+    heard = [text for text, _ in log.announcements()]
+    assert heard == ["A1", "A2", "A3", "A4", "A5", "A6"], heard
 
 
 A11Y_CHILD = """
