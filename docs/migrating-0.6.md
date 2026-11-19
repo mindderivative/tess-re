@@ -248,3 +248,8 @@ Nothing you have written breaks. One new call and one fix:
   `PopupWindow(grab=True)` hung off the panel reports a click on another application as its `closed` (reason
   `"dismissed"`), with the panel keeping the keyboard. See
   [Knowing the keyboard left, or the user clicked elsewhere](reference/layer-window.md#knowing-the-keyboard-left-or-the-user-clicked-elsewhere).
+
+- **`Window.announce` keeps call order (TRE-REQ-027, a fix).** Several `announce` calls made in one loop turn reached a
+  screen reader in an arbitrary order in 0.6.9, because AccessKit announces the nodes one update adds in hash order.
+  tre now sends one announcement per update, oldest first, and keeps drawing frames until the queue is empty, so calls
+  are heard in the order they were made (six messages take six frames). Nothing to change.
