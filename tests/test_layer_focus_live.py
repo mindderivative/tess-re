@@ -33,8 +33,10 @@ def say(**kw):
     print(json.dumps(kw), flush=True)
 
 app = App()
-first = LayerWindow("focus-first", anchor=("top", "left", "right"), size=(0, 30), keyboard="exclusive")
-second = LayerWindow("focus-second", anchor=("bottom", "left", "right"), size=(0, 30), keyboard="exclusive")
+# Different layers: with two exclusive surfaces in ONE layer, sway 1.9 leaves the keyboard with the first
+# and newer sway gives it to the newest. The higher layer wins on both.
+first = LayerWindow("focus-first", anchor=("top", "left", "right"), size=(0, 30), keyboard="exclusive", layer="top")
+second = LayerWindow("focus-second", anchor=("bottom", "left", "right"), size=(0, 30), keyboard="exclusive", layer="overlay")
 first.on("active", lambda e: say(who="first", active=e.active))
 second.on("active", lambda e: say(who="second", active=e.active))
 app.add_window(first)
