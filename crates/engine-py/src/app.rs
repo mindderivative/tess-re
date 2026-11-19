@@ -2646,6 +2646,12 @@ impl App {
                     opener.open_window(window_request(setup, index, max_frames));
                     attach_waker(setup, waker, &alarm);
                 }
+                // TRE-REQ-011: a run that opens no window has no frame to drain what was queued
+                // with `call_soon` before `run()`, and nothing else wakes it: wake the loop once, so
+                // those callbacks run when the loop starts, not whenever something else happens to.
+                if setups_for_setup.borrow().is_empty() {
+                    waker.wake();
+                }
                 // 0.5.6 (#159): from here `add_window` opens windows live.
                 *live_for_setup.borrow_mut() = Some(LiveRun {
                     setups: setups_for_setup.clone(),
