@@ -281,6 +281,27 @@ and radius; animating from a flat colour fades the gradient in from that colour.
 Animating between unlike gradients, or from a gradient to a colour, raises
 `ValueError`: set `fill` instead.
 
+### Repeating a ramp (0.6.10)
+
+Each constructor takes `repeat` and `spread`:
+
+```python
+Gradient.linear([black, red], angle=90, repeat=4)                 # four stripes, left to right
+Gradient.radial([white, blue], repeat=3)                           # three rings
+ring.set(stroke_color=Gradient.sweep([red, yellow, red], repeat=6)) # six colour cycles around a ring
+Gradient.linear([black, red], angle=90, repeat=3, spread="reflect") # back and forth, no hard edge
+```
+
+`repeat` is how many times the ramp runs across the gradient's span: a linear gradient's line, a
+radial one's `radius`, a sweep's full turn. It is a number greater than 0 (`1.0`, the default, is one
+pass, as before); a fraction such as `2.5` leaves the last pass partial. `spread` is what a pass after
+the first does: `"repeat"` starts the ramp again, `"reflect"` runs it back so there is no hard edge,
+`"pad"` holds the last colour. The default is `"repeat"` when `repeat` is not 1 and `"pad"`
+otherwise, so a gradient built without the new arguments draws as it did in 0.6.9. `gradient.repeat`
+and `gradient.spread` read them back. A pass is a fraction of the span, so the stop list stays small
+and `repeat` animates (`box.animate("fill", Gradient.linear(..., repeat=3), 1000)` between gradients of
+the same kind and stop count).
+
 ## Blur, frosted glass, and blend modes
 
 Three effects (0.5.4), all acting on a node as a group, like `opacity`:
