@@ -21,7 +21,7 @@ compositor withholds frame callbacks, so tess_re kept drawing into a swapchain t
 | --- | --- |
 | Windows | `pre_present_notify()` before `present`. winit then holds a window's next redraw until its frame callback; `ControlFlow::Wait` replaces `Poll` on Wayland (`PerWindow::polls`, one rule for windows and layers). |
 | Layer surfaces | No winit window, so `LayerController::request_frame/frame_pending` ask `wl_surface.frame` themselves; the layer thread answers in `CompositorHandler::frame` (`LayerEvent::FrameDone`) and `run_layer_frames` skips a surface with a callback out. A frame request made while the callback was out is kept, not dropped. |
-| Resize | A resize-paced frame (#155) skips the gate: it presents without a vsync barrier on purpose. |
+| Resize | A resize-paced frame (#155) skips the gate: it presents without a vsync barrier on purpose, but at most once per 4 ms (about 250 a second, 0.6.10, #248). |
 | X11, macOS | winit `Occluded` becomes the window state and event `occluded`; with `pause_when_occluded` (default on) an occluded window skips prepare, draw and present and asks for no more frames. A minimized window reads `occluded` too. |
 
 ## Measured

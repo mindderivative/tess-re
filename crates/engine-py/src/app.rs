@@ -1966,6 +1966,21 @@ impl App {
                     runtime.handles.tree.borrow_mut().mark_dirty();
                     return false;
                 }
+                // 0.6.10 (#248): a resizing window presents without a vsync barrier, which
+                // never waits, so on KWin with RADV it committed ~10,000 times a second for
+                // the whole resize hold. Draw at most once per `RESIZE_MIN_INTERVAL`; the
+                // loop's alarm comes back for the rest. Nothing was prepared yet, so the
+                // next pass draws everything that changed meanwhile.
+                {
+                    let now = Instant::now();
+                    if let Some(wait) = runtime.gpu.pacing.throttle(now) {
+                        runtime.handles.tree.borrow_mut().mark_dirty();
+                        if let Some(alarm) = runtime.handles.alarm.borrow().as_ref() {
+                            alarm.arm(now + wait);
+                        }
+                        return true;
+                    }
+                }
                 // #264: this window is drawing, so a wake asked for its changes is answered.
                 runtime.wake_sent.set(false);
                 let damage = {
@@ -2102,6 +2117,7 @@ impl App {
                 }
                 runtime.gpu.queue.present(output);
                 let frame_ended = Instant::now();
+                runtime.gpu.pacing.presented(frame_ended);
                 if reconfigure {
                     runtime
                         .gpu
