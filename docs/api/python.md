@@ -549,14 +549,16 @@ A linear, radial or sweep gradient to give a box as its `fill`.
 | `center` | `tuple[float, float] \| None` |  |
 | `radius` | `float \| None` |  |
 | `start` | `float \| None` |  |
+| `repeat` | `float` | How many times the ramp runs across the span; `1.0` is one pass. |
+| `spread` | `Literal['pad', 'repeat', 'reflect']` | What a pass after the first does. |
 
 **Methods:**
 
 | Method | Description |
 | --- | --- |
-| `linear(stops: Sequence[Color] \| Sequence[tuple[float, Color]], angle: float=180.0) -> Gradient` | Along a line through the box's centre at `angle` degrees (0 up, 90 right, 180 down), spanning the box. |
-| `radial(stops, center, radius) -> Gradient` | Outward from `center` (fractions of the box; `None` is `(0.5, 0.5)`, the middle). |
-| `sweep(stops, center, start) -> Gradient` | Around `center` (`None` is the middle), starting `start` degrees clockwise from up. |
+| `linear(stops, angle, repeat, spread) -> Gradient` | Along a line through the box's centre at `angle` degrees (0 up, 90 right, 180 down), spanning the box. |
+| `radial(stops, center, radius, repeat, spread) -> Gradient` | Outward from `center` (fractions of the box; `None` is `(0.5, 0.5)`, the middle). |
+| `sweep(stops, center, start, repeat, spread) -> Gradient` | Around `center` (`None` is the middle), starting `start` degrees clockwise from up. |
 
 **Events:** none.
 

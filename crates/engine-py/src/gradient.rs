@@ -1,6 +1,6 @@
 //! 0.5.4 (#109): `tess_re.Gradient`, a gradient fill for a box's `fill`.
 
-use engine_core::{GradientShape, GradientStop};
+use engine_core::{GradientShape, GradientStop, Spread};
 use peniko::Color;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -67,9 +67,30 @@ fn parse_stops(stops: &Bound<'_, PyAny>) -> PyResult<Vec<GradientStop>> {
         .collect()
 }
 
-fn build(shape: GradientShape, stops: &Bound<'_, PyAny>) -> PyResult<PyGradient> {
-    let inner =
-        engine_core::Gradient::new(shape, parse_stops(stops)?).map_err(PyValueError::new_err)?;
+/// `spread` as Python gives it: `None` is `"repeat"` for a gradient that repeats and `"pad"` for
+/// one that does not, which is the 0.6.9 behaviour.
+fn parse_spread(spread: Option<&str>, repeat: f64) -> PyResult<Spread> {
+    match spread {
+        None if repeat == 1.0 => Ok(Spread::Pad),
+        None | Some("repeat") => Ok(Spread::Repeat),
+        Some("pad") => Ok(Spread::Pad),
+        Some("reflect") => Ok(Spread::Reflect),
+        Some(other) => Err(PyValueError::new_err(format!(
+            "gradient spread {other:?} is not one of: pad, repeat, reflect"
+        ))),
+    }
+}
+
+fn build(
+    shape: GradientShape,
+    stops: &Bound<'_, PyAny>,
+    repeat: f64,
+    spread: Option<&str>,
+) -> PyResult<PyGradient> {
+    let spread = parse_spread(spread, repeat)?;
+    let inner = engine_core::Gradient::new(shape, parse_stops(stops)?)
+        .and_then(|g| g.with_repeat(repeat, spread))
+        .map_err(PyValueError::new_err)?;
     Ok(PyGradient { inner })
 }
 
@@ -79,26 +100,60 @@ impl PyGradient {
     /// (0 points up, 90 right, 180 down, the default), spanning the box.
     /// `stops` are colours, spaced evenly, or `(offset, color)` pairs with
     /// offsets from 0 to 1.
+    ///
+    /// `repeat` (0.6.10) runs the ramp that many times along the line (a fraction leaves the last
+    /// pass partial; it must be greater than 0). `spread` says what a pass after the first does:
+    /// `"repeat"` (the default when `repeat` is not 1) starts again, `"reflect"` runs it back,
+    /// `"pad"` (the default for one pass) holds the last colour.
     #[staticmethod]
-    #[pyo3(signature = (stops, angle=180.0))]
-    fn linear(stops: &Bound<'_, PyAny>, angle: f64) -> PyResult<Self> {
-        build(GradientShape::Linear { angle_deg: angle }, stops)
+    #[pyo3(signature = (stops, angle=180.0, repeat=1.0, spread=None))]
+    fn linear(
+        stops: &Bound<'_, PyAny>,
+        angle: f64,
+        repeat: f64,
+        spread: Option<&str>,
+    ) -> PyResult<Self> {
+        build(
+            GradientShape::Linear { angle_deg: angle },
+            stops,
+            repeat,
+            spread,
+        )
     }
 
     /// A gradient outward from `center` (fractions of the box; `None`, the
     /// default, is `(0.5, 0.5)`, its middle). `radius` is a fraction of the box's half-diagonal, so `1.0`
-    /// reaches the far corner of a centred gradient.
+    /// reaches the far corner of a centred gradient. `repeat` and `spread` (0.6.10): see `linear`;
+    /// the ramp repeats outward, each pass `radius / repeat` wide.
     #[staticmethod]
-    #[pyo3(signature = (stops, center=None, radius=1.0))]
-    fn radial(stops: &Bound<'_, PyAny>, center: Option<(f64, f64)>, radius: f64) -> PyResult<Self> {
+    #[pyo3(signature = (stops, center=None, radius=1.0, repeat=1.0, spread=None))]
+    fn radial(
+        stops: &Bound<'_, PyAny>,
+        center: Option<(f64, f64)>,
+        radius: f64,
+        repeat: f64,
+        spread: Option<&str>,
+    ) -> PyResult<Self> {
         let center = center.unwrap_or((0.5, 0.5));
-        build(GradientShape::Radial { center, radius }, stops)
+        build(
+            GradientShape::Radial { center, radius },
+            stops,
+            repeat,
+            spread,
+        )
     }
 
-    /// A gradient around `center`, starting `start` degrees clockwise from up.
+    /// A gradient around `center`, starting `start` degrees clockwise from up. `repeat` and
+    /// `spread` (0.6.10): see `linear`; the ramp runs `repeat` times around the full turn.
     #[staticmethod]
-    #[pyo3(signature = (stops, center=None, start=0.0))]
-    fn sweep(stops: &Bound<'_, PyAny>, center: Option<(f64, f64)>, start: f64) -> PyResult<Self> {
+    #[pyo3(signature = (stops, center=None, start=0.0, repeat=1.0, spread=None))]
+    fn sweep(
+        stops: &Bound<'_, PyAny>,
+        center: Option<(f64, f64)>,
+        start: f64,
+        repeat: f64,
+        spread: Option<&str>,
+    ) -> PyResult<Self> {
         let center = center.unwrap_or((0.5, 0.5));
         build(
             GradientShape::Sweep {
@@ -106,7 +161,25 @@ impl PyGradient {
                 start_deg: start,
             },
             stops,
+            repeat,
+            spread,
         )
+    }
+
+    /// How many times the ramp runs across the gradient's span (`1.0`, one pass, by default).
+    #[getter]
+    fn repeat(&self) -> f64 {
+        self.inner.repeat()
+    }
+
+    /// `"pad"`, `"repeat"` or `"reflect"`: what a pass after the first does.
+    #[getter]
+    fn spread(&self) -> &'static str {
+        match self.inner.spread() {
+            Spread::Pad => "pad",
+            Spread::Repeat => "repeat",
+            Spread::Reflect => "reflect",
+        }
     }
 
     /// `"linear"`, `"radial"` or `"sweep"`.
@@ -180,6 +253,14 @@ impl PyGradient {
                 format!("sweep, center={center:?}, start={start_deg}")
             }
         };
-        format!("Gradient({shape}, {} stops)", self.inner.stops().len())
+        let repeat = if self.inner.repeat() == 1.0 {
+            String::new()
+        } else {
+            format!(", repeat={}, spread={}", self.inner.repeat(), self.spread())
+        };
+        format!(
+            "Gradient({shape}{repeat}, {} stops)",
+            self.inner.stops().len()
+        )
     }
 }

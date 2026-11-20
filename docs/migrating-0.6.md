@@ -267,3 +267,8 @@ Nothing you have written breaks. One new call and one fix:
   `closed`; code that treated "run() returned with windows still open" as a lost compositor keeps working, and can use the
   callback instead. `supports()` remembers its first answer (a "no" too); `refresh=True` asks again. See
   [`connection_lost`](reference/app.md#connection_lost-0610).
+
+- **`Gradient(..., repeat=, spread=)` (TRE-REQ-006, new, nothing to migrate).** `Gradient.linear`, `radial` and `sweep`
+  run their ramp `repeat` times across the span, `spread` being `"repeat"`, `"reflect"` or `"pad"`; the default is one
+  pass, drawn as in 0.6.9. `gradient.repeat` and `gradient.spread` read them back, and `repeat` animates. See
+  [Repeating a ramp](reference/paint.md#repeating-a-ramp-0610).

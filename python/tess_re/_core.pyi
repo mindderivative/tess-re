@@ -1298,32 +1298,45 @@ class Gradient:
     `fill` to a colour replaces a gradient; `node.get("fill")` returns the
     `Gradient` while one is set. Animating `fill` between gradients of the same
     kind and number of stops interpolates their colours, positions and angles;
-    animating from a flat colour fades the gradient in."""
+    animating from a flat colour fades the gradient in. (0.6.10) `repeat` is animated too."""
 
     @staticmethod
     def linear(
-        stops: Sequence[Color] | Sequence[tuple[float, Color]], angle: float = 180.0
+        stops: Sequence[Color] | Sequence[tuple[float, Color]],
+        angle: float = 180.0,
+        repeat: float = 1.0,
+        spread: Literal["pad", "repeat", "reflect"] | None = None,
     ) -> Gradient:
         """Along a line through the box's centre at `angle` degrees (0 up, 90 right,
         180 down), spanning the box. `stops` are colours spaced evenly, or
-        `(offset, color)` pairs with offsets from 0 to 1 that don't decrease."""
+        `(offset, color)` pairs with offsets from 0 to 1 that don't decrease.
+        (0.6.10) `repeat` runs the ramp that many times along the line (a fraction leaves the
+        last pass partial; greater than 0); `spread` is what a pass after the first does:
+        `"repeat"` starts again (the default when `repeat` is not 1), `"reflect"` runs it back,
+        `"pad"` holds the last colour (the default for one pass)."""
         ...
     @staticmethod
     def radial(
         stops: Sequence[Color] | Sequence[tuple[float, Color]],
         center: tuple[float, float] | None = None,
         radius: float = 1.0,
+        repeat: float = 1.0,
+        spread: Literal["pad", "repeat", "reflect"] | None = None,
     ) -> Gradient:
         """Outward from `center` (fractions of the box; `None` is `(0.5, 0.5)`, the middle). `radius` is a fraction of the
-        half-diagonal, so `1.0` reaches the far corner of a centred gradient."""
+        half-diagonal, so `1.0` reaches the far corner of a centred gradient. (0.6.10) `repeat` and
+        `spread` as for `linear`: the ramp repeats outward in rings `radius / repeat` wide."""
         ...
     @staticmethod
     def sweep(
         stops: Sequence[Color] | Sequence[tuple[float, Color]],
         center: tuple[float, float] | None = None,
         start: float = 0.0,
+        repeat: float = 1.0,
+        spread: Literal["pad", "repeat", "reflect"] | None = None,
     ) -> Gradient:
-        """Around `center` (`None` is the middle), starting `start` degrees clockwise from up."""
+        """Around `center` (`None` is the middle), starting `start` degrees clockwise from up.
+        (0.6.10) `repeat` and `spread` as for `linear`: the ramp runs `repeat` times around the turn."""
         ...
     @property
     def kind(self) -> str:
@@ -1339,6 +1352,14 @@ class Gradient:
     def radius(self) -> float | None: ...
     @property
     def start(self) -> float | None: ...
+    @property
+    def repeat(self) -> float:
+        """(0.6.10) How many times the ramp runs across the span; `1.0` is one pass."""
+        ...
+    @property
+    def spread(self) -> Literal["pad", "repeat", "reflect"]:
+        """(0.6.10) What a pass after the first does."""
+        ...
     def __eq__(self, other: object, /) -> bool: ...
 
 @final

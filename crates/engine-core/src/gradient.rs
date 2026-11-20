@@ -30,11 +30,24 @@ pub struct GradientStop {
     pub color: Color,
 }
 
-/// A gradient fill: a shape and at least two stops in increasing order.
+/// What a gradient does past one pass of its ramp (TRE-REQ-006): hold the last colour, start the
+/// ramp again, or run it back.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Spread {
+    #[default]
+    Pad,
+    Repeat,
+    Reflect,
+}
+
+/// A gradient fill: a shape and at least two stops in increasing order, the ramp run `repeat`
+/// times across the shape's span.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Gradient {
     shape: GradientShape,
     stops: Vec<GradientStop>,
+    repeat: f64,
+    spread: Spread,
 }
 
 impl Gradient {
@@ -74,7 +87,37 @@ impl Gradient {
                     .to_string(),
             );
         }
-        Ok(Self { shape, stops })
+        Ok(Self {
+            shape,
+            stops,
+            repeat: 1.0,
+            spread: Spread::Pad,
+        })
+    }
+
+    /// This gradient with its ramp run `repeat` times across the span (a linear gradient's line,
+    /// a radial one's radius, a sweep's full turn), `spread` saying what each further pass does:
+    /// `Repeat` starts the ramp again, `Reflect` runs it back, `Pad` holds the last colour (so
+    /// the span shrinks to `1 / repeat` of itself and the rest is one flat colour). `repeat` is
+    /// finite and greater than 0; a fraction leaves the last pass partial.
+    pub fn with_repeat(mut self, repeat: f64, spread: Spread) -> Result<Self, String> {
+        if !repeat.is_finite() || repeat <= 0.0 {
+            return Err(format!(
+                "a gradient's repeat must be a number greater than 0, got {repeat}"
+            ));
+        }
+        self.repeat = repeat;
+        self.spread = spread;
+        Ok(self)
+    }
+
+    /// How many times the ramp runs across the span; `1.0` is one pass.
+    pub fn repeat(&self) -> f64 {
+        self.repeat
+    }
+
+    pub fn spread(&self) -> Spread {
+        self.spread
     }
 
     pub fn shape(&self) -> &GradientShape {
@@ -98,6 +141,8 @@ impl Gradient {
                     color,
                 })
                 .collect(),
+            repeat: self.repeat,
+            spread: self.spread,
         }
     }
 
@@ -123,21 +168,32 @@ impl Gradient {
                 // first and last stops land on the corners.
                 let length = (w * theta.sin()).abs() + (h * theta.cos()).abs();
                 let (cx, cy) = (w / 2.0, h / 2.0);
+                // One pass is `1 / repeat` of the line, from its start.
+                let (x0, y0) = (cx - dx * length / 2.0, cy - dy * length / 2.0);
+                let pass = length / self.repeat;
                 peniko::Gradient::new_linear(
-                    Point::new(cx - dx * length / 2.0, cy - dy * length / 2.0),
-                    Point::new(cx + dx * length / 2.0, cy + dy * length / 2.0),
+                    Point::new(x0, y0),
+                    Point::new(x0 + dx * pass, y0 + dy * pass),
                 )
             }
             GradientShape::Radial { center, radius } => peniko::Gradient::new_radial(
                 Point::new(center.0 * w, center.1 * h),
-                (radius * w.hypot(h) / 2.0) as f32,
+                (radius * w.hypot(h) / 2.0 / self.repeat) as f32,
             ),
             GradientShape::Sweep { center, start_deg } => {
                 // `peniko` measures from the +x axis; CSS from up.
                 let at = Point::new(center.0 * w, center.1 * h);
                 paint_transform = Affine::rotate_about((start_deg - 90.0).to_radians(), at);
-                peniko::Gradient::new_sweep(at, 0.0, std::f32::consts::TAU)
+                peniko::Gradient::new_sweep(at, 0.0, (std::f64::consts::TAU / self.repeat) as f32)
             }
+        };
+        let mut gradient = gradient;
+        // One pass of a spread-less gradient is the whole ramp: `Pad` and a repeat above 1 would
+        // flatten everything past the first pass, which is never what "repeat" asked for.
+        gradient.extend = match self.spread {
+            Spread::Pad => peniko::Extend::Pad,
+            Spread::Repeat => peniko::Extend::Repeat,
+            Spread::Reflect => peniko::Extend::Reflect,
         };
         let stops: Vec<(f32, Color)> = self.stops.iter().map(|s| (s.offset, s.color)).collect();
         (gradient.with_stops(stops.as_slice()), paint_transform)
@@ -195,7 +251,12 @@ impl Interpolate for Gradient {
                 color: a.color.interpolate(&b.color, t),
             })
             .collect();
-        Self { shape, stops }
+        Self {
+            shape,
+            stops,
+            repeat: lerp(self.repeat, other.repeat),
+            spread: self.spread,
+        }
     }
 }
 

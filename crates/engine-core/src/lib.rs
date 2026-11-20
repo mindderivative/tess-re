@@ -50,7 +50,7 @@ pub use gesture::{
     Gesture, GestureConfig, GestureKind, GesturePhase, GestureRecognizer, SwipeDirection,
     TouchPhase,
 };
-pub use gradient::{Gradient, GradientShape, GradientStop};
+pub use gradient::{Gradient, GradientShape, GradientStop, Spread};
 pub use input::{
     ChangedValue, ComposePhase, DispatchOutcome, InputEvent, Key, Modifiers, PointerButton,
     ScrollDelta, ctrl_shortcut,
