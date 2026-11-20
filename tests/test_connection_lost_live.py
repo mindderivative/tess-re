@@ -1,12 +1,14 @@
 """TRE-REQ-026: the app is told the compositor went away, and `supports("layer_shell", refresh=True)` asks again.
 
-Run on a private sway (`tools/sway_live.sh`): the test kills that sway while a window and a layer
-surface are open, starts another in the same runtime dir, and reads what the app saw.
+The test starts two sways of its own (headless, in a private runtime dir) and never touches the shared one
+a CI job or `tools/sway_live.sh` provides: killing that would take every later test's compositor with it.
+It runs only where `TESS_RE_PRIVATE_COMPOSITOR=1` says the environment is a private one.
 """
 
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -47,9 +49,27 @@ say(kind="back", supported=tess_re.supports("layer_shell"))
 """
 
 
-def need_sway():
-    if not os.environ.get("WAYLAND_DISPLAY") or not os.environ.get("SWAYSOCK"):
-        pytest.skip("needs a private sway (tools/sway_live.sh)")
+def need_private_sway():
+    if os.environ.get("TESS_RE_PRIVATE_COMPOSITOR") != "1" or not shutil.which("sway"):
+        pytest.skip("needs sway and a private environment (tools/sway_live.sh)")
+
+
+def start_sway(runtime):
+    """A headless sway in `runtime`; returns (process, the Wayland display name it chose)."""
+    config = runtime / "sway.config"
+    display = runtime / f"display.{time.time_ns()}"
+    config.write_text(f"exec sh -c 'echo $WAYLAND_DISPLAY > {display}'\n")
+    process = subprocess.Popen(
+        ["sway", "-c", str(config)],
+        env=dict(os.environ, XDG_RUNTIME_DIR=str(runtime), WLR_BACKENDS="headless",
+                 WLR_LIBINPUT_NO_DEVICES="1", WLR_RENDERER="pixman"),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    end = time.time() + 15
+    while time.time() < end and not (display.exists() and display.read_text().strip()):
+        assert process.poll() is None, "sway exited early"
+        time.sleep(0.1)
+    return process, display.read_text().strip()
 
 
 def read_until(process, kind, timeout):
@@ -66,17 +86,23 @@ def read_until(process, kind, timeout):
 
 
 def test_a_killed_compositor_is_announced_once_and_layer_shell_is_found_again_when_it_returns():
-    need_sway()
+    need_private_sway()
+    runtime = pathlib.Path(tempfile.mkdtemp(prefix="sway-lost.", dir=os.environ.get("XDG_RUNTIME_DIR")))
+    runtime.chmod(0o700)
+    sway, display = start_sway(runtime)
+    env = dict(os.environ, XDG_RUNTIME_DIR=str(runtime), WAYLAND_DISPLAY=display)
+    env.pop("DISPLAY", None)
     child = subprocess.Popen(
-        [sys.executable, "-I", "-c", textwrap.dedent(CHILD)], stdout=subprocess.PIPE, text=True
+        [sys.executable, "-I", "-c", textwrap.dedent(CHILD)], stdout=subprocess.PIPE, text=True, env=env
     )
     watchdog = threading.Timer(120, child.kill)
     watchdog.start()
-    sway = None
+    again = None
     try:
         assert read_until(child, "ready", 40)[-1]["kind"] == "ready"
         time.sleep(1.5)  # both surfaces are up
-        subprocess.run(["swaymsg", "exit"], capture_output=True, check=False)
+        sway.terminate()
+        sway.wait(timeout=15)
         events = read_until(child, "returned", 30)
         kinds = [e["kind"] for e in events]
         assert kinds.count("lost") == 1, events
@@ -92,18 +118,16 @@ def test_a_killed_compositor_is_announced_once_and_layer_shell_is_found_again_wh
         # The first answer is remembered; a refresh asks the (now absent) compositor.
         assert returned["cached"] is True and returned["refreshed"] is False, returned
 
-        work = pathlib.Path(tempfile.mkdtemp(prefix="sway-again."))
-        (work / "config").write_text("")
-        sway = subprocess.Popen(
-            ["sway", "-c", str(work / "config")],
-            env=dict(os.environ, WLR_BACKENDS="headless", WLR_LIBINPUT_NO_DEVICES="1", WLR_RENDERER="pixman"),
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        again, display_again = start_sway(runtime)
+        if display_again != display:
+            pytest.skip(f"the new sway chose {display_again}, not {display}: the child's address is fixed")
         back = read_until(child, "back", 45)[-1]
         assert back == {"kind": "back", "supported": True}, back
     finally:
         watchdog.cancel()
         child.kill()
-        if sway:
-            sway.kill()
-            sway.wait()
+        for process in (sway, again):
+            if process and process.poll() is None:
+                process.kill()
+                process.wait()
+        shutil.rmtree(runtime, ignore_errors=True)
