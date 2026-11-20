@@ -478,12 +478,17 @@ pub enum Availability {
     Unsupported(String),
 }
 
-/// Where this process stands on layer surfaces.
+/// Where this process stands on layer surfaces, as first found out.
 pub fn availability() -> Availability {
+    availability_with(false)
+}
+
+/// As [`availability`]; `refresh` asks the compositor again instead of using the remembered answer.
+pub fn availability_with(refresh: bool) -> Availability {
     #[cfg(target_os = "linux")]
     {
         if std::env::var_os("WAYLAND_DISPLAY").is_some() {
-            return if crate::layer::supported() {
+            return if crate::layer::supported(refresh) {
                 Availability::Supported
             } else {
                 Availability::Unsupported(

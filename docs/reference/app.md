@@ -135,6 +135,19 @@ takes the [`Output`](outputs.md) (or nothing). There is one handler per event an
 replaces it. See [Outputs](outputs.md#events). `simulate` delivers an event as the compositor
 would, for tests with no display.
 
+### `connection_lost` (0.6.10)
+
+`app.on("connection_lost", handler)` calls `handler()` (no argument) once when the compositor goes
+away while `run()` is going: it was killed, crashed or its socket closed. The call comes from
+inside `run()`, before anything else happens, so the app is still its own: save state, record why,
+start a timer. Then every window that was open hears `closed` with the reason `"connection_lost"`
+and `run()` returns normally (before 0.6.10 it returned with nothing said; the windows heard
+nothing). Not called for a `stop()`, for a `run()` that never found a display, or for a window the
+app closed itself. `off("connection_lost")` removes the handler; a handler that raises is logged.
+
+To wait for a compositor to come back, ask `tess_re.supports("layer_shell", refresh=True)` until it
+is true, then build the windows and `run()` again ([layer surfaces](layer-window.md)).
+
 ## GPU memory
 
 Windows share one GPU device (0.5.9, #220), and a device asks the driver's allocator for memory in

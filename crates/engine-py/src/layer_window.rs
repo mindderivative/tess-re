@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use engine_platform::layer_config::{
     Anchors, Availability, ConfigError, KeyboardMode, LayerConfig, LayerKind, availability,
-    parse_anchor,
+    availability_with, parse_anchor,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -1133,12 +1133,15 @@ impl PyLayerWindow {
     }
 }
 
-/// `tess_re.supports(feature)`: whether this process can use an optional feature. Only
-/// `"layer_shell"` so far; an unknown name is `False`.
+/// `tess_re.supports(feature, refresh=False)`: whether this process can use an optional feature.
+/// Only `"layer_shell"` so far; an unknown name is `False`. The first answer is remembered, a
+/// "no" included; `refresh=True` asks the compositor again (TRE-REQ-026), so a program started
+/// before its compositor can poll until it is there.
 #[pyfunction]
-pub(crate) fn supports(feature: &str) -> bool {
+#[pyo3(signature = (feature, refresh=false))]
+pub(crate) fn supports(feature: &str, refresh: bool) -> bool {
     match feature {
-        "layer_shell" => availability() == Availability::Supported,
+        "layer_shell" => availability_with(refresh) == Availability::Supported,
         _ => false,
     }
 }

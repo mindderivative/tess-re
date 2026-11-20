@@ -133,7 +133,10 @@ not four numbers, an `exclusive_zone` below `-1`. A node's `window_region="drag"
 layer shell: an X11 session, GNOME's Mutter, Windows and macOS. It does not quietly turn
 into a plain window: a bar without its exclusive zone is worse than an error. An app that
 wants a fallback catches it and builds one from `Window`. `tess_re.supports("layer_shell")`
-answers the question without making a window.
+answers the question without making a window. The first answer is remembered, a "no" included;
+`tess_re.supports("layer_shell", refresh=True)` (0.6.10) asks the compositor again, so a program
+started before its compositor can poll until it is there, and one that lost its compositor can
+wait for the next (see [`connection_lost`](app.md#connection_lost-0610)).
 
 With no display at all (a CI run) a `LayerWindow` can be built and driven headless, like
 a `Window`, but not opened. A stretched axis is `1920` or `1080` logical pixels there

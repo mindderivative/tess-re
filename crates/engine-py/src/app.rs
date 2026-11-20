@@ -54,6 +54,9 @@ fn render_extent(pixels: u32) -> u16 {
     u16::try_from(pixels).unwrap_or(u16::MAX)
 }
 
+/// TRE-REQ-026: the `App.on` event for a lost compositor, and the `closed` reason its windows hear.
+const CONNECTION_LOST: &str = "connection_lost";
+
 #[pyclass]
 pub struct App(ThreadBound<AppState>);
 thread_bound_shell!(App => AppState);
@@ -72,6 +75,8 @@ pub struct AppState {
     calls: CallQueue,
     /// 0.5.8 (#202): listeners for `output_added`, `output_removed` and `output_updated`.
     output_listeners: crate::outputs::OutputListeners,
+    /// TRE-REQ-026: `on("connection_lost", fn)`, called once when the compositor goes away mid-run.
+    connection_lost: RefCell<Option<Py<PyAny>>>,
 }
 
 /// One registered window's data, extracted once (up front, while the
@@ -848,6 +853,7 @@ impl App {
             live: Rc::new(RefCell::new(None)),
             calls: CallQueue::default(),
             output_listeners: Default::default(),
+            connection_lost: RefCell::new(None),
         }))
     }
 
@@ -879,6 +885,15 @@ impl App {
     /// One handler per event; a second replaces the first. Outputs that exist when the
     /// app starts are not "added": read them with `outputs()`.
     fn on(&self, py: Python<'_>, event: &str, handler: Py<PyAny>) -> PyResult<()> {
+        if event == CONNECTION_LOST {
+            if !handler.bind(py).is_callable() {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "App.on: the connection_lost handler must be callable",
+                ));
+            }
+            *self.connection_lost.borrow_mut() = Some(handler);
+            return Ok(());
+        }
         let name = crate::outputs::EVENTS
             .iter()
             .copied()
@@ -897,6 +912,10 @@ impl App {
 
     /// 0.5.8 (#202): removes the handler for an output event.
     fn off(&self, event: &str) -> PyResult<()> {
+        if event == CONNECTION_LOST {
+            *self.connection_lost.borrow_mut() = None;
+            return Ok(());
+        }
         let name = crate::outputs::EVENTS
             .iter()
             .copied()
@@ -934,6 +953,9 @@ impl App {
         for (handler, _) in self.output_listeners.borrow().values() {
             visit.call(handler)?;
         }
+        if let Some(handler) = self.connection_lost.borrow().as_ref() {
+            visit.call(handler)?;
+        }
         for window in self.windows.borrow().iter() {
             visit.call(window)?;
         }
@@ -945,6 +967,7 @@ impl App {
             return;
         }
         self.output_listeners.borrow_mut().clear();
+        *self.connection_lost.borrow_mut() = None;
     }
 
     /// Registers `window` to be opened the next time `run()` is called
@@ -1112,6 +1135,12 @@ impl App {
         // 0.4.0: why a window's GPU setup failed, raised once the loop
         // has stopped.
         let startup_error: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+        // TRE-REQ-026: whether the loop got as far as `setup`; a loop that ends in an error after
+        // that lost its compositor, one that never started had no display.
+        let loop_started = Rc::new(std::cell::Cell::new(false));
+        let loop_started_for_setup = loop_started.clone();
+        let open_layers: Rc<RefCell<Vec<_>>> = Rc::new(RefCell::new(Vec::new()));
+        let open_layers_for_shutdown = open_layers.clone();
         let startup_error_for_created = startup_error.clone();
         let startup_error_for_frame = startup_error.clone();
         let startup_error_for_lifecycle = startup_error.clone();
@@ -1387,6 +1416,7 @@ impl App {
                 }),
                 watch_outputs: !output_listeners_for_watch.borrow().is_empty(),
                 on_shutdown: Box::new(move || {
+                    let open_at_shutdown = open_layers_for_shutdown.clone();
                     // Drop the layer windows' GPU state (and so their `wgpu` surfaces) now.
                     let mut runtimes = shutdown_runtimes.borrow_mut();
                     let layer_ids: Vec<WindowId> = runtimes
@@ -1398,6 +1428,10 @@ impl App {
                         if let Some(runtime) = runtimes.remove(&id)
                             && let Some(layer) = &runtime.handles.layer
                         {
+                            // Still open at shutdown: a lost connection will close it (TRE-REQ-026).
+                            if layer.id.get().is_some() {
+                                open_at_shutdown.borrow_mut().push(runtime.handles.clone());
+                            }
                             layer.id.set(None);
                             *layer.controller.borrow_mut() = None;
                         }
@@ -2632,6 +2666,7 @@ impl App {
                 // M87: from here on, `LoopHandle.call_soon` wakes this
                 // run's loop -- including one idle in `ControlFlow::Wait`.
                 calls_for_setup.set_waker(Some(waker.clone()));
+                loop_started_for_setup.set(true);
                 *gpu_wake_for_setup.borrow_mut() = Some(GpuWake::start(waker.clone()));
                 let timer_wake = crate::timers::TimerWake::start(waker.clone());
                 let alarm = timer_wake.alarm.clone();
@@ -2674,6 +2709,41 @@ impl App {
             },
         );
 
+        // TRE-REQ-026: the loop failed after it started, and nobody asked it to stop: the compositor
+        // went away. Tell the app while its windows are still its own (`run()` has not returned), then
+        // close them: each hears `closed` with the reason "connection_lost".
+        let connection_lost = result.is_err() && loop_started.get() && !self.calls.is_stopping();
+        if connection_lost {
+            Python::attach(|py| {
+                // Taken out first: the handler runs once and may call `off` or `on` itself.
+                let handler = self
+                    .connection_lost
+                    .borrow()
+                    .as_ref()
+                    .map(|h| h.clone_ref(py));
+                if let Some(handler) = handler
+                    && let Err(err) = handler.call0(py)
+                {
+                    crate::dispatch::log_uncaught_exception(&err, py);
+                }
+                let windows: Vec<_> = setups_for_cleanup
+                    .borrow()
+                    .iter()
+                    .filter(|setup| setup.handles.os_window.borrow().is_some())
+                    .map(|setup| setup.handles.clone())
+                    .chain(open_layers.borrow().iter().cloned())
+                    .collect();
+                for handles in windows {
+                    listeners::deliver_window(
+                        &handles.window_listeners,
+                        py,
+                        WindowEventType::Closed,
+                        |e| e.reason = Some(CONNECTION_LOST.to_string()),
+                    );
+                }
+            });
+        }
+
         // M87: this run's loop is gone -- a `call_soon` from now on just
         // queues, waiting for a later `run()`'s first frame, rather than
         // waking a proxy with no loop behind it.
@@ -2694,6 +2764,10 @@ impl App {
         }
         match result {
             Ok(()) => Ok(()),
+            Err(err) if connection_lost => {
+                tracing::warn!(%err, "the display connection was lost; run() returns");
+                Ok(())
+            }
             Err(err) => {
                 // A `run_windowed_multi` failure only ever means "no
                 // display reachable" -- a GPU that can't be set up is
