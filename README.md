@@ -55,7 +55,8 @@ mkdocs serve   # http://127.0.0.1:8000
 
 Start with Getting Started, then the guide's page for each building block;
 [Building a Widget](https://mindderivative.github.io/tess-re/guide/building-a-widget/) puts them together.
-Upgrading from 0.4.x? See [Upgrading to 0.5.x](https://mindderivative.github.io/tess-re/migrating-0.5/);
+Upgrading from 0.5.x? See [Upgrading to 0.6.x](https://mindderivative.github.io/tess-re/migrating-0.6/);
+from 0.4.x, [Upgrading to 0.5.x](https://mindderivative.github.io/tess-re/migrating-0.5/);
 from 0.3.5, [Upgrading to 0.4.x](https://mindderivative.github.io/tess-re/migrating-0.4/); from 0.3.4, [Migrating to 0.3.5](https://mindderivative.github.io/tess-re/migrating-0.3.5/).
 
 ## Building from source
