@@ -253,3 +253,10 @@ Nothing you have written breaks. One new call and one fix:
   screen reader in an arbitrary order in 0.6.9, because AccessKit announces the nodes one update adds in hash order.
   tre now sends one announcement per update, oldest first, and keeps drawing frames until the queue is empty, so calls
   are heard in the order they were made (six messages take six frames). Nothing to change.
+
+- **Licence notices in the wheel (TRE-REQ-025, new, nothing to migrate).** `dist-info/licenses/third_party/` now holds
+  `THIRD_PARTY_NOTICES.md` (the fonts the engine embeds, the five shared libraries `auditwheel` adds to the Linux
+  wheels, and every Rust crate the engine links, with licence, authors and licence text) and the licence text of each
+  font and library. The package's `License-Expression` stays `MIT`: that is the engine's own code; the notices file
+  says what else is inside. Regenerate with `python3 tools/gen_third_party_notices.py` after the dependency tree changes
+  (`--check` says whether the committed file is stale).
