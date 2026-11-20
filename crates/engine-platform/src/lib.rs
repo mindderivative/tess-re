@@ -711,7 +711,7 @@ pub struct LoopOptions {
     /// Keep running when no window and no layer surface is open: a desktop shell that waits
     /// for an output to come back. The loop then ends only by [`EventLoopWaker::stop`].
     pub keep_alive: bool,
-    /// Runs on every [`EventLoopWaker::wake`] (not once the loop is exiting). With nothing
+    /// Runs on a [`EventLoopWaker::wake`] that no window answers with a frame (not once the loop is exiting). With nothing
     /// open, or every window waiting for the compositor's frame callback (0.6.10, #247), no
     /// frame will run what a host queued (`LoopHandle.call_soon`, timers), so it runs here.
     /// It draws nothing.
@@ -791,6 +791,8 @@ where
         released: false,
         keep_alive: options.keep_alive,
         on_wake: options.on_wake,
+        wake_pending: false,
+        frame_ran: false,
         layer_hooks: layers,
         layers: HashMap::new(),
         #[cfg(target_os = "linux")]
@@ -920,6 +922,10 @@ struct MultiWindowApp<C, F, A, N, X, L> {
     /// 0.5.9 (#238): see [`LoopOptions`].
     keep_alive: bool,
     on_wake: Option<Box<dyn FnMut()>>,
+    /// 0.6.10 (#247): a wake arrived with windows open and `on_wake` has not run for it, and
+    /// whether any window drew a frame since (see `about_to_wait`).
+    wake_pending: bool,
+    frame_ran: bool,
     /// 0.5.8 (#198): the host's callbacks for layer surfaces, and the surfaces
     /// open now, keyed by the id minted for each (see `layer_loop`).
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -1009,6 +1015,16 @@ where
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         cursors::flush(event_loop);
         self.run_layer_frames(event_loop);
+        // 0.6.10 (#247): the pass's redraws came before this; a wake no frame answered runs the
+        // host's queued work here, drawing nothing.
+        if std::mem::take(&mut self.wake_pending)
+            && !self.frame_ran
+            && !event_loop.exiting()
+            && let Some(on_wake) = &mut self.on_wake
+        {
+            on_wake();
+        }
+        self.frame_ran = false;
         // 0.5.9 (#238): with nothing open there is nothing to poll for. The loop starts in
         // `Poll` and a window's frame is what drops it to `Wait`, so a keep-alive loop with no
         // window (or one whose last window just closed) would otherwise spin a core.
@@ -1202,14 +1218,20 @@ where
                 // after running anything, so a callback that queues itself makes a chain of
                 // wakes; on macOS (winit) that chain keeps `run()` from returning after the
                 // last window closed.
-                // 0.6.10 (#247): and with windows open, because a Wayland window or layer
-                // surface the compositor is not showing draws no frame until its callback, so
-                // a loop whose every window is hidden has no frame to run timers, queued
-                // calls or completions either. The host runs those here, drawing nothing.
+                // 0.6.10 (#247): and with windows open, but only if none of them draws a frame
+                // in this pass of the loop (`about_to_wait`): a Wayland window or layer surface
+                // the compositor is not showing draws no frame until its callback, so a loop
+                // whose every window is hidden has no frame to run timers, queued calls or
+                // completions either. A frame runs them itself, and running them here too
+                // would let a callback that queues itself starve the frames.
                 if !event_loop.exiting()
                     && let Some(on_wake) = &mut self.on_wake
                 {
-                    on_wake();
+                    if self.windows.is_empty() && self.layers.is_empty() {
+                        on_wake();
+                    } else {
+                        self.wake_pending = true;
+                    }
                 }
                 for win in self.windows.values_mut() {
                     win.request_redraw();
@@ -1308,6 +1330,7 @@ where
             build_access_update,
             on_input,
             on_lifecycle,
+            frame_ran,
             ..
         } = self;
         let Some(win) = windows.get_mut(&window_id) else {
@@ -1329,6 +1352,7 @@ where
             }
             WindowEvent::RedrawRequested => {
                 let os_requested = !std::mem::take(&mut win.app_requested);
+                *frame_ran = true;
                 let real_still_animating = on_frame(window_id, win.frame, os_requested);
                 // M29 Phase 2: real finding, caught by actually running
                 // this against every example/test in the workspace, not
