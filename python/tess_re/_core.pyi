@@ -1117,9 +1117,11 @@ class UnsupportedPlatform(RuntimeError):
     """A feature this platform does not have: `LayerWindow` needs a Wayland compositor with
     the layer-shell protocol."""
 
-def supports(feature: str) -> bool:
+def supports(feature: str, refresh: bool = False) -> bool:
     """Whether this process can use an optional feature. Only `"layer_shell"` so far
-    (a Wayland compositor with `zwlr_layer_shell_v1`); an unknown name is `False`."""
+    (a Wayland compositor with `zwlr_layer_shell_v1`); an unknown name is `False`. The first
+    answer is remembered, a "no" included; `refresh=True` asks the compositor again (0.6.10),
+    so a program started before its compositor can poll until it is there."""
     ...
 
 
@@ -1168,15 +1170,20 @@ class App:
         now (so it works before `run()`). Empty where the platform cannot say (not
         Wayland)."""
         ...
-    def on(self, event: Literal["output_added", "output_removed", "output_updated"], handler: Callable[..., object]) -> None:
+    def on(self, event: Literal["output_added", "output_removed", "output_updated", "connection_lost"], handler: Callable[..., object]) -> None:
         """(0.5.8) Registers `handler(output)` for a screen being plugged in, removed, or
         moved, resized, rescaled or rotated. One handler per event; a second replaces
         the first. Outputs that exist when the app starts are not "added": read them
         with `outputs()`. Needs the compositor's layer shell (the events come from the
-        same connection a `LayerWindow` uses)."""
+        same connection a `LayerWindow` uses).
+
+        (0.6.10) `"connection_lost"`: `handler()` (no argument) is called once when the
+        compositor goes away while `run()` is going, before its windows hear `closed`
+        (reason `"connection_lost"`) and before `run()` returns normally. The app is
+        still its own: save state, then exit or wait for a compositor and run again."""
         ...
-    def off(self, event: Literal["output_added", "output_removed", "output_updated"]) -> None:
-        """(0.5.8) Removes the handler for an output event."""
+    def off(self, event: Literal["output_added", "output_removed", "output_updated", "connection_lost"]) -> None:
+        """(0.5.8) Removes the handler for an output event or for `"connection_lost"`."""
         ...
     def simulate(self, event: Literal["output_added", "output_removed", "output_updated"], **fields: Any) -> None:
         """(0.5.8) Delivers an output event as the compositor would, for tests with no

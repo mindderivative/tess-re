@@ -38,7 +38,7 @@ Opens and drives one or more windows together in one blocking `run()`.
 | Method | Description |
 | --- | --- |
 | `add_window(window: Window) -> None` | Adds a window to open when `run()` is called. |
-| `off(event: Literal['output_added', 'output_removed', 'output_updated']) -> None` | Removes the handler for an output event. |
+| `off(event: Literal['output_added', 'output_removed', 'output_updated', 'connection_lost']) -> None` | Removes the handler for an output event or for `"connection_lost"`. |
 | `on(event, handler) -> None` | Registers `handler(output)` for a screen being plugged in, removed, or moved, resized, rescaled or rotated. |
 | `outputs() -> list[Output]` | The screens the compositor has, top to bottom and left to right, read now (so it works before `run()`). |
 | `run(max_frames: int \| None=None, keep_alive: bool=False) -> None` | Opens every added window and runs the event loop until they all close, or `max_frames`. |
@@ -634,7 +634,7 @@ Raised where a feature needs a platform this process is not on (a `LayerWindow` 
 
 | Name | Description |
 | --- | --- |
-| `supports(feature: str) -> bool` | Whether this process can use an optional feature. |
+| `supports(feature: str, refresh: bool=False) -> bool` | Whether this process can use an optional feature. |
 | `register_font(data: bytes) -> list[str]` | Registers a font the caller already loaded. |
 | `set_system_fonts(enabled: bool) -> None` | Lets text use the fonts installed on this machine: for the glyphs the bundled and registered fonts lack (CJK, Hebrew, Indic… |
 | `system_fonts() -> bool` | Whether system fonts are on (`set_system_fonts`). |

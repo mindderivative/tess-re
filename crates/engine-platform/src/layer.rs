@@ -21,7 +21,7 @@ use std::os::unix::net::UnixStream;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -469,22 +469,31 @@ impl Drop for LayerHost {
 }
 
 /// Whether this session's compositor offers `zwlr_layer_shell_v1`: `false` off Wayland,
-/// on X11, and on a compositor without it (GNOME's). Asked once, on a connection of its
-/// own, and remembered.
-pub fn supported() -> bool {
-    static SUPPORTED: OnceLock<bool> = OnceLock::new();
-    *SUPPORTED.get_or_init(|| {
-        if std::env::var_os("WAYLAND_DISPLAY").is_none() {
-            return false;
-        }
-        let Ok(conn) = Connection::connect_to_env() else {
-            return false;
-        };
-        let Ok((globals, _queue)) = registry_queue_init::<ProbeState>(&conn) else {
-            return false;
-        };
-        has_layer_shell(&globals)
-    })
+/// on X11, and on a compositor without it (GNOME's). Asked on a connection of its own and
+/// remembered, whatever the answer; `refresh` asks again (TRE-REQ-026), because a compositor
+/// that was not there a moment ago may be now, and one that was there may be gone.
+pub fn supported(refresh: bool) -> bool {
+    static SUPPORTED: Mutex<Option<bool>> = Mutex::new(None);
+    let mut remembered = SUPPORTED.lock().unwrap_or_else(PoisonError::into_inner);
+    if !refresh && let Some(answer) = *remembered {
+        return answer;
+    }
+    let answer = probe_layer_shell();
+    *remembered = Some(answer);
+    answer
+}
+
+fn probe_layer_shell() -> bool {
+    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        return false;
+    }
+    let Ok(conn) = Connection::connect_to_env() else {
+        return false;
+    };
+    let Ok((globals, _queue)) = registry_queue_init::<ProbeState>(&conn) else {
+        return false;
+    };
+    has_layer_shell(&globals)
 }
 
 struct ProbeState;

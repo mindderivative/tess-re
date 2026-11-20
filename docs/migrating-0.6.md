@@ -260,3 +260,10 @@ Nothing you have written breaks. One new call and one fix:
   font and library. The package's `License-Expression` stays `MIT`: that is the engine's own code; the notices file
   says what else is inside. Regenerate with `python3 tools/gen_third_party_notices.py` after the dependency tree changes
   (`--check` says whether the committed file is stale).
+
+- **`App.on("connection_lost", fn)` and `supports("layer_shell", refresh=True)` (TRE-REQ-026, new).** When the compositor
+  goes away mid-run, `fn()` is called once from inside `run()`, then each open window hears `closed` with reason
+  `"connection_lost"` and `run()` returns normally. In 0.6.9 `run()` returned with nothing said and the windows heard no
+  `closed`; code that treated "run() returned with windows still open" as a lost compositor keeps working, and can use the
+  callback instead. `supports()` remembers its first answer (a "no" too); `refresh=True` asks again. See
+  [`connection_lost`](reference/app.md#connection_lost-0610).
