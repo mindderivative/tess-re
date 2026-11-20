@@ -711,9 +711,10 @@ pub struct LoopOptions {
     /// Keep running when no window and no layer surface is open: a desktop shell that waits
     /// for an output to come back. The loop then ends only by [`EventLoopWaker::stop`].
     pub keep_alive: bool,
-    /// Runs on every [`EventLoopWaker::wake`] while there is nothing open to draw a frame, so
-    /// work a host queued from another thread (`LoopHandle.call_soon`) still runs: it is
-    /// normally done at the start of a window's frame.
+    /// Runs on every [`EventLoopWaker::wake`] (not once the loop is exiting). With nothing
+    /// open, or every window waiting for the compositor's frame callback (0.6.10, #247), no
+    /// frame will run what a host queued (`LoopHandle.call_soon`, timers), so it runs here.
+    /// It draws nothing.
     pub on_wake: Option<Box<dyn FnMut()>>,
 }
 
@@ -1201,9 +1202,11 @@ where
                 // after running anything, so a callback that queues itself makes a chain of
                 // wakes; on macOS (winit) that chain keeps `run()` from returning after the
                 // last window closed.
-                if self.windows.is_empty()
-                    && self.layers.is_empty()
-                    && !event_loop.exiting()
+                // 0.6.10 (#247): and with windows open, because a Wayland window or layer
+                // surface the compositor is not showing draws no frame until its callback, so
+                // a loop whose every window is hidden has no frame to run timers, queued
+                // calls or completions either. The host runs those here, drawing nothing.
+                if !event_loop.exiting()
                     && let Some(on_wake) = &mut self.on_wake
                 {
                     on_wake();

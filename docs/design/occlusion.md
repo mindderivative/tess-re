@@ -42,8 +42,6 @@ there was not investigated. Counting `frame_stats()["frames"]` per phase settled
 
 ## Known gaps
 
-- While every window of an app is hidden, timers, `call_soon` and `on_complete` wait for one to be shown, because they
-  run in a window's frame (#247).
 - `present_mode="immediate"`/`"low_latency"` no longer outrun the compositor on Wayland (a resize still does).
 - The `occluded` path on X11 and macOS follows winit's documentation and was not run (XWayland under sway sends none).
 - A fullscreen window counts about 480 frames/s on KWin, also on `main` (#248).
