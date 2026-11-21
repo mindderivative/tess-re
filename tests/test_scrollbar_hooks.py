@@ -10,7 +10,7 @@ from tess_re import Window
 from helpers import add
 
 BACKGROUND = (20, 20, 24, 255)
-THUMB = (0xCA, 0xC4, 0xD0)
+THUMB = (0x49, 0x45, 0x4F)  # the light scheme's on_surface_variant (0.6.11 P4)
 OVER = tuple(round(c * 0.7 + b * 0.3) for c, b in zip(THUMB, BACKGROUND))
 
 

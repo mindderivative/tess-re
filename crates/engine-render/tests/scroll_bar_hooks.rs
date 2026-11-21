@@ -280,7 +280,8 @@ fn choice(prop: ScrollProp, name: &str) -> (ScrollProp, PropValue) {
     (prop, PropValue::Choice(index as u8))
 }
 
-const THUMB: Color = Color::from_rgba8(0xCA, 0xC4, 0xD0, 0xFF);
+/// The light scheme's `on_surface_variant` (0.6.11 P4): what a bar with no `scrollbar_fill` paints.
+const THUMB: Color = Color::from_rgba8(0x49, 0x45, 0x4F, 0xFF);
 
 /// A frame of `world` and of the bare scene: `(with, under)`.
 fn pair(gpu: &Gpu, settings: &[(ScrollProp, PropValue)]) -> (Vec<u8>, Vec<u8>) {

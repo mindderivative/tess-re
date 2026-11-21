@@ -292,7 +292,10 @@ fn a_scroll_views_own_fill_beats_the_scheme() {
         tall_view(&mut tree, root);
         let view = tree.get(root).unwrap().children[0];
         if let NodeKind::ScrollView(state) = &mut tree.get_mut(view).unwrap().kind {
-            state.scrollbar_fill = Some(RED);
+            state.bar.settings.set(
+                engine_core::ScrollProp::Fill,
+                Some(engine_core::PropValue::Colour(RED)),
+            );
         }
         with_scheme(&mut tree, Scheme::Dark);
         layout(&mut tree, root);
