@@ -19,6 +19,7 @@ mod easing;
 mod error;
 mod event;
 mod files;
+mod first_present;
 mod frame_stats;
 mod gpu_memory;
 mod gpu_share;

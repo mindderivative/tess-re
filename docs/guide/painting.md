@@ -269,6 +269,12 @@ The overlay is drawn over the node's fill and border and under its children, ins
 at a time (pressed, then focus, then hover) and changes fade over `state_layer_ms` (default 100) on `state_layer_easing`
 (default `"standard"`), instantly under reduced motion. A disabled node draws none. All the rules and defaults are in
 [State layers](../reference/properties.md#state-layers-0611).
+**The window's own background and the first frame (0.6.11).** Pixels no node paints are cleared to the window's
+`background`, by default the scheme's `surface` role, so a dark window is never white or black behind the app's own
+fills. `Window(background=(r, g, b, a))` or `window.set(background=...)` overrides it. To keep a window from showing an
+unfinished first frame, or (macOS, Windows) the OS's default background before it, build it with
+`first_present="on_ready"`, add its content, and call `window.ready()`; a number of milliseconds is the same with a
+deadline. See [First present and background](../reference/window.md#first-present-and-background-0611).
 
 ## What Tesserae Engine leaves to you
 

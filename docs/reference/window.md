@@ -3,10 +3,12 @@
 Owns one node tree and the OS window it's painted into. Add windows to an
 [`App`](app.md), then call `App.run()`.
 
-**`Window(width=480, height=200, title="tess_re v2", decorations=True)`** —
+**`Window(width=480, height=200, title="tess_re v2", decorations=True, scheme=None, first_present=None, background=None)`** —
 raises `ValueError` for a zero width or height. `decorations=False` (0.5.0)
 opens the window without the OS's title bar and borders, for the framework
 to draw its own; see [Window controls and state](#window-controls-and-state).
+(0.6.11) `first_present` and `background` control what the user sees before and at the first frame; see
+[First present and background](#first-present-and-background-0611).
 
 ```python
 window = Window(width=640, height=400, title="Inbox")
@@ -677,3 +679,47 @@ the loop runs them on each wake and timer deadline without drawing, so a shell's
 tick only then (a timer or a wake), never by polling; their values follow the clock and draw when the window shows. `present_mode="low_latency"` no longer draws faster than the compositor
 asks for frames on Wayland (a resize still presents without waiting, as before).
 
+## First present and background (0.6.11)
+
+On macOS and Windows an app can flash the OS's default background, the wrong light or dark, between the window
+appearing and its first drawn frame (UX spec AC-TH-7 and AC-TH-8). These hold the first frame back until the app says it
+is complete, and give every frame a clear colour that matches the app.
+
+| Name | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `first_present` (constructor only) | `"immediate"`, `"on_ready"` or an `int` of milliseconds, 1 to 600000 | `"immediate"` | When the first frame is presented. `"immediate"` is as before: when it is drawn. `"on_ready"`: not until the app calls `window.ready()`. An `int`: `"on_ready"`, but at the latest that many milliseconds after the OS window was made, whether or not `ready()` was called |
+| `background` | `(r, g, b, a)` of 0-255 ints, or `None` | `None`: the window scheme's `surface` role (`#FEF7FF` light, `#141218` dark) | The colour every frame is cleared to before the scene paints over it. Anything the app paints wins; it shows where the root and its children leave pixels bare, and in a window made see-through (`transparent=True`) it is what shows over the desktop. Settable before the window opens and live |
+| `first_presented` | `bool` | | `get` only: whether the first frame has been presented |
+| `ready()` | method | | Tells a held window its first frame is complete. A no-op on a window that presents immediately, for a window that is already presented, and for every call after the first. Callable from a listener, a timer or `LoopHandle.call_soon`, before or after the window opens |
+
+```python
+window = Window(width=900, height=600, first_present="on_ready", scheme="dark")
+build_the_ui(window)
+app.add_window(window)
+app.thread_handle().call_soon(window.ready)     # or window.after(0, window.ready), or from your own handler
+app.run()
+
+Window(first_present=500)                      # shown when ready(), or after 500 ms, whichever is first
+Window(background=(18, 18, 18, 255))            # the clear colour; None is the scheme's `surface`
+window.set(background=None)
+```
+
+While the first present is held the engine still runs: timers and `call_soon` work run, the tree is laid out, and
+`layout` events fire, held passes count as skipped frames in `frame_stats`, but nothing is drawn or committed to the surface, so the window cannot
+show an unfinished frame. `ready()` wakes the loop and the first frame is drawn complete (the held frame is redrawn in
+full, never from a partial redraw). `first_present` cannot be changed by `set` (`ValueError`): it describes how the
+window opens. `Window.snapshot()` and the headless pipeline are unaffected.
+
+**Per platform.** *Wayland*: a surface is mapped by the first buffer it commits, so the held window has no buffer and
+the compositor shows nothing; verified on sway (the first `wl_surface.attach` with a buffer comes after `ready()`, or
+after the deadline). *X11, macOS, Windows*: the OS window is also created hidden and shown right after the first
+frame is presented, and the occlusion pause (`pause_when_occluded`) is ignored while the first frame is awaited.
+**This is written but unverified here** (only Linux Wayland is testable); the hidden window must still deliver redraw
+requests on those platforms for the first frame to be drawn. `background` is a clear colour, not a window-class brush:
+before the first present the OS's own default shows for as long as the window is visible without a frame, which is
+exactly what `"on_ready"` avoids.
+
+`LayerWindow(first_present=...)` and `PopupWindow(first_present=...)` take the argument for symmetry: `None` or
+`"immediate"` is accepted, anything else raises `ValueError("... not supported on LayerWindow yet")`, because holding a
+layer surface's first commit has to be reconciled with the compositor's configure handshake. `ready()` on them is a
+no-op. `set(background=...)` works on both (they clear to nothing, see-through, unless a `background` is set).

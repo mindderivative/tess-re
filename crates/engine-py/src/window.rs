@@ -221,6 +221,8 @@ pub(crate) struct WindowHandles {
     /// 0.6.11 (P12): the defaults of the `App` this window was added to, weaker than the window's
     /// own; `None` until `App.add_window`.
     pub(crate) app_defaults: Rc<RefCell<Option<crate::defaults::SharedDefaults>>>,
+    /// 0.6.11 (P5): when the first frame is presented, and the colour frames are cleared to.
+    pub(crate) first_present: Rc<crate::first_present::FirstPresent>,
 }
 
 pub struct WindowState {
@@ -420,6 +422,7 @@ impl PyWindow {
                 scheme: Rc::new(crate::scheme::SchemeState::new()),
                 defaults: Default::default(),
                 app_defaults: Rc::new(RefCell::new(None)),
+                first_present: Rc::new(crate::first_present::FirstPresent::new()),
             },
         })))
     }
@@ -428,17 +431,44 @@ impl PyWindow {
 #[pymethods]
 impl PyWindow {
     #[new]
-    #[pyo3(signature = (width=480, height=200, title="tess_re v2", decorations=true, scheme=None))]
+    #[pyo3(signature = (width=480, height=200, title="tess_re v2", decorations=true, scheme=None, first_present=None, background=None))]
     fn new(
         width: u32,
         height: u32,
         title: &str,
         decorations: bool,
         scheme: Option<&Bound<'_, PyAny>>,
+        first_present: Option<&Bound<'_, PyAny>>,
+        background: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
         let window = Self::construct(width, height, title, decorations, PADDING, GAP)?;
         window.take_scheme(scheme, "Window")?;
+        if let Some(mode) = first_present.filter(|v| !v.is_none()) {
+            window
+                .handles
+                .first_present
+                .set_mode(crate::first_present::Mode::parse(mode)?);
+        }
+        if let Some(color) = background {
+            window
+                .handles
+                .first_present
+                .set_background(crate::first_present::FirstPresent::parse_background(color)?);
+        }
         Ok(window)
+    }
+
+    /// 0.6.11 (P5): tells a window built with `first_present='on_ready'` (or a deadline) that
+    /// its first frame is complete, so it is presented -- and the window shown -- now. Safe to
+    /// call from anywhere on the loop's thread, before or after the window opens; a no-op for a
+    /// window that presents immediately, and for every call after the first.
+    fn ready(&self) {
+        if self.handles.first_present.set_ready() {
+            // The held frame left the tree dirty, so it is drawn again; the loop may be asleep.
+            if let Some(waker) = self.handles.waker.borrow().as_ref() {
+                waker.wake();
+            }
+        }
     }
 
     /// §11.7's own claim, matching `App::run`'s existing `PyWindow::
