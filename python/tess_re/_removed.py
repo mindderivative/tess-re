@@ -183,8 +183,8 @@ UNENFORCED: dict[str, str] = {
     "remove": "keeps its name; since 0.3.4 it detaches and keeps the node alive",
     "animate": "keeps its name; the positional on_complete it used to take is caught",
     "get": "keeps its name; old property names are caught",
-    "MD3 named motion curves": "had no Python name: animate's easing only takes "
-    '"linear" or a cubic bezier',
+    "MD3 named motion curves": "were Rust enum variants, gone; animate's easing takes a "
+    'preset name ("standard", "emphasized_decelerate", ...) or a cubic bezier (0.6.11)',
 }
 
 

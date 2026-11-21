@@ -7564,8 +7564,16 @@ mod static_selection {
 /// 0.5.4 (#136): momentum scrolling.
 mod momentum {
     use super::*;
-    use crate::tree::scroll::fling_plan;
+    use crate::Easing;
+    use crate::scrollbar::{Defaults, ScrollbarMetrics};
+    use crate::scrollbar_props::{Overrides, Prop, Value};
+    use crate::tree::scroll::fling_plan as plan_with;
     use std::time::Duration;
+
+    fn fling_plan(speed: f64, at: f64, max: f64) -> Option<(f64, Duration, f64)> {
+        let m = ScrollbarMetrics::resolve(&Overrides::default(), Defaults::Spec);
+        plan_with(speed, at, max, &m)
+    }
 
     fn relayout(tree: &mut Tree, view: NodeId) {
         tree.compute_layout(
@@ -7711,6 +7719,149 @@ mod momentum {
         let lone = tree.insert(kind, style, paint);
         assert!(!tree.fling_scroll(lone, peniko::kurbo::Vec2::new(0.0, -900.0), t0));
         relayout(&mut tree, view);
+    }
+    fn set_prop(tree: &mut Tree, view: NodeId, prop: Prop, value: Value) {
+        let NodeKind::ScrollView(state) = &mut tree.get_mut(view).unwrap().kind else {
+            unreachable!()
+        };
+        assert!(state.bar.settings.set(prop, Some(value)), "{prop:?}");
+    }
+
+    fn view_offset(tree: &Tree, view: NodeId) -> f64 {
+        match &tree.get(view).unwrap().kind {
+            NodeKind::ScrollView(state) => state.scroll.current,
+            _ => unreachable!(),
+        }
+    }
+
+    /// 0.6.11: a flick's time constant, stop speed and minimum speed are properties.
+    #[test]
+    fn the_fling_constants_are_properties_with_the_old_values_as_defaults() {
+        let m = ScrollbarMetrics::resolve(&Overrides::default(), Defaults::Spec);
+        assert_eq!(
+            (m.fling_tau_ms, m.fling_stop_speed, m.fling_min_speed),
+            (350.0, 30.0, 150.0)
+        );
+        let slow = ScrollbarMetrics::resolve(
+            &{
+                let mut o = Overrides::default();
+                assert!(o.set_number(Prop::FlingTau, Some(700.0)));
+                o
+            },
+            Defaults::Spec,
+        );
+        let (d, t, k) = plan_with(1000.0, 0.0, 1e9, &m).unwrap();
+        let (d2, t2, k2) = plan_with(1000.0, 0.0, 1e9, &slow).unwrap();
+        assert!(
+            (t2.as_secs_f64() / t.as_secs_f64() - 2.0).abs() < 1e-9,
+            "twice the time"
+        );
+        assert!((d2 / d - 2.0).abs() < 1e-9, "twice the distance");
+        assert!((k - k2).abs() < 1e-9, "the same curve");
+        // A higher stop speed ends the coast sooner; a minimum above the flick refuses it.
+        let mut o = Overrides::default();
+        assert!(o.set_number(Prop::FlingStop, Some(300.0)));
+        let stops_early = ScrollbarMetrics::resolve(&o, Defaults::Spec);
+        assert!(plan_with(1000.0, 0.0, 1e9, &stops_early).unwrap().1 < t);
+        let mut o = Overrides::default();
+        assert!(o.set_number(Prop::FlingMin, Some(2000.0)));
+        let picky = ScrollbarMetrics::resolve(&o, Defaults::Spec);
+        assert!(plan_with(1000.0, 0.0, 1e9, &picky).is_none());
+        // A stop speed at or above the flick leaves nothing to coast.
+        let mut o = Overrides::default();
+        assert!(o.set_number(Prop::FlingStop, Some(1000.0)));
+        o.set_number(Prop::FlingMin, Some(0.0));
+        let all_stop = ScrollbarMetrics::resolve(&o, Defaults::Spec);
+        assert!(plan_with(1000.0, 0.0, 1e9, &all_stop).is_none());
+    }
+
+    #[test]
+    fn a_view_with_a_short_fling_tau_coasts_a_short_way() {
+        let rest = |tau: Option<f64>| {
+            let (mut tree, view, _) = view_over_boxes(&[100.0, 100.0, 100.0, 100.0]);
+            if let Some(tau) = tau {
+                set_prop(&mut tree, view, Prop::FlingTau, Value::Number(tau));
+            }
+            let content = tree.get(view).unwrap().children[0];
+            let t0 = Instant::now();
+            assert!(tree.fling_scroll(content, peniko::kurbo::Vec2::new(0.0, -1500.0), t0));
+            tree.tick_all(t0 + Duration::from_secs(30));
+            view_offset(&tree, view)
+        };
+        // 1500 px/s with tau 5 ms covers about 1500 * 0.005 = 7.5 px; the default
+        // coasts to the end of the 300 px of content.
+        let short = rest(Some(5.0));
+        assert!(short > 5.0 && short < 8.0, "{short}");
+        assert_eq!(rest(None), 300.0);
+    }
+
+    #[test]
+    fn a_fling_below_fling_min_speed_does_not_start() {
+        let (mut tree, view, _) = view_over_boxes(&[100.0, 100.0, 100.0, 100.0]);
+        let content = tree.get(view).unwrap().children[0];
+        set_prop(&mut tree, view, Prop::FlingMin, Value::Number(2000.0));
+        let t0 = Instant::now();
+        assert!(!tree.fling_scroll(content, peniko::kurbo::Vec2::new(0.0, -1500.0), t0));
+        set_prop(&mut tree, view, Prop::FlingMin, Value::Number(100.0));
+        assert!(tree.fling_scroll(content, peniko::kurbo::Vec2::new(0.0, -1500.0), t0));
+    }
+
+    fn snapping_view(settings: &[(Prop, Value)]) -> (Tree, NodeId) {
+        let (mut tree, view, _) = view_over_boxes(&[100.0, 100.0, 100.0, 100.0]);
+        let NodeKind::ScrollView(state) = &mut tree.get_mut(view).unwrap().kind else {
+            unreachable!()
+        };
+        state.snap = Some(crate::SnapAlign::Start);
+        for (prop, value) in settings {
+            assert!(state.bar.settings.set(*prop, Some(*value)), "{prop:?}");
+        }
+        (tree, view)
+    }
+
+    #[test]
+    fn a_snap_settles_after_120_ms_over_200_ms_by_default() {
+        let t0 = Instant::now();
+        let (mut tree, view) = snapping_view(&[]);
+        tree.scroll_scroll_view_by(view, 140.0);
+        tree.tick_all(t0);
+        tree.tick_all(t0 + Duration::from_millis(119));
+        assert_eq!(view_offset(&tree, view), 140.0, "still waiting");
+        tree.tick_all(t0 + Duration::from_millis(120));
+        tree.tick_all(t0 + Duration::from_millis(220));
+        let mid = view_offset(&tree, view);
+        assert!(mid < 140.0 && mid > 100.0, "settling: {mid}");
+        tree.tick_all(t0 + Duration::from_millis(320));
+        assert_eq!(view_offset(&tree, view), 100.0, "on the snap point");
+    }
+
+    #[test]
+    fn the_snap_settle_duration_and_easing_are_properties() {
+        let t0 = Instant::now();
+        let (mut tree, view) = snapping_view(&[
+            (Prop::SnapSettle, Value::Number(500.0)),
+            (Prop::SnapDuration, Value::Number(1000.0)),
+            (Prop::SnapEasing, Value::Easing(Easing::Linear)),
+        ]);
+        tree.scroll_scroll_view_by(view, 140.0);
+        tree.tick_all(t0);
+        tree.tick_all(t0 + Duration::from_millis(499));
+        assert_eq!(view_offset(&tree, view), 140.0, "the settle waits 500 ms");
+        tree.tick_all(t0 + Duration::from_millis(500));
+        tree.tick_all(t0 + Duration::from_millis(1000));
+        assert!(
+            (view_offset(&tree, view) - 120.0).abs() < 1e-9,
+            "half way, linearly, after 500 of 1000 ms"
+        );
+        tree.tick_all(t0 + Duration::from_millis(1500));
+        assert_eq!(view_offset(&tree, view), 100.0);
+        // Reduced motion still takes no time, whatever the duration.
+        let (mut tree, view) = snapping_view(&[(Prop::SnapDuration, Value::Number(1000.0))]);
+        tree.set_reduced_motion_override(Some(true));
+        tree.scroll_scroll_view_by(view, 140.0);
+        tree.tick_all(t0);
+        tree.tick_all(t0 + Duration::from_millis(120));
+        tree.tick_all(t0 + Duration::from_millis(121));
+        assert_eq!(view_offset(&tree, view), 100.0);
     }
 }
 

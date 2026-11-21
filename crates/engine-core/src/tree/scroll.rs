@@ -1,7 +1,9 @@
 //! Scrolling: scroll views and virtual lists, their windows of rows, and their scrollbar-thumb drags.
 
 use super::*;
-use crate::scrollbar::{ScrollAxis, Scroller, Thumb, animate_offset, holds, millis};
+use crate::scrollbar::{
+    ScrollAxis, ScrollbarMetrics, Scroller, Thumb, animate_offset, holds, millis,
+};
 use crate::scrollbar_props::{Edge, LaneClick};
 use std::time::Duration;
 
@@ -11,20 +13,28 @@ pub const KEY_SCROLL_LINE: f64 = crate::scrollbar::KEY_LINE;
 
 /// 0.5.4 (#136): how a flick at `speed` (pixels a second, signed along the
 /// scroller's axis, positive toward the end) coasts: velocity decays
-/// exponentially with time constant `FLING_TAU` until it falls below
-/// `FLING_STOP`. Returns `(distance, duration, k)` for an animation from `at`
+/// exponentially with time constant `fling_tau_ms` until it falls below
+/// `fling_stop_speed` (0.6.11: both, and `fling_min_speed`, are properties of
+/// the scroller, read from `m`). Returns `(distance, duration, k)` for an animation from `at`
 /// along `0..=max`, as `MotionCurve::Decay(k)` over `duration`; cut short, with
 /// the same curve, if it would run past an end. `None` for a flick too slow to
 /// coast.
-pub(crate) fn fling_plan(speed: f64, at: f64, max: f64) -> Option<(f64, Duration, f64)> {
+pub(crate) fn fling_plan(
+    speed: f64,
+    at: f64,
+    max: f64,
+    m: &ScrollbarMetrics,
+) -> Option<(f64, Duration, f64)> {
+    let tau = m.fling_tau_ms / 1000.0;
     let v0 = speed.abs();
-    if !v0.is_finite() || v0 < FLING_MIN {
+    // A flick no faster than the speed it stops at has nothing to coast.
+    if !v0.is_finite() || v0 < m.fling_min_speed || v0 <= m.fling_stop_speed {
         return None;
     }
-    // Speed is v0 * e^(-t/tau); it ends when that reaches FLING_STOP.
-    let remaining = FLING_STOP / v0;
-    let full_time = FLING_TAU * (1.0 / remaining).ln();
-    let full_distance = v0 * FLING_TAU * (1.0 - remaining);
+    // Speed is v0 * e^(-t/tau); it ends when that reaches `fling_stop_speed`.
+    let remaining = m.fling_stop_speed / v0;
+    let full_time = tau * (1.0 / remaining).ln();
+    let full_distance = v0 * tau * (1.0 - remaining);
     let room = if speed > 0.0 { max - at } else { at };
     if room <= 0.0 {
         return None;
@@ -34,24 +44,12 @@ pub(crate) fn fling_plan(speed: f64, at: f64, max: f64) -> Option<(f64, Duration
     } else {
         // Reaches the end first: the time at which the coast covers `room`.
         let fraction = room / full_distance;
-        let t = -FLING_TAU * (1.0 - fraction * (1.0 - remaining)).ln();
+        let t = -tau * (1.0 - fraction * (1.0 - remaining)).ln();
         (t, room)
     };
-    let k = time / FLING_TAU;
+    let k = time / tau;
     Some((distance * speed.signum(), Duration::from_secs_f64(time), k))
 }
-
-/// 0.5.6 (#166): how long after its last input a snapping scroll view waits
-/// before it settles, and how long the settling takes.
-const SNAP_SETTLE: Duration = Duration::from_millis(120);
-const SNAP_DURATION: Duration = Duration::from_millis(200);
-
-/// How quickly a flick slows: the time constant of its decay, in seconds.
-const FLING_TAU: f64 = 0.35;
-/// A flick coasts to a stop at this speed, pixels a second.
-const FLING_STOP: f64 = 30.0;
-/// A flick slower than this does not coast at all.
-const FLING_MIN: f64 = 150.0;
 
 impl Tree {
     /// 0.5.4 (#136): lets the scroller under a lifted finger coast. `from` is the
@@ -87,7 +85,8 @@ impl Tree {
                             unreachable!("checked above")
                         };
                         let at = state.offset(axis);
-                        match fling_plan(along, at, max) {
+                        let m = state.metrics();
+                        match fling_plan(along, at, max, &m) {
                             Some((distance, duration, k)) => {
                                 state.animated(axis).animate_to(
                                     at + distance,
@@ -116,7 +115,8 @@ impl Tree {
                         let viewport = f64::from(self.layout(id).size.height);
                         let at = state.scroll_offset.current;
                         let max = (state.total_extent() - viewport).max(0.0);
-                        if let Some((distance, duration, k)) = fling_plan(along, at, max) {
+                        let m = state.metrics();
+                        if let Some((distance, duration, k)) = fling_plan(along, at, max, &m) {
                             if let NodeKind::VirtualList(state) = &mut self.nodes[id].kind {
                                 state.scroll_offset.animate_to(
                                     at + distance,
@@ -337,7 +337,7 @@ impl Tree {
     }
 
     /// 0.5.6 (#166): settles the scroll views the user has stopped scrolling.
-    /// A view settles `SNAP_SETTLE` after its last input, once no animation
+    /// A view settles `scroll_snap_settle_ms` after its last input, once no animation
     /// (a fling) or thumb drag is moving it. Returns whether an animation
     /// began, so the loop keeps ticking.
     pub(super) fn settle_snaps(&mut self, now: Instant) -> bool {
@@ -351,23 +351,20 @@ impl Tree {
             if state.snap.is_none() {
                 continue;
             }
+            let m = state.metrics();
             if self.dragging == Some(id) || state.scroll.active.is_some() {
                 keep.push((id, None));
                 continue;
             }
             match since {
                 None => keep.push((id, Some(now))),
-                Some(t) if now.saturating_duration_since(t) < SNAP_SETTLE => {
+                Some(t) if now.saturating_duration_since(t) < millis(m.snap_settle_ms) => {
                     keep.push((id, since));
                 }
                 Some(_) => {
                     // Under reduced motion the settle takes no time (the spec's
                     // AC-SCB-17).
-                    let duration = if self.reduced_motion() {
-                        Duration::ZERO
-                    } else {
-                        SNAP_DURATION
-                    };
+                    let duration = m.snap_duration(self.reduced_motion());
                     if let Some(target) = self.snap_target(id)
                         && let Some(NodeKind::ScrollView(state)) =
                             self.nodes.get_mut(id).map(|n| &mut n.kind)
@@ -376,7 +373,7 @@ impl Tree {
                             &mut state.scroll,
                             target,
                             duration,
-                            crate::MotionCurve::Bezier(0.2, 0.0, 0.0, 1.0),
+                            m.snap_easing.curve(),
                             now,
                         );
                         started = true;

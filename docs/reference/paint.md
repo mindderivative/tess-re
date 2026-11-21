@@ -371,10 +371,11 @@ button.stop_animation("fill")
 
 **`animate(name, to, duration_ms=0, easing=None, on_complete=None)`** eases a
 property from its current value, so animating again mid-flight never jumps.
-`easing` is `"linear"` (the default), a spring (`"spring"` or `("spring", bounce)`, 0.5.4; see
+`easing` is `"linear"` (the default), a preset name (0.6.11: `"standard"`, `"emphasized_decelerate"` and the others,
+[with their curves](../guide/animation.md#easing)), a spring (`"spring"` or `("spring", bounce)`, 0.5.4; see
 [the animation guide](../guide/animation.md#springs)), or a cubic bezier `(x1, y1, x2, y2)` exactly
-as CSS `cubic-bezier()` takes it — MD3's named curves are bezier values, e.g.
-emphasized decelerate is `(0.05, 0.7, 0.1, 1.0)`. `on_complete` runs once when
+as CSS `cubic-bezier()` takes it — a preset is a bezier with a name, e.g.
+`"emphasized_decelerate"` is `(0.05, 0.7, 0.1, 1.0)`. `on_complete` runs once when
 the value arrives; an animation replaced by another, or stopped, never calls it.
 
 Animatable: `fill`, `stroke_color`, `stroke_width`, `opacity`, `blur`, `backdrop_blur`, `corner_radius`

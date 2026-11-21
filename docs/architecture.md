@@ -110,9 +110,15 @@ properties (`engine_core::ScrollProp`), one geometry (`ScrollbarMetrics::thumbs`
 | Motion | `scrollbar_fade_in_ms`, `scrollbar_fade_out_ms` (100), `scrollbar_hover_delay_ms` (0), `scrollbar_fade_easing` (`"standard"`) |
 | Buttons and lane | `scrollbar_arrows` (`"none"`), `scrollbar_arrow_step` (40), `scrollbar_lane_click` (`"page"`; `"none"` one-axis/list) |
 | Feel | `wheel_notch` (40), `key_line` (40), `page_fraction` (0.9; 1.0 one-axis), `scroll_smooth_ms` (0), `scroll_easing` (`"standard"`), `page_repeat_delay_ms` (400), `page_repeat_ms` (100) |
+| Snap and fling | `scroll_snap_settle_ms` (120), `scroll_snap_duration_ms` (200), `scroll_snap_easing` (`"standard"`), `fling_tau_ms` (350), `fling_stop_speed` (30 px/s), `fling_min_speed` (150 px/s) |
 
-The named easings live in one table (`engine_core::EASINGS`: `linear`, `standard`, `emphasized`, `ease`, `ease_in`,
-`ease_out`, `ease_in_out`, `standard_accelerate`, `standard_decelerate`) for every property that takes an easing.
+The named easings live in one table (`engine_core::EASINGS`: `linear`, `standard`, `standard_decelerate`,
+`standard_accelerate`, `emphasized`, `emphasized_decelerate`, `emphasized_accelerate` (the Tesserae Motion note) and the
+CSS `ease`, `ease_in`, `ease_out`, `ease_in_out`), and one parser (`engine-py/src/easing.rs`) takes a name from it, a
+bezier tuple or (for `animate`) a spring wherever an easing is taken from Python: `animate`, `animate_param`,
+`Shader.animate`, `LayerWindow.animate_margin` and the easing properties of a scroller. There is no per-window motion
+scale: durations start in many places (Python calls, the scrollbar fades, the smooth scroll, the snap settle), so a
+scale would be one multiply per site rather than one in the animation core; `reduced_motion` is the one switch.
 `Window.set(reduced_motion=...)` (default: follow the OS) collapses the fades, the smooth scroll and the snap settle to
 0 ms.
 

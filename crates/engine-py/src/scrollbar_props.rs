@@ -4,7 +4,7 @@
 //! table works on both kinds and nothing is a callback: a number, a flag, a
 //! colour, a name or an easing, `None` for the default.
 
-use engine_core::{EASINGS, Easing, NodeKind, PropKind, PropValue, ScrollProp};
+use engine_core::{Easing, NodeKind, PropKind, PropValue, ScrollProp};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -66,23 +66,8 @@ fn parse_value(prop: ScrollProp, value: &Bound<'_, PyAny>) -> PyResult<PropValue
             }
         }
         PropKind::Easing => {
-            let expected = format!(
-                "a preset name ({}) or a cubic bezier (x1, y1, x2, y2) with x1 and x2 from 0 \
-                 to 1, or None",
-                EASINGS
-                    .iter()
-                    .map(|(n, _)| *n)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            if let Ok(text) = value.extract::<String>() {
-                return Easing::from_name(&text)
-                    .map(PropValue::Easing)
-                    .ok_or_else(|| invalid(name, &expected));
-            }
-            let (x1, y1, x2, y2): (f64, f64, f64, f64) =
-                value.extract().map_err(|_| invalid(name, &expected))?;
-            Easing::bezier(x1, y1, x2, y2)
+            let expected = format!("{}, or None", crate::easing::preset_or_bezier_expected());
+            crate::easing::parse_preset_or_bezier(value)
                 .map(PropValue::Easing)
                 .ok_or_else(|| invalid(name, &expected))
         }

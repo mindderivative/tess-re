@@ -40,6 +40,18 @@ pub const FADE: Duration = Duration::from_millis(100);
 /// `page_repeat_delay_ms`, `page_repeat_ms`.
 pub const PAGE_DELAY: Duration = Duration::from_millis(400);
 pub const PAGE_REPEAT: Duration = Duration::from_millis(100);
+/// 0.6.11: `scroll_snap_settle_ms` -- how long after its last input a snapping
+/// view waits before it settles -- and `scroll_snap_duration_ms`, how long the
+/// settling takes.
+pub const SNAP_SETTLE: Duration = Duration::from_millis(120);
+pub const SNAP_DURATION: Duration = Duration::from_millis(200);
+/// 0.6.11: `fling_tau_ms` -- how quickly a flick slows: the time constant of
+/// its exponential decay, in milliseconds.
+pub const FLING_TAU_MS: f64 = 350.0;
+/// `fling_stop_speed`: a flick coasts to a stop at this speed, pixels a second.
+pub const FLING_STOP: f64 = 30.0;
+/// `fling_min_speed`: a flick slower than this, pixels a second, does not coast.
+pub const FLING_MIN: f64 = 150.0;
 /// `scrollbar_hide_delay_ms`: how long `auto_hide` waits.
 pub const HIDE_DELAY: Duration = Duration::from_millis(1000);
 
@@ -163,6 +175,17 @@ pub struct ScrollbarMetrics {
     pub scroll_easing: Easing,
     pub page_delay_ms: f64,
     pub page_repeat_ms: f64,
+    /// How long a snapping view waits after its last input before it settles.
+    pub snap_settle_ms: f64,
+    /// How long the settle takes (nothing under reduced motion).
+    pub snap_duration_ms: f64,
+    pub snap_easing: Easing,
+    /// The time constant of a fling's decay, milliseconds.
+    pub fling_tau_ms: f64,
+    /// A fling ends at this speed, pixels a second.
+    pub fling_stop_speed: f64,
+    /// A flick slower than this does not coast, pixels a second.
+    pub fling_min_speed: f64,
 }
 
 /// `ms` milliseconds as a duration, none for a number that is no time.
@@ -263,6 +286,12 @@ impl ScrollbarMetrics {
             scroll_easing: o.easing(Prop::ScrollEasing).unwrap_or(easing::STANDARD),
             page_delay_ms: n(Prop::PageRepeatDelay, PAGE_DELAY.as_secs_f64() * 1000.0),
             page_repeat_ms: n(Prop::PageRepeat, PAGE_REPEAT.as_secs_f64() * 1000.0),
+            snap_settle_ms: n(Prop::SnapSettle, SNAP_SETTLE.as_secs_f64() * 1000.0),
+            snap_duration_ms: n(Prop::SnapDuration, SNAP_DURATION.as_secs_f64() * 1000.0),
+            snap_easing: o.easing(Prop::SnapEasing).unwrap_or(easing::STANDARD),
+            fling_tau_ms: n(Prop::FlingTau, FLING_TAU_MS),
+            fling_stop_speed: n(Prop::FlingStop, FLING_STOP),
+            fling_min_speed: n(Prop::FlingMin, FLING_MIN),
         }
     }
 
@@ -300,6 +329,12 @@ impl ScrollbarMetrics {
             Prop::ScrollEasing => Some(Value::Easing(self.scroll_easing)),
             Prop::PageRepeatDelay => number(self.page_delay_ms),
             Prop::PageRepeat => number(self.page_repeat_ms),
+            Prop::SnapSettle => number(self.snap_settle_ms),
+            Prop::SnapDuration => number(self.snap_duration_ms),
+            Prop::SnapEasing => Some(Value::Easing(self.snap_easing)),
+            Prop::FlingTau => number(self.fling_tau_ms),
+            Prop::FlingStop => number(self.fling_stop_speed),
+            Prop::FlingMin => number(self.fling_min_speed),
             Prop::Fill
             | Prop::FillHover
             | Prop::FillDrag
@@ -353,6 +388,16 @@ impl ScrollbarMetrics {
             Show::Never => false,
             Show::Always => true,
             Show::Overflow | Show::AutoHide => content > viewport,
+        }
+    }
+
+    /// How long a snap settle takes: nothing under reduced motion (the spec's
+    /// AC-SCB-17).
+    pub fn snap_duration(&self, reduced: bool) -> Duration {
+        if reduced {
+            Duration::ZERO
+        } else {
+            millis(self.snap_duration_ms)
         }
     }
 

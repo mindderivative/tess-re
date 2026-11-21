@@ -63,7 +63,7 @@ def test_animate_completion_is_positional_after_easing() -> None:
 
 
 @pytest.mark.parametrize(
-    "easing", ["ease", (2.0, 0.0, 0.0, 1.0), (0.1, 0.2, 0.3)]
+    "easing", ["bouncy", (2.0, 0.0, 0.0, 1.0), (0.1, 0.2, 0.3)]
 )
 def test_animate_rejects_bad_easing(easing: Any) -> None:
     w = window()

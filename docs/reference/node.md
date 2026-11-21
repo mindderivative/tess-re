@@ -110,8 +110,9 @@ The animatable properties are `fill`, `stroke_color`, `stroke_width`,
 `scale`, `rotation_deg`, a scroll view's `scroll_offset` and `scroll_offset_x` (0.6.11), and a path's
 `data`, `trim_start`, and `trim_end`, and an svg's `svg_time` (0.5.10). Any other name raises `ValueError`;
 a `to` of the wrong shape raises `ValueError`, or `TypeError` for a
-non-number `to` on a numeric property. `easing` is `"linear"` or a cubic bezier
-`(x1, y1, x2, y2)`. `on_complete` is called with no arguments exactly once,
+non-number `to` on a numeric property. `easing` is `"linear"`, a preset name
+(`"standard"`, `"emphasized_decelerate"` and the others, [listed with their curves](../guide/animation.md#easing)),
+a cubic bezier `(x1, y1, x2, y2)` or a spring; any other value raises `ValueError` listing the valid ones. `on_complete` is called with no arguments exactly once,
 in the frame the value arrives — or in `window.advance(ms)` in a test — and
 never for an animation replaced or stopped first.
 

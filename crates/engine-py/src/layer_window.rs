@@ -1094,7 +1094,7 @@ impl PyLayerWindow {
             ));
         }
         let duration = Duration::from_millis(duration_ms);
-        let curve = crate::node::parse_easing(easing.as_ref(), duration)?;
+        let curve = crate::easing::parse_easing(easing.as_ref(), duration)?;
         let base = slf.as_super().borrow();
         let state = base
             .handles

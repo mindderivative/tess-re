@@ -374,7 +374,7 @@ impl Shader {
         easing: Option<Bound<'_, PyAny>>,
     ) -> PyResult<()> {
         let duration = std::time::Duration::from_millis(duration_ms);
-        let curve = crate::node::parse_easing(easing.as_ref(), duration)?;
+        let curve = crate::easing::parse_easing(easing.as_ref(), duration)?;
         let to = uniform_value(name, to)?;
         self.core
             .animate_uniform(name, to, duration, curve)

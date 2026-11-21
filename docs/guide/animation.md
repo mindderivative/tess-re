@@ -62,14 +62,32 @@ Any other name raises `ValueError`.
 
 ## Easing
 
-`easing` is `"linear"` (the default), a cubic bezier `(x1, y1, x2, y2)`,
-exactly as CSS `cubic-bezier()` takes it, or a [spring](#springs). Design systems publish their
-motion curves as bezier values, so they drop straight in:
+`easing` is `"linear"` (the default), a **preset name**, a cubic bezier `(x1, y1, x2, y2)`,
+exactly as CSS `cubic-bezier()` takes it, or a [spring](#springs). (0.6.11) One parser takes all of these
+wherever an easing is taken: `animate`, `animate_param`, a path's `trim_*` and `data`, the layout
+properties, `Shader.animate`, `LayerWindow.animate_margin`; and, without the springs, the properties
+`scrollbar_fade_easing`, `scroll_easing` and `scroll_snap_easing`. A name that is not in the table raises
+`ValueError` listing the valid forms.
+
+| Preset | `(x1, y1, x2, y2)` | Note |
+| --- | --- | --- |
+| `"linear"` | (0, 0, 1, 1) | |
+| `"standard"` | (0.2, 0, 0, 1) | Tesserae Motion `easing-standard` |
+| `"standard_decelerate"` | (0, 0, 0, 1) | |
+| `"standard_accelerate"` | (0.3, 0, 1, 1) | |
+| `"emphasized"` | (0.2, 0, 0, 1) | The single-segment form of MD3 `emphasized`, the same curve as `"standard"` (it reads back as `"standard"`) |
+| `"emphasized_decelerate"` | (0.05, 0.7, 0.1, 1) | |
+| `"emphasized_accelerate"` | (0.3, 0, 0.8, 0.15) | |
+| `"ease"` | (0.25, 0.1, 0.25, 1) | CSS keyword |
+| `"ease_in"` | (0.42, 0, 1, 1) | CSS keyword |
+| `"ease_out"` | (0, 0, 0.58, 1) | CSS keyword |
+| `"ease_in_out"` | (0.42, 0, 0.58, 1) | CSS keyword |
+
+The first seven are the table of the Tesserae UX note "Motion". Any other curve is a bezier tuple:
 
 ```python
-STANDARD = (0.2, 0.0, 0.0, 1.0)
-EMPHASIZED_DECELERATE = (0.05, 0.7, 0.1, 1.0)
-drawer.animate("translate_x", 0, 400, easing=EMPHASIZED_DECELERATE)
+drawer.animate("translate_x", 0, 400, easing="emphasized_decelerate")
+drawer.animate("translate_x", 0, 400, easing=(0.05, 0.7, 0.1, 1.0))   # the same curve
 ```
 
 ## Springs

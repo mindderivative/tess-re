@@ -240,7 +240,10 @@ class Node:
         """Starts (or retargets) an animation on one property, from its
         current value. Returns immediately -- never blocks.
         `duration_ms=0` snaps instantly on the next tick rather than
-        easing. `easing` is `"linear"` (the default) or a cubic bezier
+        easing. `easing` is `"linear"` (the default), (0.6.11) a preset name --
+        `"standard"`, `"standard_decelerate"`, `"standard_accelerate"`, `"emphasized"`,
+        `"emphasized_decelerate"`, `"emphasized_accelerate"`, `"ease"`, `"ease_in"`,
+        `"ease_out"` or `"ease_in_out"` -- or a cubic bezier
         `(x1, y1, x2, y2)` as CSS `cubic-bezier()` takes it, or (0.5.4) a
         spring: `"spring"` or `("spring", bounce)`, `bounce` from -1 to 1
         (exclusive) -- `duration_ms` is its period and it lasts until it settles,
@@ -327,7 +330,10 @@ class Node:
         `_hover_delay_ms`, `_fade_easing`, `_gutter_reserve`, `_arrows`, `_arrow_step`,
         `_lane_click` (each `scrollbar_*`), and `wheel_notch`, `key_line`,
         `page_fraction`, `scroll_smooth_ms`, `scroll_easing`, `page_repeat_delay_ms`,
-        `page_repeat_ms`. Each is a number, a bool, a colour `(r, g, b, a)`, a name or an
+        `page_repeat_ms`, and the engine's snap and fling timings (0.6.11):
+        `scroll_snap_settle_ms` (120), `scroll_snap_duration_ms` (200),
+        `scroll_snap_easing` (`"standard"`; a list has no snap), `fling_tau_ms` (350),
+        `fling_stop_speed` (30 px/s) and `fling_min_speed` (150 px/s). Each is a number, a bool, a colour `(r, g, b, a)`, a name or an
         easing (a preset name or a cubic bezier `(x1, y1, x2, y2)`); `None` is the
         default, and `get` reads the value in force.
         """

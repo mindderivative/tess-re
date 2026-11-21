@@ -15,6 +15,7 @@ mod cursor_image;
 mod defaults;
 mod dispatch;
 mod dock;
+mod easing;
 mod error;
 mod event;
 mod files;
