@@ -44,8 +44,9 @@ trackpad scroll arrives as `wheel`, with `delta_x`/`delta_y` in pixels,
 positive right and down; it bubbles. With Shift held, a wheel with no
 horizontal part arrives as `delta_x`, so it scrolls sideways (0.4.3).
 `event.x`/`event.y` are local to `event.current`; `window_x`/`window_y` are
-in the window. Text nodes are never the target, so a press on a button's
-label lands on the button. `hit_testable=False` makes any node transparent to
+in the window. A text node is a target like any other (0.6.11), so a label can carry a
+tooltip; a press on a button's label still bubbles to the button, which clicks once.
+`hit_testable=False` makes any node transparent to
 the pointer; `cursor` sets the pointer's shape over it.
 
 A drag captures the pointer, so it keeps receiving events after the pointer

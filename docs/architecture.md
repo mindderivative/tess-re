@@ -80,6 +80,19 @@ shader first renders the node's own subtree offscreen to read it. These passes
 run only when something changed, and a window drawing an `animated` shader keeps
 running like any animation.
 
+## Everything visual is adjustable from Python
+
+Tesserae Engine is mechanism only: every visual element, default and behaviour is a property
+(a number, an enum, a colour or a named easing) that Python sets on a node, never a callback run
+per frame, and each default is the Tesserae UX spec's value. A project that sets nothing gets the
+spec. Properties added under this rule so far (0.6.11):
+
+| Property | Default | Where |
+| --- | --- | --- |
+| `hit_testable` (every node; `True`, `False` or `None`) | `None`: every kind takes hits, a plain `text` label included | [Node](reference/node.md), [Events](reference/events.md) |
+| `vertical_align` (`text`, `text_input`; `"start"`, `"center"`, `"end"`) | `text`: `"start"`; `text_input`: `None`, which is `"center"` single-line and `"start"` multiline | [Text](reference/properties.md#text) |
+| `letter_spacing`, `line_height` (now on `text_input` too) | `0`, `None` (the font's own) | [Text](reference/properties.md#text) |
+
 ## Design principles
 
 - **Rust owns every frame; Python owns intent.** Python never runs during

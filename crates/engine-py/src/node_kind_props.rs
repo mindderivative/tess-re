@@ -16,7 +16,7 @@ use crate::node_layout::lookup;
 use crate::node_props::{color_to_py, parse_color};
 
 /// Every kind-specific property this module handles, in error order.
-pub(crate) const KIND_PROPS: [&str; 40] = [
+pub(crate) const KIND_PROPS: [&str; 41] = [
     "text",
     "font_family",
     "font_weight",

@@ -87,9 +87,11 @@ don't count as keyboard input for this. This is the heuristic browsers use for
 Raw input is delivered before what it caused, so a click delivers
 `pointer_down`, then `pointer_up`, then `click`.
 
-`text` nodes are never the target of pointer events: a press on a button's
-label lands on the button. Set `hit_testable=False` on an icon (a `path`) for
-the same effect.
+A `text` node is the target of pointer events like any node (0.6.11; before, only a
+selectable or linked one was), so a tooltip listener on a label gets `pointer_enter` and
+`pointer_leave`. `click` and the other bubbling events still reach the button around a
+label, once, and the button stays hovered. Set `hit_testable=False` on a label or on an
+icon (a `path`) to let a press fall to the node under it.
 
 ### Pointer capture
 

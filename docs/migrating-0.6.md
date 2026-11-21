@@ -320,3 +320,25 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
 - **Internal (Rust):** `ScrollViewState::scrollbar_width` is `scrollbar.thickness: Option<f64>`;
   `Tree::take_scroll_changes` returns `ScrollChange` values, not tuples; `grabs_scroll_view_thumb` returns the
   `ScrollAxis` it grabbed. The Python API has no such change.
+- **`hit_testable` is on every node, and a plain `text` is hit-testable by default (changed, P2; tess-ui finding #4).**
+  `node.get("hit_testable")` is `None` (the default: the kind's own answer, which is "yes" for every kind), `True` or
+  `False`; it used to be `True` or `False` with `True` the default read-back. A bare `text` label never took a pointer
+  event before (unless `selectable` or a link), so a tooltip listener on a label did nothing; it now gets
+  `pointer_enter`, `pointer_leave`, `pointer_down`/`pointer_up` and `click`. A press on a label inside a button
+  still reaches the button: `click` bubbles from the label (`event.target` is the label, `event.current` the button), the
+  button's listener fires once, and the button is hovered while the pointer is over its label. To restore the old
+  behaviour for one label, `label.set(hit_testable=False)` (the press then goes to what is under it, as before).
+  A listener on the label's *parent* that compared `event.target` with that parent now sees the label for presses
+  on the text. A layer window's `input_region="auto"` still leaves a plain label out (a click-through layer stays
+  click-through); `hit_testable=True` puts one in. Rust: `Node.hit_testable` and `Tree::set_hit_testable` take
+  `Option<bool>`. See [Events](reference/events.md).
+- **`vertical_align` on `text` and `text_input` (new, P3, UXREQ-005); a single-line `text_input` centres its line
+  (changed).** `vertical_align` is `"start"`, `"center"` or `"end"`: where the lines sit in the content box when it is
+  taller than they are. A `text` defaults to `"start"` (unchanged). A `text_input` defaults to `None`, which is
+  `"center"` for a single-line input and `"start"` for a multiline one: text in a 32 px field with padding 4 no longer
+  sits high. An app that sized an input to its text sees no change; one that relied on the top alignment in a taller box
+  sets `vertical_align="start"`. The caret, selection rectangles, `caret_rect()`, `text_rects()`, the IME's candidate
+  area and a click's caret position all follow the offset. See [Text](reference/properties.md#text).
+- **`letter_spacing` and `line_height` on `text_input` (new, P3).** As on `text`: pixels after each character
+  (default `0`) and a multiple of the font size (default `None`, the font's own), shaped with the same layout the
+  caret, selection and clicks use.

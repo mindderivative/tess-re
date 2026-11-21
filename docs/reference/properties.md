@@ -162,10 +162,11 @@ On `text` and `text_input` unless noted.
 | `font_family` | A family name — see [`register_font`](../api/python.md#module) |
 | `font_weight` | 1–1000 |
 | `font_size` | Pixels (also on a terminal) |
-| `line_height` | A multiple of the font size, or `None` (`text` only) |
+| `line_height` | A multiple of the font size, or `None` for the font's own (`text`; and `text_input` since 0.6.11) |
 | `text_align` | `"start"`, `"center"`, or `"end"` (`text` only) |
 | `font_style` | `"normal"` or `"italic"` — slanted when the family has no italic face (`text` only) |
-| `letter_spacing` | Extra pixels after each character (`text` only) |
+| `letter_spacing` | Extra pixels after each character, default `0` (`text`; and `text_input` since 0.6.11) |
+| `vertical_align` | (0.6.11) Where the lines sit in the content box when it is taller than they are: `"start"`, `"center"` or `"end"`. `text`: default `"start"` (as before). `text_input`: `None` (default) is `"center"` for a single-line input and `"start"` for a multiline one; text in a 32 px field with padding 4 no longer sits high. Text taller than the box starts at the top. The caret, selection rectangles, `caret_rect()`, `text_rects()`, the IME's area and a click's caret position all follow the offset. Example: `field.set(vertical_align="start")` for the old look |
 | `wrap` | `"word"` wraps within the node's width; `"none"` keeps each paragraph on one line. On a text input (0.6.6) it is for a multiline one: see [Text input](#text-input) |
 | `max_lines` | The most lines shown, or `None` (`text` only) |
 | `overflow` | `"clip"` cuts text past the box or the line limit; `"ellipsis"` ends each cut line with "…". On a text input (0.6.6) it is for a single-line one, and takes `"scroll"` too: see [Text input](#text-input) |

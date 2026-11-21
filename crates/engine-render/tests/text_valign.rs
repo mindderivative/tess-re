@@ -84,7 +84,7 @@ fn inked_rows(
         })
     });
     let first = rows.next()?;
-    Some((first, rows.last().unwrap_or(first)))
+    Some((first, rows.next_back().unwrap_or(first)))
 }
 
 fn style(width: f32, height: f32, padding: f32) -> Style {
@@ -279,7 +279,7 @@ fn clicking_a_row_of_a_centred_multiline_input_hits_that_row() {
         color: INK,
         box_height: Some(box_height),
     };
-    let offset = f64::from(VerticalAlign::Center.offset(box_height as f32, (2.0 * lh) as f32));
+    let offset = f64::from(VerticalAlign::Center.offset(box_height, (2.0 * lh) as f32));
     // The middle of the first row, centred: the first row.
     let first = Point::new(1.0, offset + lh * 0.5);
     state.vertical_align = Some(VerticalAlign::Center);
