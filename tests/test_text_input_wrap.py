@@ -134,7 +134,9 @@ def test_a_scrolling_input_scrolls_while_typing():
 
 
 def test_ellipsis_cuts_the_line_until_the_input_is_edited():
-    window, field = scene(overflow="ellipsis")
+    # 0.6.11: a single-line input centres its line by default, a text node starts at the top: the
+    # input asks for `start` so the two are drawn alike.
+    window, field = scene(overflow="ellipsis", vertical_align="start")
     # What the engine already draws for a text node with an ellipsis, in a box of the same size.
     other = Window(width=800, height=300)
     other.root.set(fill=(0, 0, 0, 255), padding=0)

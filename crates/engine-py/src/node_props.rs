@@ -211,7 +211,7 @@ pub(crate) enum Change {
     Cursor(Option<Cursor>),
     /// 0.5.0 M3: `window_region`.
     WindowRegion(WindowRegion),
-    HitTestable(bool),
+    HitTestable(Option<bool>),
     /// 0.5.1 (#66): the node's `shader`; `None` clears it.
     Shader(Option<std::sync::Arc<engine_core::Shader>>),
     Style(StyleEdit),
@@ -1214,7 +1214,7 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
                 })?),
             })
         }
-        "hit_testable" => Change::HitTestable(boolean(value, name)?),
+        "hit_testable" => Change::HitTestable(optional_bool(value, name)?),
         // 0.5.0 M3 (issue #28): `"drag"` makes the node a title bar -- a
         // primary press on it, or on a non-interactive node inside, moves
         // the window -- `"none"` rules that out, `None` leaves it to the
@@ -1997,7 +1997,10 @@ impl Node {
                     )?
                     .into_any(),
                 },
-                "hit_testable" => any(node.hit_testable.into_pyobject(py)?.to_owned().into_any()),
+                "hit_testable" => match node.hit_testable {
+                    None => py.None(),
+                    Some(on) => any(on.into_pyobject(py)?.to_owned().into_any()),
+                },
                 "window_region" => match node.window_region {
                     WindowRegion::Default => py.None(),
                     WindowRegion::Drag => any("drag".into_pyobject(py)?.into_any()),

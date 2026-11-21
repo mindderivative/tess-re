@@ -16,7 +16,16 @@ title = window.create("text", text="Quarterly report", font_size=22,
 The styling properties are `font_family`, `font_size` (pixels),
 `font_weight` (1–1000), `font_style` (`"normal"` or `"italic"`),
 `letter_spacing`, `line_height` (a multiple of the size), and `text_align`
-(`"start"`, `"center"`, `"end"`). Text wraps at word boundaries within the
+(`"start"`, `"center"`, `"end"`). `vertical_align` (0.6.11: `"start"`, `"center"`, `"end"`) places
+the lines in a box taller than they are; `letter_spacing`, `line_height` and `vertical_align`
+work on a `text_input` too, which centres a single line by default:
+
+```python
+field = window.create("text_input", height=32, padding=4)            # text in the middle
+label = window.create("text", text="Name", height=32, vertical_align="center")
+```
+
+Text wraps at word boundaries within the
 node's width; `wrap="none"` keeps each paragraph on one line, `max_lines`
 caps the lines shown, and `overflow="ellipsis"` ends a cut line with "…".
 

@@ -262,8 +262,9 @@ class Node:
     def caret_rect(self) -> tuple[float, float, float, float]:
         """(0.5.6) A text input's caret as `(x, y, width, height)` in the node's
         coordinates, padding and scrolling included; at the end of the
-        composition while an IME composes. Shaped fresh, so it is right
-        straight after an edit. Raises `ValueError` for any other node."""
+        composition while an IME composes, and shifted by the input's
+        `vertical_align` (0.6.11). Shaped fresh, so it is right straight
+        after an edit. Raises `ValueError` for any other node."""
         ...
     def text_rects(self, start: int, end: int) -> list[tuple[float, float, float, float]]:
         """(0.5.6) The rectangles covering bytes `start..end` of a text input's
@@ -307,6 +308,15 @@ class Node:
         properties; each kind adds its own (text, text input, image,
         path, canvas, scroll view, virtual list, terminal). An unknown
         name lists the valid ones. See the Properties reference.
+
+        (0.6.11) `hit_testable` is `True`, `False` or `None` (the default:
+        every kind takes pointer events, a plain `text` label included;
+        `False` lets them fall to the node underneath). `vertical_align`
+        (`"start"`, `"center"`, `"end"`; `text` and `text_input`) places the
+        lines in a taller content box: `text` defaults to `"start"`, a
+        `text_input` to `None`, which is `"center"` single-line and `"start"`
+        multiline. `letter_spacing` and `line_height` work on a `text_input`
+        too.
         """
         ...
     def redraw(self) -> None:

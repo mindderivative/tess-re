@@ -96,7 +96,7 @@ impl Tree {
         // generalized to any node a caller has explicitly opted out
         // (children were already checked above, so this only ever
         // affects whether *this* node itself claims the point).
-        let hit = if !node.hit_testable {
+        let hit = if node.hit_testable == Some(false) {
             false
         } else {
             match &node.kind {
@@ -113,20 +113,12 @@ impl Tree {
                     }
                     None => region::shape_contains(&node.paint, layout, local_point),
                 },
-                // M30 Phase 1 (§5, §7): a bare `Text` label never claims a
-                // hit itself -- it's decorative content inside a clickable
-                // parent (a button's centered label, sized to fill the
-                // button's box, would otherwise sit over the parent and
-                // take its clicks as `hit_test`'s target). `TextField` is
-                // unaffected, a distinct `NodeKind` with its own real
-                // click-to-focus need.
-                // 0.5.4 (#112): unless it opted in to being selected, which
-                // needs the press to reach it; (#131) or it holds a link.
-                NodeKind::Text(state) => {
-                    (state.options.selectable
-                        || state.options.spans.iter().any(|s| s.link.is_some()))
-                        && rect_contains(layout, local_point)
-                }
+                // 0.6.11 (P2): a text label claims a hit like any other node
+                // (a tooltip on a label needs it). Before, a bare `Text` never
+                // did, unless selectable or a link. Hover and enter/leave see it
+                // now; a press still goes to the label's ancestor (`press_target`),
+                // so a button's centred label does not take the button's clicks.
+                NodeKind::Text(_) => rect_contains(layout, local_point),
                 // 0.5.9 (#236): a path that opts in is hit by what it paints.
                 NodeKind::Path(state) if state.hit_shape == HitShape::Painted => {
                     region::painted_contains(node, layout, local_point)
@@ -135,6 +127,34 @@ impl Tree {
             }
         };
         hit.then_some((id, local_point))
+    }
+
+    /// 0.6.11 (P2): the node a press on `hit` lands on. A bare `text` label is hit (so it is
+    /// hovered and a tooltip on it works) but, as before, is not what a press or a click
+    /// reaches: the press goes to the nearest ancestor that is not one, so a button's label
+    /// is part of the button and a press on the label that ends on the button's padding is
+    /// still one click. A label that is selectable, holds a link, or has `hit_testable` set
+    /// to `True` is its own press target.
+    pub(super) fn press_target(&self, hit: NodeId) -> NodeId {
+        let mut id = hit;
+        while let Some(node) = self.nodes.get(id) {
+            let own = match &node.kind {
+                NodeKind::Text(state) => {
+                    node.hit_testable == Some(true)
+                        || state.options.selectable
+                        || state.options.spans.iter().any(|s| s.link.is_some())
+                }
+                _ => true,
+            };
+            if own {
+                return id;
+            }
+            match node.parent {
+                Some(parent) => id = parent,
+                None => return id,
+            }
+        }
+        hit
     }
 
     /// The concrete fulfillment of §7.3's own text: "hover needs no new

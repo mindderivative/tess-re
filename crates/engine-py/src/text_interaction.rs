@@ -48,6 +48,7 @@ fn text_field_hit_offset(
         y: f64::from(pad.top) - state.scroll_offset.current,
         max_width: (layout.size.width - pad.left - pad.right).max(0.0),
         color: peniko::Color::TRANSPARENT,
+        box_height: Some((layout.size.height - pad.top - pad.bottom).max(0.0)),
     };
     Some(text_renderer.hit_test_position(state, at, local_point))
 }
@@ -73,6 +74,7 @@ fn text_field_unit(
         y: f64::from(pad.top) - state.scroll_offset.current,
         max_width: (layout.size.width - pad.left - pad.right).max(0.0),
         color: peniko::Color::TRANSPARENT,
+        box_height: Some((layout.size.height - pad.top - pad.bottom).max(0.0)),
     };
     text_renderer.field_unit_at(state, at, local_point)
 }
@@ -102,6 +104,7 @@ fn static_text_hit_offset(
         y: f64::from(pad.top),
         max_width: (layout.size.width - pad.left - pad.right).max(0.0),
         color: peniko::Color::TRANSPARENT,
+        box_height: Some((layout.size.height - pad.top - pad.bottom).max(0.0)),
     };
     Some(text_renderer.hit_test_text(hit, state, at, local_point))
 }
@@ -143,6 +146,7 @@ fn text_placement(tree: &Tree, id: NodeId) -> TextPlacement {
         y: f64::from(pad.top),
         max_width: (layout.size.width - pad.left - pad.right).max(0.0),
         color: peniko::Color::TRANSPARENT,
+        box_height: Some((layout.size.height - pad.top - pad.bottom).max(0.0)),
     }
 }
 

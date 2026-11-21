@@ -747,6 +747,15 @@ pub struct TextFieldState {
     /// #288: the x (in pixels along the text) Up, Down, Page Up and Page Down hold across a run
     /// of vertical moves, so passing a short row does not lose the column. `None` between runs.
     pub goal_x: Option<f32>,
+    /// 0.6.11 (P3): where the lines sit in the content box when it is taller than they are.
+    /// `None` (the default) is `Center` for a single-line input and `Start` for a multiline one;
+    /// see `effective_vertical_align`.
+    pub vertical_align: Option<VerticalAlign>,
+    /// 0.6.11 (P3): extra space after each character, in pixels (as on a `text` node).
+    pub letter_spacing: f32,
+    /// 0.6.11 (P3): a line height as a multiple of the font size (as on a `text` node); `None`
+    /// is the font's own.
+    pub line_height: Option<f32>,
 }
 
 /// #285: how a single-line text input shows a line longer than its box (it is one line, however
@@ -897,6 +906,17 @@ impl TextFieldState {
         }
     }
 
+    /// 0.6.11 (P3): the vertical alignment in force: what was set, or `Center` for a single-line
+    /// input (text in a field taller than its line sits in the middle, as in every toolkit) and
+    /// `Start` for a multiline one.
+    pub fn effective_vertical_align(&self) -> VerticalAlign {
+        self.vertical_align.unwrap_or(if self.multiline {
+            VerticalAlign::Start
+        } else {
+            VerticalAlign::Center
+        })
+    }
+
     /// Seeds `cursor` at `content`'s own real end -- a real text
     /// field's own real, expected initial-cursor-at-end convention
     /// (every desktop toolkit's own default), not `0`.
@@ -946,6 +966,9 @@ impl TextFieldState {
             tab_navigates: false,
             goal_x: None,
             obscured: false,
+            vertical_align: None,
+            letter_spacing: 0.0,
+            line_height: None,
         }
     }
 }
@@ -1217,6 +1240,49 @@ pub struct TextOptions {
     /// 0.5.4 (#112): the selected bytes as `(anchor, focus)`, either order.
     /// `Some((n, n))` is an empty selection.
     pub selection: Option<(usize, usize)>,
+    /// 0.6.11 (P3): where the laid-out lines sit in the node's content box
+    /// when the box is taller than they are. Paint and input geometry, not
+    /// layout: see `same_layout`.
+    pub vertical_align: VerticalAlign,
+}
+
+/// 0.6.11 (P3): where text sits in the vertical room its node's content box
+/// leaves it: at the top, centred, or at the bottom.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VerticalAlign {
+    Start,
+    Center,
+    End,
+}
+
+impl VerticalAlign {
+    pub const ALL: [(&'static str, VerticalAlign); 3] = [
+        ("start", VerticalAlign::Start),
+        ("center", VerticalAlign::Center),
+        ("end", VerticalAlign::End),
+    ];
+
+    pub fn name(self) -> &'static str {
+        Self::ALL
+            .iter()
+            .find(|(_, v)| *v == self)
+            .map_or("start", |(n, _)| n)
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
+    }
+
+    /// How far down from the top of a box `box_height` tall text of `text_height` sits. Never
+    /// negative: text taller than its box starts at the top whatever the alignment.
+    pub fn offset(self, box_height: f32, text_height: f32) -> f32 {
+        let room = (box_height - text_height).max(0.0);
+        match self {
+            Self::Start => 0.0,
+            Self::Center => room / 2.0,
+            Self::End => room,
+        }
+    }
 }
 
 impl TextOptions {
@@ -1233,6 +1299,7 @@ impl TextOptions {
             spans,
             selectable: _,
             selection: _,
+            vertical_align: _,
         } = self;
         *italic == other.italic
             && *letter_spacing == other.letter_spacing
@@ -1281,6 +1348,7 @@ impl Default for TextOptions {
             spans: Vec::new(),
             selectable: false,
             selection: None,
+            vertical_align: VerticalAlign::Start,
         }
     }
 }
@@ -1699,15 +1767,14 @@ pub struct Node {
     /// `Tree::set_access`.
     pub access: crate::access::AccessNodeData,
     /// M30 Phase 5 Step 1 (§5, §7): whether this node itself claims a
-    /// hit in `Tree::hit_test_at` -- `false` lets a decorative interior
+    /// hit in `Tree::hit_test_at` -- `Some(false)` lets a decorative interior
     /// `Rect` (an indicator pill behind an icon, say) pass the point
-    /// through to its parent. `Text` gets the same exemption
-    /// unconditionally; a `Rect` can't (it's often the real click
-    /// target), so this is an opt-in per-node flag. `true` (every existing
-    /// node, via `Tree::insert`'s own single real construction site)
-    /// is a true no-op -- only `Tree::set_hit_testable(id, false)`
-    /// changes anything.
-    pub hit_testable: bool,
+    /// through to its parent. 0.6.11 (P2): `None` (the default) is the kind's own
+    /// answer, which is "yes" for every kind (a plain text label too, so a
+    /// tooltip on a label works; a press on it still bubbles to its ancestors);
+    /// `Some(true)` also claims in a layer window's `"auto"` input region,
+    /// where a bare text label otherwise does not.
+    pub hit_testable: Option<bool>,
     /// 0.5.4 (#139): `Some(inset)` makes the node stick: inside a scrolling
     /// ancestor it stays `inset` pixels from the scroller's start edge once
     /// scrolled there, until its own parent's box scrolls away (see

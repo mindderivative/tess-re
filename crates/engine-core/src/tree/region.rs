@@ -325,14 +325,18 @@ impl Tree {
         for &child in self.children_in_paint_order(id).iter() {
             self.collect_shapes(child, composed, out);
         }
-        if !node.hit_testable || !is_drawn(node) {
+        if node.hit_testable == Some(false) || !is_drawn(node) {
             return;
         }
         let (w, h) = (f64::from(layout.size.width), f64::from(layout.size.height));
         let claims = match &node.kind {
-            // A bare text label never takes a click, unless it is selectable or a link.
+            // A bare text label does not hold the compositor's input region open, unless it
+            // is selectable, a link, or opted in with `hit_testable=True` (0.6.11): a label
+            // on a click-through layer stays click-through by default.
             NodeKind::Text(state) => {
-                state.options.selectable || state.options.spans.iter().any(|s| s.link.is_some())
+                node.hit_testable == Some(true)
+                    || state.options.selectable
+                    || state.options.spans.iter().any(|s| s.link.is_some())
             }
             _ => true,
         };

@@ -122,7 +122,7 @@ NODE_PROPERTIES = [
         ("`z_index`", "`int`", "Paint and hit order among siblings."),
         ("`clip_children`", "`bool`", "Clips children to the rounded box."),
         ("`cursor`", "cursor name or `None`", "Pointer shape over the node."),
-        ("`hit_testable`", "`bool`", "Whether the node can be a pointer target."),
+        ("`hit_testable`", "`bool` or `None`", "Whether the node can be a pointer target. `None` (default) is every kind, a `text` label included (0.6.11); `False` makes it transparent to the pointer."),
         ("`hit_shape`", "`\"box\"`, `\"painted\"` (path only)", "Whether a path is hit by its box or by what it paints."),
         ("`hit_path`", "SVG path data, or `None`", "The shape, in the node's own pixels, that clicks and an auto input region follow in place of the box (0.6.4)."),
         ("`window_region`", "`\"drag\"`, `\"none\"`, `None`", "Makes a node a title bar that moves the window."),
@@ -139,7 +139,8 @@ NODE_PROPERTIES = [
     ("Text and text input", [
         ("`text`", "`str`", "The content (read-only on a terminal)."),
         ("`font_family`, `font_weight`, `font_size`", "name / 1–1000 / pixels", "Font."),
-        ("`line_height`, `text_align`, `font_style`, `letter_spacing`, `wrap`, `max_lines`, `overflow`", "see the text guide", "Text layout (`text` nodes)."),
+        ("`line_height`, `text_align`, `font_style`, `letter_spacing`, `wrap`, `max_lines`, `overflow`", "see the text guide", "Text layout (`text` nodes; `line_height` and `letter_spacing` on `text_input` too, 0.6.11)."),
+        ("`vertical_align`", "`\"start\"`, `\"center\"`, `\"end\"`", "Where the lines sit in the content box (`text`, `text_input`; 0.6.11)."),
         ("`multiline`, `selection`, `show_whitespace`, `syntax_spans`, `folded_ranges`", "—", "Text input editing and decoration."),
         ("`tab_navigates` (text input)", "`bool`", "Tab and Shift+Tab move focus out of a multiline input instead of typing a tab character (0.6.8). Off by default."),
         ("`overwrite` (text input)", "`bool`", "Overwrite mode: a typed character replaces the one after the caret; Insert toggles it (0.6.7)."),

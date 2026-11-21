@@ -5451,7 +5451,7 @@ fn hit_testable_false_makes_a_node_defer_to_its_own_ancestor() {
          this step found"
     );
 
-    tree.set_hit_testable(inner, false);
+    tree.set_hit_testable(inner, Some(false));
     assert_eq!(
         tree.hit_test(root, point),
         Some(outer),
@@ -6882,7 +6882,7 @@ mod static_selection {
     }
 
     #[test]
-    fn text_with_a_link_takes_hits_and_plain_text_does_not() {
+    fn text_with_a_link_takes_hits_and_plain_text_does_too_unless_opted_out() {
         let mut tree = Tree::new();
         let root = tree.insert(
             NodeKind::Container,
@@ -6917,8 +6917,110 @@ mod static_selection {
         assert_eq!(tree.hit_test(root, Point::new(5.0, 5.0)), Some(linked));
         assert_eq!(
             tree.hit_test(root, Point::new(5.0, 25.0)),
+            Some(plain),
+            "0.6.11: plain text takes hits, so a tooltip on a label works"
+        );
+        tree.set_hit_testable(plain, Some(false));
+        assert_eq!(
+            tree.hit_test(root, Point::new(5.0, 25.0)),
             Some(root),
-            "plain text is decoration"
+            "hit_testable=False makes it decoration again"
+        );
+        tree.set_hit_testable(plain, Some(true));
+        assert_eq!(tree.hit_test(root, Point::new(5.0, 25.0)), Some(plain));
+    }
+
+    #[test]
+    fn a_label_is_hovered_but_a_press_on_it_is_its_buttons_unless_it_opts_in() {
+        // The Python layer bubbles `click` from the label to the button around it, and hover
+        // is per subtree; here: the label is the target, and a `hit_testable=False` label
+        // hands the same press to the button.
+        let mut tree = Tree::new();
+        let (kind, style, paint) = leaf(100.0, 40.0);
+        let button = tree.insert(kind, style, paint);
+        let label = text(&mut tree, "OK");
+        tree.add_child(button, label);
+        tree.compute_layout(
+            button,
+            Size {
+                width: AvailableSpace::Definite(100.0),
+                height: AvailableSpace::Definite(40.0),
+            },
+        );
+        let at = Point::new(5.0, 5.0);
+        let click = |tree: &mut Tree| {
+            let now = Instant::now();
+            tree.dispatch(
+                button,
+                InputEvent::PointerPressed {
+                    position: at,
+                    button: PointerButton::Primary,
+                },
+                now,
+            );
+            tree.dispatch(
+                button,
+                InputEvent::PointerReleased {
+                    position: at,
+                    button: PointerButton::Primary,
+                },
+                now,
+            )
+        };
+        // The label is hovered, but a press on it is the button's (as before 0.6.11).
+        assert!(matches!(click(&mut tree), DispatchOutcome::Activated(n) if n == button));
+        assert_eq!(tree.update_hover(button, at), Some(label));
+        // A press on the label that ends elsewhere on the button is still one click.
+        let now = Instant::now();
+        tree.dispatch(
+            button,
+            InputEvent::PointerPressed {
+                position: at,
+                button: PointerButton::Primary,
+            },
+            now,
+        );
+        let out = tree.dispatch(
+            button,
+            InputEvent::PointerReleased {
+                position: Point::new(95.0, 35.0),
+                button: PointerButton::Primary,
+            },
+            now,
+        );
+        assert!(matches!(out, DispatchOutcome::Activated(n) if n == button));
+        // Opted in, the label is its own press target.
+        tree.set_hit_testable(label, Some(true));
+        assert!(matches!(click(&mut tree), DispatchOutcome::Activated(n) if n == label));
+        tree.set_hit_testable(label, Some(false));
+        assert!(matches!(click(&mut tree), DispatchOutcome::Activated(n) if n == button));
+    }
+
+    #[test]
+    fn a_box_with_no_listeners_can_opt_in_and_any_kind_can_opt_out() {
+        let mut tree = Tree::new();
+        let (kind, style, paint) = leaf(50.0, 50.0);
+        let root = tree.insert(kind, style, paint);
+        let (kind, style, paint) = leaf(20.0, 20.0);
+        let inner = tree.insert(kind, style, paint);
+        tree.add_child(root, inner);
+        tree.compute_layout(
+            root,
+            Size {
+                width: AvailableSpace::Definite(50.0),
+                height: AvailableSpace::Definite(50.0),
+            },
+        );
+        let at = Point::new(5.0, 5.0);
+        tree.set_hit_testable(inner, Some(true));
+        assert_eq!(tree.hit_test(root, at), Some(inner));
+        tree.set_hit_testable(inner, Some(false));
+        assert_eq!(tree.hit_test(root, at), Some(root));
+        tree.set_hit_testable(inner, None);
+        assert_eq!(
+            tree.hit_test(root, at),
+            Some(inner),
+            "None is the kind's default"
         );
     }
 
@@ -8068,7 +8170,7 @@ fn the_region_skips_hidden_non_hit_testable_and_see_through_nodes() {
     let hidden = placed(&mut tree, root, 0.0, 0.0, 20.0, 20.0, 0.0);
     tree.get_mut(hidden).unwrap().visible = false;
     let opted_out = placed(&mut tree, root, 30.0, 0.0, 20.0, 20.0, 0.0);
-    tree.set_hit_testable(opted_out, false);
+    tree.set_hit_testable(opted_out, Some(false));
     let clear = placed(&mut tree, root, 60.0, 0.0, 20.0, 20.0, 0.0);
     tree.get_mut(clear).unwrap().paint.background.current = Color::from_rgba8(0, 0, 0, 0);
     placed(&mut tree, root, 90.0, 0.0, 20.0, 20.0, 0.0);
