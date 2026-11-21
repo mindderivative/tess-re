@@ -31,17 +31,19 @@ Opens and drives one or more windows together in one blocking `run()`.
 
 **Inherits:** [`object`](https://docs.python.org/3/library/functions.html#object)  ·  **Details:** [App reference](../reference/app.md)
 
-**Constructor:** `App()`
+**Constructor:** `App(scheme: Literal['light', 'dark', 'auto'] | None=None)`
 
 **Methods:**
 
 | Method | Description |
 | --- | --- |
 | `add_window(window: Window) -> None` | Adds a window to open when `run()` is called. |
+| `get(name: Literal['scheme']) -> Literal['light', 'dark', 'auto']` | Reads `scheme`. |
 | `off(event: Literal['output_added', 'output_removed', 'output_updated', 'connection_lost']) -> None` | Removes the handler for an output event or for `"connection_lost"`. |
 | `on(event, handler) -> None` | Registers `handler(output)` for a screen being plugged in, removed, or moved, resized, rescaled or rotated. |
 | `outputs() -> list[Output]` | The screens the compositor has, top to bottom and left to right, read now (so it works before `run()`). |
 | `run(max_frames: int \| None=None, keep_alive: bool=False) -> None` | Opens every added window and runs the event loop until they all close, or `max_frames`. |
+| `set(*, scheme: Literal['light', 'dark', 'auto']=...) -> None` | Sets `scheme`, live: every window that sets none of its own repaints in it. |
 | `simulate(event: Literal['output_added', 'output_removed', 'output_updated'], **fields: Any) -> None` | Delivers an output event as the compositor would, for tests with no display: `app.simulate("output_added", name="DP-2"… |
 | `thread_handle() -> LoopHandle` | A thread-safe handle to this `App`'s event loop. |
 
@@ -102,7 +104,7 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 
 **Inherits:** [`object`](https://docs.python.org/3/library/functions.html#object)  ·  **Details:** [Window reference](../reference/window.md)
 
-**Constructor:** `Window(width: int=480, height: int=200, title: str='tess_re v2', decorations: bool=True)`
+**Constructor:** `Window(width: int=480, height: int=200, title: str='tess_re v2', decorations: bool=True, scheme: Literal['light', 'dark', 'auto'] | None=None)`
 
 **Properties:**
 
@@ -163,7 +165,7 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 | `request_activation_token(callback: Callable[[str \| None], object], app_id: str \| None=None) -> None` | Asks the system for an activation token (`xdg_activation_v1` on Wayland, a startup-notification id on X11) and calls… |
 | `resize(width: int, height: int) -> None` | Sets the window's size from code; the root's layout box follows. |
 | `restore() -> None` | Restores a minimized or maximized window to its normal size; before `App.run()`, undoes `minimize()`/`maximize()`. |
-| `set(*, title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, reduced_motion) -> None` | Sets window properties by name, all at once; a bad value raises and changes nothing. |
+| `set(*, title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors) -> None` | Sets window properties by name, all at once; a bad value raises and changes nothing. |
 | `set_active_panel(side: str, index: int) -> None` | Shows the `index`th panel docked in `side`'s zone (was `set_active_tab`). |
 | `show_layer(node, anchor, placement, modal, dismissible, offset, flip) -> None` | Shows `node` over the window's content, above every layer already open. |
 | `simulate(event: str, node: Node \| None=None, **fields: Any) -> None` | Delivers a synthetic event as real input would, for tests with no display. |
@@ -202,7 +204,7 @@ A window the compositor places: a bar, panel, dock or OSD (a Wayland layer surfa
 
 **Inherits:** [`Window`](#window) → [`object`](https://docs.python.org/3/library/functions.html#object)  ·  **Details:** [LayerWindow reference](../reference/layer-window.md)
 
-**Constructor:** `LayerWindow(namespace: str, *, layer: Literal['background', 'bottom', 'top', 'overlay']=..., anchor: str | Sequence[str] | None=..., size: tuple[int | Literal['content'], int | Literal['content']] | None=..., min_size: tuple[int | None, int | None] | None=..., max_size: tuple[int | None, int | None] | None=..., exclusive_zone: int | None=..., exclusive_edge: Literal['top', 'bottom', 'left', 'right'] | None=..., margin: int | tuple[int, int, int, int] | None=..., keyboard: Literal['none', 'on_demand', 'exclusive']=..., output: str | Output | None=..., input_region: Literal['auto'] | Sequence[tuple[float, float, float, float]] | None=..., click_through: bool | None=...)`
+**Constructor:** `LayerWindow(namespace: str, *, layer: Literal['background', 'bottom', 'top', 'overlay']=..., anchor: str | Sequence[str] | None=..., size: tuple[int | Literal['content'], int | Literal['content']] | None=..., min_size: tuple[int | None, int | None] | None=..., max_size: tuple[int | None, int | None] | None=..., exclusive_zone: int | None=..., exclusive_edge: Literal['top', 'bottom', 'left', 'right'] | None=..., margin: int | tuple[int, int, int, int] | None=..., keyboard: Literal['none', 'on_demand', 'exclusive']=..., output: str | Output | None=..., input_region: Literal['auto'] | Sequence[tuple[float, float, float, float]] | None=..., click_through: bool | None=..., scheme: Literal['light', 'dark', 'auto'] | None=...)`
 
 **Methods:**
 
@@ -221,7 +223,7 @@ A menu or flyout the compositor places beside a rectangle of its parent (a Wayla
 
 **Inherits:** [`Window`](#window) → [`object`](https://docs.python.org/3/library/functions.html#object)  ·  **Details:** [PopupWindow reference](../reference/layer-window.md#popupwindow)
 
-**Constructor:** `PopupWindow(parent: LayerWindow | PopupWindow, *, size: tuple[int, int], anchor_rect: tuple[int, int, int, int], anchor: Literal['none', 'top', 'bottom', 'left', 'right', 'top_left', 'bottom_left', 'top_right', 'bottom_right']=..., gravity: Literal['none', 'top', 'bottom', 'left', 'right', 'top_left', 'bottom_left', 'top_right', 'bottom_right']=..., constraint_adjustment: str | Sequence[str] | None=..., offset: tuple[int, int] | None=..., grab: bool=..., geometry: tuple[int, int, int, int] | None=..., input_region: Sequence[Sequence[float]] | Literal['geometry'] | None=...)`
+**Constructor:** `PopupWindow(parent: LayerWindow | PopupWindow, *, size: tuple[int, int], anchor_rect: tuple[int, int, int, int], anchor: Literal['none', 'top', 'bottom', 'left', 'right', 'top_left', 'bottom_left', 'top_right', 'bottom_right']=..., gravity: Literal['none', 'top', 'bottom', 'left', 'right', 'top_left', 'bottom_left', 'top_right', 'bottom_right']=..., constraint_adjustment: str | Sequence[str] | None=..., offset: tuple[int, int] | None=..., grab: bool=..., geometry: tuple[int, int, int, int] | None=..., input_region: Sequence[Sequence[float]] | Literal['geometry'] | None=..., scheme: Literal['light', 'dark', 'auto'] | None=...)`
 
 **Methods:**
 
@@ -643,6 +645,7 @@ Raised where a feature needs a platform this process is not on (a `LayerWindow` 
 | `register_font(data: bytes) -> list[str]` | Registers a font the caller already loaded. |
 | `set_system_fonts(enabled: bool) -> None` | Lets text use the fonts installed on this machine: for the glyphs the bundled and registered fonts lack (CJK, Hebrew, Indic… |
 | `system_fonts() -> bool` | Whether system fonts are on (`set_system_fonts`). |
+| `scheme_colors(scheme: Literal['light', 'dark']) -> dict[str, tuple[int, int, int, int]]` | The baseline colour roles of `scheme`, `{role: (r, g, b, a)}`: the 49 roles of the Material 3 baseline (seed `#6750A4`, standard… |
 | `write_png(path, rgba, width, height) -> None` | Saves `Window.snapshot()` pixels as a PNG file (0.5.4). |
 | `png_bytes(rgba, width, height) -> bytes` | The PNG file's bytes for straight-alpha RGBA8 pixels, for a framework that stores or sends them (0.5.4). |
 | `MONOSPACE_FONT_FAMILY` | The bundled monospace family a terminal always shapes with. |

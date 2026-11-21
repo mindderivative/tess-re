@@ -63,7 +63,7 @@ pub use present::{
 pub use profile::{FrameProfile, KindCost, NodeCost, SLOWEST as PROFILE_SLOWEST};
 pub use shader_pass::{ShaderPasses, ShaderTextures};
 pub use snapshot::{Snapshot, snapshot, snapshot_with};
-pub use text::{FontSpec, MONOSPACE_FONT_FAMILY, TextPlacement, TextRenderer};
+pub use text::{FieldColors, FontSpec, MONOSPACE_FONT_FAMILY, TextPlacement, TextRenderer};
 pub use window_renderer::WindowRenderer;
 
 /// MD3 seed-adjacent purple (#6750A4) -- an arbitrary but deliberate
@@ -1221,7 +1221,18 @@ fn draw_own(
             stroke_box(node, id, w, h, geometry, scene, own_alpha);
         }
         NodeKind::Text(state) => {
-            let color = with_opacity(node.paint.background.current, own_alpha);
+            // 0.6.11: a text with no fill of its own paints in the scheme's `on_surface`, and
+            // its selection in `primary` at 30%.
+            let scheme = tree.scheme_colors();
+            let (base, selection_fill) = if node.paint.scheme_fill {
+                (
+                    scheme.text(),
+                    Some(with_opacity(scheme.selection(), own_alpha)),
+                )
+            } else {
+                (node.paint.background.current, None)
+            };
+            let color = with_opacity(base, own_alpha);
             // 0.5.1 (#44): the node's padding insets its glyphs. taffy sizes
             // the node padding-included, so the text lays out in what's
             // left; before, it drew at the node's corner across its full
@@ -1242,6 +1253,7 @@ fn draw_own(
                 },
                 id,
                 gradient,
+                selection_fill,
             );
             // 0.5.1 (#45): a text node's `stroke_*` and `corner_radius`
             // paint a border around its box; its `fill` is the glyph color.
@@ -1272,7 +1284,14 @@ fn draw_own(
             // from `state.text_tint` -- plain dark by default
             // (byte-for-byte the old hardcoded literal), or whatever
             // the text input's `fill` sets.
-            let text_color = with_opacity(state.text_tint.current, own_alpha);
+            // 0.6.11: with no colour of its own the field paints in its window's scheme.
+            let scheme = tree.scheme_colors();
+            let base = if state.tint_scheme {
+                scheme.text()
+            } else {
+                state.text_tint.current
+            };
+            let text_color = with_opacity(base, own_alpha);
             // M38 Phase 7 (§5, §8): a real, genuinely overflowing
             // `multiline` field now clips its own painted content to
             // its own box and shifts it up by `scroll_offset` -- a
@@ -1303,14 +1322,19 @@ fn draw_own(
                 box_height: Some(content.h as f32),
             };
             let show_caret = tree.focused() == Some(id);
+            let colors = if state.tint_scheme {
+                FieldColors::from_scheme(state, scheme, own_alpha)
+            } else {
+                FieldColors::from_tint(state, text_color)
+            };
             // #285: a single-line input that does not wrap is clipped to its box too.
             if state.clips() {
                 let clip = geometry.rounded_rect_fill(id, w, h, radius);
                 scene.push_layer(Some(clip), None, None, None, None);
-                text.draw_field(scene, resources, state, text_at, show_caret, id);
+                text.draw_field_with(scene, resources, state, text_at, show_caret, id, colors);
                 scene.pop_layer();
             } else {
-                text.draw_field(scene, resources, state, text_at, show_caret, id);
+                text.draw_field_with(scene, resources, state, text_at, show_caret, id, colors);
             }
             stroke_box(node, id, w, h, geometry, scene, own_alpha);
         }
@@ -1324,11 +1348,11 @@ fn draw_own(
         NodeKind::Terminal(state) => {
             fill_box(node, id, w, h, geometry, scene, own_alpha);
 
-            let cursor_color =
-                with_opacity(peniko::Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF), own_alpha);
+            let scheme = tree.scheme_colors();
+            let palette = state.palette.resolve(scheme);
             // 0.5.1 (#53): the cell grid starts inside the node's padding.
             let content = content_box(tree, id, w, h);
-            text.draw_terminal(
+            text.draw_terminal_with(
                 scene,
                 resources,
                 state,
@@ -1336,11 +1360,12 @@ fn draw_own(
                     x: content.x,
                     y: content.y,
                     max_width: content.w as f32,
-                    color: cursor_color,
+                    color: with_opacity(palette.foreground, own_alpha),
                     box_height: None,
                 },
                 tree.focused() == Some(id),
                 id,
+                &palette,
             );
             stroke_box(node, id, w, h, geometry, scene, own_alpha);
         }
@@ -1889,12 +1914,13 @@ fn paint_scrollbars(
         return;
     };
     let (m, bar) = (scroller.metrics(), scroller.bar());
-    // The spec's thumb is the role colour, opaque, shown at its opacity; the
-    // legacy bar's default carries its own alpha.
+    // The spec's thumb is the role colour (`on_surface_variant` of the window's scheme),
+    // opaque, shown at its opacity; the legacy bar's default carries its own alpha.
+    let role = tree.scheme_colors().scrollbar_thumb();
     let default = if scroller.defaults() == ScrollDefaults::Spec {
-        DEFAULT_THUMB_COLOR
+        role
     } else {
-        DEFAULT_SCROLLBAR_FILL
+        role.multiply_alpha(ONE_AXIS_THUMB_ALPHA)
     };
     let track = bar.track_color(&m);
     for thumb in thumbs.iter().flatten() {
@@ -1912,13 +1938,9 @@ fn paint_scrollbars(
     }
 }
 
-/// M95: the thumb color of a legacy (one-axis or list) bar when it sets no
-/// `scrollbar_fill` -- MD3's `outline_variant` at 55%.
-const DEFAULT_SCROLLBAR_FILL: Color = Color::from_rgba8(0xCA, 0xC4, 0xD0, 0x8C);
-
-/// 0.6.11: the thumb colour of a `both` view when it sets no `scrollbar_fill`:
-/// the role `on_surface_variant`, opaque; its opacity is the thumb's.
-const DEFAULT_THUMB_COLOR: Color = Color::from_rgba8(0xCA, 0xC4, 0xD0, 0xFF);
+/// M95: a legacy (one-axis or list) bar's default thumb is the role colour at 55%
+/// (0x8C of 255).
+const ONE_AXIS_THUMB_ALPHA: f32 = 140.0 / 255.0;
 
 /// The geometry-to-pixels fill of the track and the thumb: a rounded rectangle
 /// at `color` (radius `scrollbar_radius`).

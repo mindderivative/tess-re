@@ -15,7 +15,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use engine_core::{
-    NodeId, NodeKind, TerminalCell, TerminalPalette, TerminalState, TextAlign, TextFieldState,
+    NodeId, NodeKind, ResolvedPalette, TerminalCell, TerminalState, TextAlign, TextFieldState,
     TextOptions, TextState, Tree,
 };
 use parley::fontique::{Collection, CollectionOptions};
@@ -901,13 +901,16 @@ impl TextRenderer {
         at: TextPlacement,
         node_id: NodeId,
     ) {
-        self.draw_painted(scene, resources, state, at, node_id, None);
+        self.draw_painted(scene, resources, state, at, node_id, None, None);
     }
 
     /// `draw`, with the glyphs painted by a gradient (0.5.4, #129) instead of
     /// the flat `at.color`, resolved against the shaped text's own extent
     /// (not the node's box, which a text sized by its content can leave
     /// zero wide). A rich-text span with its own colour keeps it.
+    /// 0.6.11: `selection_fill` is the colour of the highlight behind selected text; `None` is
+    /// `at.color` at 30%.
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_painted(
         &mut self,
         scene: &mut Scene,
@@ -916,6 +919,7 @@ impl TextRenderer {
         at: TextPlacement,
         node_id: NodeId,
         gradient: Option<&engine_core::Gradient>,
+        selection_fill: Option<Color>,
     ) {
         let glyph_cache = self.glyph_cache;
         // M28 Phase 1: `shaped_layout` reuses the prior frame's
@@ -973,7 +977,7 @@ impl TextRenderer {
                 Cursor::from_byte_index(layout, clamp(anchor), Affinity::Downstream),
                 Cursor::from_byte_index(layout, clamp(focus), Affinity::Downstream),
             );
-            scene.set_paint(crate::with_opacity(at.color, 0.3));
+            scene.set_paint(selection_fill.unwrap_or_else(|| crate::with_opacity(at.color, 0.3)));
             for (bounds, _line) in selection.geometry(layout) {
                 scene.fill_rect(&Rect::new(
                     bounds.x0 + at.x,
@@ -1381,6 +1385,24 @@ impl TextRenderer {
         show_caret: bool,
         node_id: NodeId,
     ) {
+        let colors = FieldColors::from_tint(state, at.color);
+        self.draw_field_with(scene, resources, state, at, show_caret, node_id, colors);
+    }
+
+    /// 0.6.11: `draw_field` with the placeholder, caret and selection colours given, for a
+    /// field whose colours the window's scheme decides (`FieldColors::from_scheme`).
+    /// `at.color` is the text.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_field_with(
+        &mut self,
+        scene: &mut Scene,
+        resources: &mut Resources,
+        state: &TextFieldState,
+        at: TextPlacement,
+        show_caret: bool,
+        node_id: NodeId,
+        colors: FieldColors,
+    ) {
         // M17 Phase 2 (§8): a real, in-progress IME composition is
         // spliced into the *displayed* text at `cursor` -- purely for
         // painting, `state.content` itself stays uncommitted the whole
@@ -1467,9 +1489,7 @@ impl TextRenderer {
         let showing_placeholder =
             state.content.is_empty() && preedit_range.is_none() && !state.placeholder.is_empty();
         let (display_content, display_spans, text_color) = if showing_placeholder {
-            let color = state
-                .placeholder_fill
-                .unwrap_or_else(|| crate::with_opacity(at.color, 0.6));
+            let color = colors.placeholder;
             (Cow::Borrowed(state.placeholder.as_str()), Vec::new(), color)
         } else {
             (display_content, display_spans, at.color)
@@ -1531,11 +1551,7 @@ impl TextRenderer {
             let focus_cursor =
                 Cursor::from_byte_index(layout, cursor_for_layout, Affinity::Downstream);
             let selection = Selection::new(anchor_cursor, focus_cursor);
-            scene.set_paint(
-                state
-                    .selection_fill
-                    .unwrap_or_else(|| crate::with_opacity(at.color, 0.3)),
-            );
+            scene.set_paint(colors.selection);
             for (bounds, _line_idx) in selection.geometry(layout) {
                 let rect = Rect::new(
                     bounds.x0 + at.x,
@@ -1679,12 +1695,7 @@ impl TextRenderer {
                 bounds.x1 + at.x,
                 bounds.y1 + at.y,
             );
-            scene.set_paint(
-                state
-                    .caret_color
-                    .as_ref()
-                    .map_or(at.color, |caret| caret.current),
-            );
+            scene.set_paint(colors.caret);
             scene.fill_path(&rect.to_path(0.1));
         }
     }
@@ -2037,7 +2048,6 @@ impl TextRenderer {
     /// real fill/shape calls, not one per character -- `bittty`'s own
     /// real "a run of same-styled cells is laid out with the text
     /// engine's ordinary shaping" precedent, applied here too.
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_terminal(
         &mut self,
         scene: &mut Scene,
@@ -2046,6 +2056,23 @@ impl TextRenderer {
         at: TextPlacement,
         show_caret: bool,
         node_id: NodeId,
+    ) {
+        let palette = state.palette.resolve(&engine_core::SchemeColors::default());
+        self.draw_terminal_with(scene, resources, state, at, show_caret, node_id, &palette);
+    }
+
+    /// 0.6.11: `draw_terminal` with the palette resolved by the caller: the terminal's own
+    /// colours and, where it has none, its window's scheme (`TerminalPalette::resolve`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_terminal_with(
+        &mut self,
+        scene: &mut Scene,
+        resources: &mut Resources,
+        state: &TerminalState,
+        at: TextPlacement,
+        show_caret: bool,
+        node_id: NodeId,
+        palette: &ResolvedPalette,
     ) {
         let glyph_cache = self.glyph_cache;
         let (cell_width, cell_height) =
@@ -2074,10 +2101,10 @@ impl TextRenderer {
             // colors`'s own doc comment.
             let mut col = 0u16;
             while col < state.cols {
-                let bg = terminal_cell_effective_colors(state.cell(row, col), &state.palette).1;
+                let bg = terminal_cell_effective_colors(state.cell(row, col), palette).1;
                 let mut end = col + 1;
                 while end < state.cols
-                    && terminal_cell_effective_colors(state.cell(row, end), &state.palette).1 == bg
+                    && terminal_cell_effective_colors(state.cell(row, end), palette).1 == bg
                 {
                     end += 1;
                 }
@@ -2122,7 +2149,7 @@ impl TextRenderer {
                         x0 + f64::from(col_end - col_start) * cell_width,
                         y0 + cell_height,
                     );
-                    scene.set_paint(state.palette.selection);
+                    scene.set_paint(palette.selection);
                     scene.fill_path(&rect.to_path(0.1));
                 }
             }
@@ -2142,7 +2169,7 @@ impl TextRenderer {
             // naturally break into separate runs -- their resolved
             // colors are simply no longer equal).
             let ink = |cell: &TerminalCell| -> Color {
-                let fg = terminal_cell_effective_colors(cell, &state.palette).0;
+                let fg = terminal_cell_effective_colors(cell, palette).0;
                 if cell.dim {
                     crate::with_opacity(fg, 0.6)
                 } else {
@@ -2265,7 +2292,7 @@ impl TextRenderer {
             let x0 = at.x + f64::from(state.cursor_col) * cell_width;
             let y0 = at.y + f64::from(state.cursor_row) * cell_height;
             let rect = Rect::new(x0, y0, x0 + cell_width, y0 + cell_height);
-            scene.set_paint(state.palette.cursor);
+            scene.set_paint(palette.cursor);
             scene.fill_path(&rect.to_path(0.1));
         }
     }
@@ -2367,7 +2394,7 @@ fn field_max_width(state: &TextFieldState, max_width: f32) -> f32 {
 /// doesn't need for a real, legible result).
 fn terminal_cell_effective_colors(
     cell: &TerminalCell,
-    palette: &TerminalPalette,
+    palette: &ResolvedPalette,
 ) -> (Color, Color) {
     let fg = palette.foreground_of(cell.fg);
     let bg = palette.background_of(cell.bg);
@@ -2674,6 +2701,52 @@ fn from_display_offset_folded(
         }
     }
     content_len
+}
+
+/// 0.6.11: the three colours a text input paints besides its text: what `draw_field_with` takes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FieldColors {
+    pub placeholder: Color,
+    pub caret: Color,
+    pub selection: Color,
+}
+
+impl FieldColors {
+    /// A field with a colour of its own: each of the three is the field's own setting, or
+    /// `text` at 60% (placeholder), as it is (caret) and at 30% (selection) -- as it always was.
+    pub fn from_tint(state: &TextFieldState, text: Color) -> Self {
+        Self {
+            placeholder: state
+                .placeholder_fill
+                .unwrap_or_else(|| crate::with_opacity(text, 0.6)),
+            caret: state.caret_color.as_ref().map_or(text, |c| c.current),
+            selection: state
+                .selection_fill
+                .unwrap_or_else(|| crate::with_opacity(text, 0.3)),
+        }
+    }
+
+    /// A field with no colour of its own: each of the three is the field's own setting, or the
+    /// scheme's role -- `on_surface_variant`, `primary`, `primary` at 30% -- at `alpha`
+    /// (the node's own opacity).
+    pub fn from_scheme(
+        state: &TextFieldState,
+        scheme: &engine_core::SchemeColors,
+        alpha: f64,
+    ) -> Self {
+        Self {
+            placeholder: state
+                .placeholder_fill
+                .unwrap_or_else(|| crate::with_opacity(scheme.placeholder(), alpha)),
+            caret: state
+                .caret_color
+                .as_ref()
+                .map_or_else(|| crate::with_opacity(scheme.caret(), alpha), |c| c.current),
+            selection: state
+                .selection_fill
+                .unwrap_or_else(|| crate::with_opacity(scheme.selection(), alpha)),
+        }
+    }
 }
 
 /// Where and how wide to draw one text node -- bundled so

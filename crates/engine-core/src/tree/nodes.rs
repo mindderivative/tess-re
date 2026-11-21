@@ -151,6 +151,11 @@ impl Nodes {
         self.note_all();
         self.map.values_mut()
     }
+
+    /// Notes every node as written to, for a change that alters how all of them paint.
+    pub(super) fn touch_all(&mut self) {
+        self.note_all();
+    }
 }
 
 impl Index<NodeId> for Nodes {

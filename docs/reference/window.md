@@ -402,6 +402,14 @@ offset is rounded to a whole device pixel so its edges and glyphs sit on the gri
 This applies only to nodes whose ancestors add no scale of their own: under a node
 with a paint `scale` (a hover zoom, say) offsets stay exact, so a child moves
 smoothly as that scale animates instead of stepping by whole pixels.
+**Colour scheme (0.6.11).** `Window(scheme=...)`, `LayerWindow(scheme=...)` and `PopupWindow(scheme=...)`, and
+`window.set(scheme=...)`, take `"light"`, `"dark"`, `"auto"` (follow the OS flag `get("dark")`; light while unknown or
+before the window opens) or `None` (follow the `App`'s, the default). `get("scheme")` is what the window follows,
+`get("scheme_resolved")` (read-only) is `"light"` or `"dark"`. `set(scheme_colors={role: (r, g, b, a)})` overrides
+single roles of the baseline (replacing earlier overrides; `None` or `{}` clears; an unknown role raises `ValueError`
+listing the valid ones), and `get("scheme_colors")` is the whole resolved table; `tess_re.scheme_colors("light" | "dark")`
+is the baseline. See [Colour scheme](../guide/painting.md#colour-scheme-0611) for what the scheme covers.
+
 **`get(name)`** reads `width`, `height`, `title`, `scale_factor` (`1.0`
 until `App.run()` opens the window), `dark` — the OS's current appearance,
 or `None` where it can't say ([Window properties](events.md#window-properties))

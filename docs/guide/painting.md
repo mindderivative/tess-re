@@ -9,8 +9,9 @@ images, and canvases add their own. Everything here can be set with
 
 A color is an `(r, g, b, a)` tuple of 0–255 ints, straight (not
 premultiplied) alpha: `(255, 0, 0, 128)` is half-transparent red. Colors
-default to transparent, except a text's and a text input's `fill`, which
-default to opaque black. `get` returns exactly the tuple you set.
+default to transparent, except a text's and a text input's `fill`, which are
+the window's [colour scheme](#colour-scheme-0611) until you set them. `get`
+returns exactly the tuple you set.
 
 ## Boxes: fill, stroke, corners
 
@@ -179,12 +180,61 @@ window really redraws partially (`None` before `App.run()` opens it).
 `window.set(show_damage=True)` (0.4.1) tints each frame's redrawn areas, for
 debugging. See [Window](../reference/window.md).
 
+## Colour scheme (0.6.11)
+
+The few colours the engine draws by itself are not constants: they are roles of the Tesserae UX specification's
+colour table (the Material 3 baseline, seed `#6750A4`), and the window's **scheme** says which of the two baselines,
+`"light"` or `"dark"`, they come from.
+
+```python
+window = Window(scheme="dark")          # "light", "dark", or "auto" (the default: follow the OS)
+window.set(scheme="light")              # live: the window repaints
+App(scheme="dark")                      # the default for every window that sets none
+window.get("scheme_resolved")           # "light" or "dark": what "auto" came to
+window.get("dark")                      # still the OS flag, unchanged
+base = tess_re.scheme_colors("dark")    # {"on_surface": (230, 224, 233, 255), ...}: all 49 roles
+window.set(scheme_colors={"on_surface": (255, 255, 255, 255)})   # override single roles
+```
+
+`"auto"` follows the OS appearance flag (`window.get("dark")`, kept up to date by the `color_scheme` event) and is
+light while the platform cannot say, and for a window that is not open yet. A window with no scheme of its own takes
+the `App`'s (`App(scheme=...)`, `app.set(scheme=...)`, default `"auto"`); `window.set(scheme=None)` gives a window back
+to the app. A `PopupWindow` follows the app's scheme like any other window: give it its parent's with `scheme=`.
+
+**What the scheme covers** (each only while the node sets no colour of its own):
+
+| Default | Role | Light | Dark |
+| --- | --- | --- | --- |
+| a `text`'s glyphs (`fill` never set) | `on_surface` | `#1D1B20` | `#E6E0E9` |
+| a `text_input`'s text (`fill` never set) | `on_surface` | `#1D1B20` | `#E6E0E9` |
+| its placeholder (no `placeholder_fill`) | `on_surface_variant` | `#49454F` | `#CAC4D0` |
+| its caret (no `caret_color`) | `primary` | `#6750A4` | `#D0BCFF` |
+| its selection (no `selection_fill`), and a selected static `text` | `primary` at 30% alpha | `#6750A4` | `#D0BCFF` |
+| a `scroll_view`'s thumb (no `scrollbar_fill`) | `on_surface_variant` | `#49454F` | `#CAC4D0` |
+| a terminal's foreground (no `palette["foreground"]`) | `on_surface` | `#1D1B20` | `#E6E0E9` |
+| its cursor (no `palette["cursor"]`), at 50% alpha so the glyph under it shows | `primary` | `#6750A4` | `#D0BCFF` |
+| its selection (no `palette["selection"]`) | `primary` at 30% alpha | `#6750A4` | `#D0BCFF` |
+
+**What stays explicit:** a colour you set (`fill`, `placeholder_fill`, `caret_color`, `selection_fill`,
+`scrollbar_fill`, `palette`) is never changed by the scheme. A text input that has a `fill` of its own keeps the
+older derived defaults (placeholder the text colour at 60%, caret the text colour, selection the text colour at 30%),
+because they follow its colour. The terminal's 16 ANSI colours and its default background (clear, so the node's own
+fill shows) are the same in both schemes. Everything else the engine paints has no default of its own: boxes, paths,
+strokes, shadows and the window itself are transparent until you set them, so a window has no background colour
+until you give its root a `fill`. Start from `tess_re.scheme_colors(...)` or `window.get("scheme_colors")` (the
+baseline with your overrides): `surface`, `surface_container` and the other roles are there for a toolkit to use.
+
+`set(fill=None)` on a `text` or `text_input` gives a set colour back to the scheme; animating `fill` starts from the
+colour in force. `set(scheme_colors={...})` replaces the window's overrides (`None` or `{}` clears them) and raises
+`ValueError`, listing the valid role names, for an unknown one; the overrides stay across a change of scheme.
+
 ## What Tesserae Engine leaves to you
 
-The colors Tesserae Engine draws for you all have properties: a text input's
+The colors Tesserae Engine draws for you all have properties: a text's and a text input's `fill`, a text input's
 `placeholder_fill`, `caret_color`, and `selection_fill`; a scroll view's or virtual list's
 `scrollbar_fill` (and its hover, drag and track colours), `scrollbar_width`, `scrollbar_radius` and the other
-`scrollbar_*` measures; a terminal's `palette`. Hover and
+`scrollbar_*` measures; a terminal's `palette`; and their defaults come from the window's
+[colour scheme](#colour-scheme-0611). Hover and
 press feedback, focus rings, ripples, and disabled styling are yours to draw
 from [events](events-and-input.md) — [Building a Widget](building-a-widget.md)
 shows how.

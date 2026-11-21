@@ -213,6 +213,8 @@ pub(crate) struct WindowHandles {
     /// 0.5.8 (#198): the layer surface's settings and state, for a `LayerWindow`; `None`
     /// for an ordinary window.
     pub(crate) layer: Option<Rc<crate::layer_window::LayerState>>,
+    /// 0.6.11: the colour scheme this window's engine defaults paint in.
+    pub(crate) scheme: Rc<crate::scheme::SchemeState>,
 }
 
 pub struct WindowState {
@@ -254,6 +256,16 @@ impl WindowHandles {
         true
     }
 
+    /// 0.6.11: rebuilds the tree's scheme colours from the window's scheme state; `true` when
+    /// they changed, in which case the tree repaints. Skipped while the tree is borrowed
+    /// (a change is then made by whatever holds it, which syncs afterwards).
+    pub(crate) fn sync_scheme(&self) -> bool {
+        match self.tree.try_borrow_mut() {
+            Ok(mut tree) => self.scheme.sync(&mut tree),
+            Err(_) => false,
+        }
+    }
+
     /// 0.5.4 (#102): the window's size in logical pixels -- what layout
     /// sees. `width`/`height` hold the physical size once the window is open.
     pub(crate) fn logical_size(&self) -> (f64, f64) {
@@ -266,6 +278,22 @@ impl WindowHandles {
 }
 
 impl PyWindow {
+    /// 0.6.11: applies a constructor's `scheme=` argument (`None` leaves the window following
+    /// its app).
+    pub(crate) fn take_scheme(
+        &self,
+        scheme: Option<&Bound<'_, PyAny>>,
+        what: &str,
+    ) -> PyResult<()> {
+        if let Some(value) = scheme.filter(|v| !v.is_none()) {
+            self.handles
+                .scheme
+                .set_own(Some(crate::scheme::Setting::parse(value, what)?));
+            self.handles.sync_scheme();
+        }
+        Ok(())
+    }
+
     /// A window, headless until `App.run()` opens it. `padding` and `gap` are the root
     /// container's (an ordinary `Window` has 16; a `LayerWindow`'s root has none, as a
     /// bar's would not want them).
@@ -383,6 +411,7 @@ impl PyWindow {
                 pause_when_occluded: Rc::new(Cell::new(true)),
                 waker: Rc::new(RefCell::new(None)),
                 layer: None,
+                scheme: Rc::new(crate::scheme::SchemeState::new()),
             },
         })))
     }
@@ -391,9 +420,17 @@ impl PyWindow {
 #[pymethods]
 impl PyWindow {
     #[new]
-    #[pyo3(signature = (width=480, height=200, title="tess_re v2", decorations=true))]
-    fn new(width: u32, height: u32, title: &str, decorations: bool) -> PyResult<Self> {
-        Self::construct(width, height, title, decorations, PADDING, GAP)
+    #[pyo3(signature = (width=480, height=200, title="tess_re v2", decorations=true, scheme=None))]
+    fn new(
+        width: u32,
+        height: u32,
+        title: &str,
+        decorations: bool,
+        scheme: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let window = Self::construct(width, height, title, decorations, PADDING, GAP)?;
+        window.take_scheme(scheme, "Window")?;
+        Ok(window)
     }
 
     /// §11.7's own claim, matching `App::run`'s existing `PyWindow::

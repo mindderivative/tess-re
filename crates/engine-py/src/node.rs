@@ -217,6 +217,8 @@ impl Node {
             );
         }
         let mut tree = self.tree.borrow_mut();
+        let (scheme_text, scheme_caret) =
+            (tree.scheme_colors().text(), tree.scheme_colors().caret());
         let node = tree.get_mut(self.id).expect(
             "Node holds a NodeId missing from its own Tree -- an engine-py bug, not a user error",
         );
@@ -292,6 +294,7 @@ impl Node {
                         "node property `fill` takes a Gradient only on a box, path or text node",
                     ));
                 }
+                adopt_scheme_fill(node, scheme_text);
                 let handle = Some(self.completions.borrow_mut().register(
                     on_complete,
                     self.id,
@@ -324,6 +327,7 @@ impl Node {
             }
             "fill" => {
                 let value = crate::node_props::parse_color(&to, property)?;
+                adopt_scheme_fill(node, scheme_text);
                 let handle = Some(self.completions.borrow_mut().register(
                     on_complete,
                     self.id,
@@ -383,7 +387,11 @@ impl Node {
                     self.id,
                     property,
                 ));
-                let tint = state.text_tint.current;
+                let tint = if state.tint_scheme {
+                    scheme_caret
+                } else {
+                    state.text_tint.current
+                };
                 let caret = state
                     .caret_color
                     .get_or_insert_with(|| engine_core::Animated::new(tint));
@@ -817,6 +825,22 @@ pub(crate) fn parse_easing(
         return Err(invalid());
     }
     Ok(MotionCurve::Bezier(x1, y1, x2, y2))
+}
+
+/// 0.6.11: a text or text input whose colour is its window scheme's takes that colour as its
+/// own, so an animation of `fill` starts from what is on screen.
+fn adopt_scheme_fill(node: &mut engine_core::Node, text: peniko::Color) {
+    match &mut node.kind {
+        NodeKind::TextField(state) if state.tint_scheme => {
+            state.text_tint.set_now(text);
+            state.tint_scheme = false;
+        }
+        NodeKind::Text(_) if node.paint.scheme_fill => {
+            node.paint.background.set_now(text);
+            node.paint.scheme_fill = false;
+        }
+        _ => {}
+    }
 }
 
 fn animate_field<T: engine_core::Interpolate + Clone>(

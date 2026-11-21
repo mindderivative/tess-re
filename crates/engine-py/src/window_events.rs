@@ -298,8 +298,10 @@ impl PyWindow {
             }
             "text" => {
                 require(&["text"])?;
-                // A text's fill is its glyph color: opaque black, like CSS.
+                // A text's fill is its glyph color. Until it is set, that is the window
+                // scheme's `on_surface`, resolved at paint time (`scheme_fill`).
                 paint = PaintProperties::new(Color::from_rgba8(0, 0, 0, 255), 0.0, 1.0);
+                paint.scheme_fill = true;
                 NodeKind::Text(TextState {
                     content: String::new(),
                     font_family: "Roboto".to_string(),
@@ -311,8 +313,9 @@ impl PyWindow {
                 })
             }
             "text_input" => {
+                // A text input's colours are the window scheme's until `fill` sets them.
                 let mut state = TextFieldState::new("", "Roboto", 400.0, 16.0);
-                state.text_tint.set_now(Color::from_rgba8(0, 0, 0, 255));
+                state.tint_scheme = true;
                 NodeKind::TextField(Box::new(state))
             }
             "image" => {
@@ -495,7 +498,7 @@ impl PyWindow {
 const SETTABLE: &str = "title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, \
     min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, \
     dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, \
-    touch_slop, touch_target_slop, pause_when_occluded, reduced_motion";
+touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors";
 
 /// 0.5.8 (#132): a distance in layout pixels, zero or more.
 fn extract_distance(name: &str, value: &Bound<'_, PyAny>) -> PyResult<f64> {
@@ -975,6 +978,8 @@ impl PyWindow {
         let mut pause_when_occluded = None;
         let (mut touch_slop, mut touch_target_slop) = (None, None);
         let mut reduced_motion: Option<Option<bool>> = None;
+        let mut scheme = None;
+        let mut scheme_colors = None;
         if let Some(props) = props {
             for (name, value) in props.iter() {
                 let name: String = name.extract()?;
@@ -1076,6 +1081,17 @@ impl PyWindow {
                     "touch_target_slop" => {
                         touch_target_slop = Some(extract_distance(&name, &value)?);
                     }
+                    // 0.6.11: `None` follows the app's scheme again.
+                    "scheme" => {
+                        scheme = Some(if value.is_none() {
+                            None
+                        } else {
+                            Some(crate::scheme::Setting::parse(&value, "window")?)
+                        });
+                    }
+                    "scheme_colors" => {
+                        scheme_colors = Some(crate::scheme::parse_overrides(&value)?);
+                    }
                     "icon" => {
                         icon = Some(if value.is_none() {
                             None
@@ -1085,7 +1101,7 @@ impl PyWindow {
                     }
                     "width" | "height" | "scale_factor" | "maximized" | "minimized" | "active"
                     | "occluded" | "platform" | "titlebar_inset" | "native_controls"
-                    | "transparent_active" => {
+                    | "transparent_active" | "scheme_resolved" => {
                         return Err(PyValueError::new_err(format!(
                             "window property `{name}` is read-only -- settable: {SETTABLE}"
                         )));
@@ -1103,6 +1119,26 @@ impl PyWindow {
                 window.set_title(&title);
             }
             *self.title.borrow_mut() = title;
+        }
+        if scheme.is_some() || scheme_colors.is_some() {
+            if let Some(setting) = scheme {
+                self.handles.scheme.set_own(setting);
+                // An open window that has not heard of the OS appearance yet reads it now.
+                if self.handles.scheme.follows_os() && !self.handles.scheme.os_dark_known() {
+                    let window = self.handles.os_window.borrow().clone();
+                    if window.is_some() {
+                        self.handles
+                            .scheme
+                            .set_os_dark(engine_platform::appearance::current_dark(
+                                window.as_deref(),
+                            ));
+                    }
+                }
+            }
+            if let Some(overrides) = scheme_colors {
+                self.handles.scheme.set_overrides(overrides);
+            }
+            self.handles.sync_scheme();
         }
         if let Some(on) = partial_redraw {
             // 0.5.8 (#221): a change takes or gives back the kept frame on the next
@@ -1600,6 +1636,23 @@ impl PyWindow {
             .into_pyobject(py)?
             .into_any()
             .unbind(),
+            "scheme" => self
+                .handles
+                .scheme
+                .setting()
+                .name()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind(),
+            "scheme_resolved" => self
+                .handles
+                .scheme
+                .resolved()
+                .name()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind(),
+            "scheme_colors" => crate::scheme::colors_to_py(&self.handles.scheme.colors(), py)?,
             "dark" => {
                 let window = self.handles.os_window.borrow().clone();
                 engine_platform::appearance::current_dark(window.as_deref())
@@ -1633,7 +1686,7 @@ impl PyWindow {
                      min_height, platform, resize_border, system_menu, titlebar_inset, \
                      native_controls, gpu_watchdog, present_mode, dpi_scaling, transparent, \
                      transparent_active, blur_behind, click_through, x, y, always_on_top, resizable, \
-                     skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded"
+                     skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, scheme, scheme_resolved, scheme_colors"
                 )));
             }
         })
@@ -2165,6 +2218,8 @@ impl PyWindow {
                 let dark = f.required("dark", dark)?;
                 f.done()?;
                 // What `App.run()` does for a real OS light/dark switch.
+                self.handles.scheme.set_os_dark(Some(dark));
+                self.handles.sync_scheme();
                 listeners::deliver_window(
                     &self.handles.window_listeners,
                     py,

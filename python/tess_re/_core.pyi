@@ -51,6 +51,7 @@ __all__ = [
     "ShaderError",
     "UnsupportedPlatform",
     "register_font",
+    "scheme_colors",
     "set_system_fonts",
     "supports",
     "system_fonts",
@@ -447,11 +448,17 @@ class Window:
     """
 
     def __new__(
-        cls, width: int = 480, height: int = 200, title: str = "tess_re v2", decorations: bool = True
+        cls,
+        width: int = 480,
+        height: int = 200,
+        title: str = "tess_re v2",
+        decorations: bool = True,
+        scheme: Literal["light", "dark", "auto"] | None = None,
     ) -> Window:
         """Raises `ValueError` for a zero width or height. (0.5.0)
         `decorations=False` opens the window without the OS's title bar and
-        borders, for the framework to draw its own."""
+        borders, for the framework to draw its own. (0.6.11) `scheme` is the
+        window's colour scheme (see `set`); `None` follows the `App`'s."""
         ...
     def build(self, spec: dict[str, Any]) -> tuple[Node, dict[str, Node]]:
         """(0.5.10) Makes a whole detached subtree from one nested description and returns
@@ -599,6 +606,8 @@ class Window:
         touch_target_slop: float = ...,
         pause_when_occluded: bool = ...,
         reduced_motion: bool | None = ...,
+        scheme: Literal["light", "dark", "auto"] | None = ...,
+        scheme_colors: dict[str, tuple[int, int, int, int]] | None = ...,
     ) -> None:
         """M94: sets window properties -- `title`, and (0.4.0 M5)
         `partial_redraw`: `True` (the default) redraws only what changed
@@ -668,8 +677,28 @@ class Window:
         animations take no time or their normal time -- the scrollbar's fades,
         smooth scrolling (`scroll_smooth_ms`) and the scroll snap settle -- whatever
         the OS says; `None` (the default) follows the OS. `get("reduced_motion")`
-        reads the window's own say, else the OS's."""
+        reads the window's own say, else the OS's.
+
+        (0.6.11) `scheme`: the colour scheme the engine's own defaults paint in --
+        `"light"`, `"dark"`, or `"auto"` (follow the OS appearance flag `get("dark")`,
+        light while it is unknown); `None` follows the `App`'s (`App(scheme=...)`), whose
+        default is `"auto"`. It selects the baseline colour of every default the engine
+        draws for a node that sets no colour of its own: a text's glyphs, a text input's
+        text, placeholder, caret and selection, a scroll view's thumb, a terminal's
+        foreground, cursor and selection. Live: a window that switches repaints. A node
+        that sets a colour is never changed. `get("scheme")` is what the window follows,
+        `get("scheme_resolved")` is `"light"` or `"dark"`, `get("dark")` is still the OS
+        flag. `scheme_colors`: `{role: (r, g, b, a)}` overrides of individual roles of
+        the baseline (`tess_re.scheme_colors("light")` lists them), replacing the window's
+        earlier overrides; `None` or `{}` clears them. An unknown role raises `ValueError`
+        listing the valid ones; `get("scheme_colors")` is the whole resolved table."""
         ...
+    @overload
+    def get(self, name: Literal["scheme"]) -> Literal["light", "dark", "auto"]: ...
+    @overload
+    def get(self, name: Literal["scheme_resolved"]) -> Literal["light", "dark"]: ...
+    @overload
+    def get(self, name: Literal["scheme_colors"]) -> dict[str, tuple[int, int, int, int]]: ...
     @overload
     def get(
         self,
@@ -995,6 +1024,7 @@ class LayerWindow(Window):
         output: str | Output | None = ...,
         input_region: Literal["auto"] | Sequence[tuple[float, float, float, float]] | None = ...,
         click_through: bool | None = ...,
+        scheme: Literal["light", "dark", "auto"] | None = ...,
     ) -> LayerWindow: ...
     def set(self, **props: Any) -> None:
         """Sets properties; the layer ones (`layer`, `anchor`, `size`, `exclusive_zone`,
@@ -1093,6 +1123,7 @@ class PopupWindow(Window):
         grab: bool = ...,
         geometry: tuple[int, int, int, int] | None = ...,
         input_region: Sequence[Sequence[float]] | Literal["geometry"] | None = ...,
+        scheme: Literal["light", "dark", "auto"] | None = ...,
     ) -> PopupWindow: ...
     def set(self, **props: Any) -> None:
         """Sets `input_region` and the window keys a popup shares (`touch_slop`, `partial_redraw`,
@@ -1171,7 +1202,18 @@ class App:
     one blocking call.
     """
 
-    def __init__(self) -> None: ...
+    def __new__(cls, scheme: Literal["light", "dark", "auto"] | None = None) -> App:
+        """(0.6.11) `scheme` is the colour scheme every window follows that sets none of
+        its own (`Window(scheme=...)`, `window.set(scheme=...)`): `"light"`, `"dark"`, or
+        `"auto"` (the default: the OS appearance, light while it is unknown)."""
+        ...
+    def set(self, *, scheme: Literal["light", "dark", "auto"] = ...) -> None:
+        """(0.6.11) Sets `scheme`, live: every window that sets none of its own repaints in
+        it. Raises `ValueError` for a bad value or an unknown key, changing nothing."""
+        ...
+    def get(self, name: Literal["scheme"]) -> Literal["light", "dark", "auto"]:
+        """(0.6.11) Reads `scheme`."""
+        ...
     def add_window(self, window: Window) -> None:
         """Registers `window` to open on `run()`. Since 0.5.6 it also works
         while the app runs (from a listener, a `frame` handler or
@@ -1539,4 +1581,14 @@ def set_system_fonts(enabled: bool) -> None:
 
 def system_fonts() -> bool:
     """(0.5.4) Whether system fonts are on (`set_system_fonts`)."""
+    ...
+
+def scheme_colors(scheme: Literal["light", "dark"]) -> dict[str, tuple[int, int, int, int]]:
+    """(0.6.11) The baseline colour roles of `scheme`, `{role: (r, g, b, a)}`: the 49 roles of
+    the Material 3 baseline (seed `#6750A4`, standard contrast) in snake case -- `primary`,
+    `on_surface`, `surface_container`, ... A toolkit can start from them; a window's
+    `set(scheme_colors={...})` overrides single roles. The engine's own defaults use
+    `on_surface` (text), `on_surface_variant` (scroll thumb, placeholder), `primary`
+    (caret, terminal cursor) and `primary` at 30% alpha (selection). Raises `ValueError`
+    for another name."""
     ...

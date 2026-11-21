@@ -395,14 +395,14 @@ Tesserae Engine paints no color you can't set:
 | Kind | Property | Value |
 | --- | --- | --- |
 | text input | `placeholder` | the hint shown while the text is empty |
-| text input | `placeholder_fill` | its color; `None` is the text color at 60% |
-| text input | `caret_color` | `None` is the text color; animates (0.5.6) |
+| text input | `placeholder_fill` | its color; `None` is the scheme's `on_surface_variant` while the field has no `fill` of its own, else the text color at 60% (0.6.11) |
+| text input | `caret_color` | `None` is the scheme's `primary` while the field has no `fill` of its own, else the text color; animates (0.5.6) |
 | text input | `caret_visible`, `caret_width`, `caret_shape`, `caret_blink` | (0.5.6) draw the caret or not, its width, `"bar"`/`"block"`/`"underline"`, and its blink period in milliseconds; see [Text](../guide/text.md) |
-| text input | `selection_fill` | `None` is the text color at 30% |
+| text input | `selection_fill` | `None` is the scheme's `primary` at 30% alpha while the field has no `fill` of its own, else the text color at 30% (0.6.11) |
 | text input | `obscured` | a password field: every character shows as a bullet, and its text never leaves through copy or cut |
 | scroll view, virtual list | `scrollbar_fill`, `scrollbar_fill_hover`, `scrollbar_fill_drag`, `scrollbar_track_fill` | the thumb's colour at rest, hovered and dragged, and the track's (0.6.11: the list and the per-state and track colours); `None` is the default (no track) |
 | scroll view, virtual list | `scrollbar_width`, `scrollbar_radius`, `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`, `scrollbar_gutter`, `scrollbar_corner`, `scrollbar_opacity`, `scrollbar_opacity_hover`, `scrollbar_opacity_drag`, `scrollbar_track_opacity` | (0.6.11) the thumb's thickness and radius and the rest of the scrollbar's measures and opacities; `None` is the default. The side, when it shows, the fades, arrows and the scroll feel are properties too. See [Scrollbar and scroll feel](properties.md#scrollbar-and-scroll-feel-0611) |
-| terminal | `palette` | a dict with any of `ansi` (16 colors), `foreground`, `background`, `cursor`, `selection` — keys you leave out keep their colors |
+| terminal | `palette` | a dict with any of `ansi` (16 colors), `foreground`, `background`, `cursor`, `selection` — keys you leave out keep their colors. (0.6.11) `foreground`, `cursor` and `selection` also take `None`, the scheme's `on_surface`, `primary` at 50% alpha and `primary` at 30%, which is what they read back until set |
 
 A terminal resolves each cell's color against its palette when it paints, so a
 new palette recolors what's already on screen. Tesserae Engine draws no focus ring on a

@@ -218,6 +218,11 @@ pub struct Tree {
     /// again. Content detached any other way (a plain `detach`, inactive
     /// dock panels) is never collected.
     collectible: HashSet<NodeId>,
+    /// 0.6.11: the colours of the window's scheme, which a node with no colour of
+    /// its own paints in. A new tree has the light baseline.
+    scheme: crate::SchemeColors,
+    /// 0.6.11: how many times `scheme` changed, for the damage tracker.
+    scheme_revision: u64,
 }
 
 impl Default for Tree {
@@ -252,6 +257,29 @@ impl Tree {
 
     pub fn margin_drag_allowed(&self) -> bool {
         self.margin_drag_allowed
+    }
+
+    /// 0.6.11: the scheme colours a node with no colour of its own paints in.
+    pub fn scheme_colors(&self) -> &crate::SchemeColors {
+        &self.scheme
+    }
+
+    /// 0.6.11: how many times the scheme colours changed. Counts only real changes.
+    pub fn scheme_revision(&self) -> u64 {
+        self.scheme_revision
+    }
+
+    /// 0.6.11: sets the scheme colours; `true` when they changed, in which case every node
+    /// is repainted at the next frame.
+    pub fn set_scheme_colors(&mut self, colors: crate::SchemeColors) -> bool {
+        if self.scheme == colors {
+            return false;
+        }
+        self.scheme = colors;
+        self.scheme_revision += 1;
+        self.nodes.touch_all();
+        self.dirty = true;
+        true
     }
 
     pub fn window_drag_allowed(&self) -> bool {
@@ -306,6 +334,8 @@ impl Tree {
             svg_ids: Default::default(),
             pointer_capture: None,
             collectible: HashSet::new(),
+            scheme: crate::SchemeColors::default(),
+            scheme_revision: 0,
         }
     }
 
