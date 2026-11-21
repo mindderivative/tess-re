@@ -28,6 +28,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `value_text` | `Option<String>` |  |
 | `described_by` | `Vec<NodeId>` |  |
 | `controls` | `Vec<NodeId>` |  |
+| `active_descendant` | `Option<NodeId>` | TRE-REQ-023: the node a screen reader treats as this one's current item while keyboard focus stays here (a text field and the row selected in the… |
 
 ### AccessLine { #accessline }
 
@@ -62,7 +63,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `value_min` | `Option<f64>` | The smallest value a range control accepts. |
 | `value_max` | `Option<f64>` | The largest value a range control accepts. |
 | `value_step` | `Option<f64>` | The amount a range control changes per step. |
-| `checked` | `Option<bool>` | Whether a checkable node is checked. |
+| `checked` | `Option<Toggled>` | Whether a checkable node is checked. |
 | `selected` | `Option<bool>` | Whether a selectable node is selected. |
 | `expanded` | `Option<bool>` | Whether an expandable node is open. |
 | `pressed` | `Option<Toggled>` | A toggle button's state; wins over `checked` when set. |
@@ -70,6 +71,10 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `busy` | `bool` | The node is updating. |
 | `current` | `Option<AriaCurrent>` | The current item of a set (a page, a step...). |
 | `extra` | `Option<Box<AccessExtra>>` | The rarely set, larger accessibility data, boxed so a node that has none pays one pointer. |
+| `set_size` | `Option<usize>` | How many items the set this node holds. |
+| `pos_in_set` | `Option<usize>` | This node's 1-based place in its set (AccessKit's is zero-based, the tree builder subtracts one). |
+| `orientation` | `Option<Orientation>` | The axis of a slider, scrollbar, separator, toolbar... |
+| `modal` | `bool` | A dialog that blocks the content behind it. |
 | `level` | `Option<usize>` | A heading's level, 1 for the most important. |
 | `live` | `Option<Live>` | How politely changes to this node are announced. |
 | `hidden` | `bool` | Hidden from assistive technology (a decorative node). |
@@ -151,6 +156,17 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn stop(&mut self)` | Stops any animation and leaves the value where it had reached. |
 | `fn target(&self) -> &T` | Returns where the value is heading, or the current value when at rest. |
 | `fn tick(&mut self, now: Instant, completed: &mut Vec<CompletionHandle>) -> bool` | Advances the animation to a time; true while it is still running. |
+
+### Arrow { #arrow }
+
+*struct.* An arrow button at one end of a lane.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `rect` | `Rect` | The painted square. |
+| `hit` | `Rect` | Where a press takes it: as long as the square, as wide as the hit strip. |
 
 ### CalcLen { #calclen }
 
@@ -318,7 +334,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 ### Gradient { #gradient }
 
-*struct.* A gradient fill: a shape and at least two stops in increasing order.
+*struct.* A gradient fill: a shape and at least two stops in increasing order, the ramp run `repeat` times across the shape's span.
 
 **Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Interpolate`](#interpolate)
 
@@ -326,10 +342,13 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- |
 | `fn animates_to(&self, other: &Self) -> bool` | Whether `self` can animate smoothly to `other`: the same kind of shape and the same number of stops. |
 | `fn new(shape: GradientShape, stops: Vec<GradientStop>) -> Result<Self, String>` | A gradient of `shape` through `stops`. |
+| `fn repeat(&self) -> f64` | How many times the ramp runs across the span; `1.0` is one pass. |
 | `fn resolve(&self, w: f64, h: f64) -> (Gradient, Affine)` | The gradient as `peniko` draws it for a box of `w` x `h`, in the box's own coordinates, and the transform to paint it under (the identity, except… |
 | `fn shape(&self) -> &GradientShape` |  |
 | `fn solid(&self, color: Color) -> Self` | This gradient's shape and stop positions, every stop `color`: what a solid fill fades from or to. |
+| `fn spread(&self) -> Spread` |  |
 | `fn stops(&self) -> &[GradientStop]` |  |
+| `fn with_repeat(self, repeat: f64, spread: Spread) -> Result<Self, String>` | This gradient with its ramp run `repeat` times across the span (a linear gradient's line, a radial one's radius, a sweep's full turn), `spread`… |
 
 ### GradientStop { #gradientstop }
 
@@ -357,6 +376,23 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- |
 | `fn blank() -> Self` | Creates a 1x1 transparent placeholder image. |
 | `fn new(image: ImageData) -> Self` | Creates image state from pixel data with the default fit. |
+
+### KeyChord { #keychord }
+
+*struct.* A keyboard chord — the modifiers held plus one key — such as a terminal's `escape_chord`.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `modifiers` | `Modifiers` |  |
+| `key` | `String` | The key's lowercase name, as `InputEvent::Key` names it (`"escape"`, `"f10"`, `"k"`). |
+
+| Method | Description |
+| --- | --- |
+| `fn matches(&self, key: &str, held: Modifiers) -> bool` | Whether `key` (an `InputEvent::Key` name) pressed with exactly `held` is this chord. |
+| `fn name(&self) -> String` | The chord as `parse` reads it, modifiers in the order ctrl, shift, alt, meta. |
+| `fn parse(text: &str) -> Result<KeyChord, String>` | Parses `ctrl+shift+escape`. |
 
 ### LayoutAnim { #layoutanim }
 
@@ -395,7 +431,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `layout_style` | `Style` | The layout style that sizes and positions the node. |
 | `paint` | `PaintProperties` | The node's paint properties, such as background, opacity and shadows. |
 | `access` | `AccessNodeData` | The node's accessibility data; default until the app opts in. |
-| `hit_testable` | `bool` | Whether this node itself claims a hit in `Tree::hit_test_at`. |
+| `hit_testable` | `Option<bool>` | Whether this node itself claims a hit in `Tree::hit_test_at`. |
 | `sticky` | `Option<f64>` | `Some(inset)` makes the node stick: inside a scrolling ancestor it stays `inset` pixels from the scroller's start edge once scrolled there, until… |
 | `snap_align` | `Option<SnapAlign>` | How this item lines up when its scroll view snaps; `None` takes the view's own `scroll_snap`. |
 | `layout_anims` | `Option<Box<Vec<LayoutAnim>>>` | Running animations of this node's layout properties, written into `layout_style` each tick. |
@@ -430,6 +466,56 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- |
 | `fn to_affine(&self, width: f64, height: f64) -> Affine` | Returns the current transform for a box of the given size. |
 
+### Outline { #outline }
+
+*struct.* An outline ready to draw: the style in force, its colour resolved.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `width` | `f64` |  |
+| `offset` | `f64` |  |
+| `color` | `Color` |  |
+| `gap_color` | `Option<Color>` |  |
+| `radius` | `Option<f64>` |  |
+
+| Method | Description |
+| --- | --- |
+| `fn inner_radii(&self, corners: [f64; 4]) -> [f64; 4]` | The radii `[top_left, top_right, bottom_right, bottom_left]` of the ring's inner edge for a box whose corners have `corners`: the box's own radius… |
+| `fn outer_radii(&self, corners: [f64; 4]) -> [f64; 4]` | The radii of the ring's outer edge: the inner ones grown by `width`, so the two edges stay concentric. |
+
+### OutlineStyle { #outlinestyle }
+
+*struct.* One outline, as its properties say it.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `width` | `f64` | The ring's thickness in the node's own pixels. |
+| `offset` | `f64` | The gap between the border box and the ring's inner edge. |
+| `color` | `Option<Color>` | `None`: the window scheme's `OUTLINE_ROLE`. |
+| `gap_color` | `Option<Color>` | Fills the gap between the box and the ring when set; `None` leaves it transparent. |
+| `radius` | `Option<f64>` | The corner radius of the ring's inner edge; `None` follows the node's own corner radius plus `offset`, so the ring stays concentric with the box. |
+
+### Outlines { #outlines }
+
+*struct.* A node's two outline styles.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `always` | `OutlineStyle` | Always shown (`outline_*`). |
+| `focus` | `OutlineStyle` | Shown instead of `always` while the node has visible keyboard focus (`focus_outline_*`). |
+
+| Method | Description |
+| --- | --- |
+| `fn is_none(&self) -> bool` | Whether neither style draws anything. |
+| `fn reach(&self) -> f64` | How far past the border box the ring can reach, in either state: what a node's painted extent grows by. |
+| `fn resolve(&self, focus_shown: bool, scheme: &SchemeColors) -> Option<Outline>` | The outline to draw now. |
+
 ### OverlayMeta { #overlaymeta }
 
 *struct.* The settings of one open overlay or layer.
@@ -449,6 +535,23 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `pinned` | `bool` | `true` never flips the layer to the other side or shifts it to fit the window, so it stays where it was placed. |
 | `restore_focus` | `Option<NodeId>` | The node to give focus back to when the overlay closes. |
 
+### Overrides { #overrides }
+
+*struct.* What the user set: one slot per property, `None` for the default.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html)
+
+| Method | Description |
+| --- | --- |
+| `fn choice(&self, prop: Prop) -> Option<u8>` |  |
+| `fn colour(&self, prop: Prop) -> Option<Color>` |  |
+| `fn easing(&self, prop: Prop) -> Option<Easing>` |  |
+| `fn flag(&self, prop: Prop) -> Option<bool>` |  |
+| `fn get(&self, prop: Prop) -> Option<Value>` | What is set for `prop`. |
+| `fn number(&self, prop: Prop) -> Option<f64>` |  |
+| `fn set(&mut self, prop: Prop, value: Option<Value>) -> bool` | Sets `prop` to `value`, or back to its default with `None`. |
+| `fn set_number(&mut self, prop: Prop, value: Option<f64>) -> bool` | `set` with a number; `None` unsets. |
+
 ### PaintProperties { #paintproperties }
 
 *struct.* The paint state every node has, whatever its kind.
@@ -456,6 +559,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | Field | Type | Description |
 | --- | --- | --- |
 | `mask` | `Option<Box<Mask>>` | The shape the node and its subtree are clipped to. |
+| `scheme_fill` | `bool` | A text node's glyph colour is the window's scheme (`on_surface`), resolved at paint time, while this is `true`; `background` is then not read. |
 | `background` | `Animated<Color>` | The fill color, animatable. |
 | `corner_radius` | `Animated<f64>` | The corner radius in pixels, animatable. |
 | `opacity` | `Animated<f64>` | The node's opacity from 0.0 to 1.0, animatable. |
@@ -473,6 +577,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `blur` | `Animated<f64>` | A Gaussian blur of the node and its subtree, as a standard deviation in the node's own pixels. |
 | `blend` | `Blend` | How the node and its subtree mix with what is behind. |
 | `backdrop_blur` | `Animated<f64>` | Frosted glass — a Gaussian blur, standard deviation in the node's own pixels, of everything painted behind the node, shown inside its box. |
+| `state_layer` | `Option<Box<StateLayer>>` | The hover, pressed and focus overlays the engine draws and fades over the node's fill and border, under its children (`hover_layer`… |
+| `outline` | `Option<Box<Outlines>>` | The ring drawn outside the box (`outline_*`, `focus_outline_*`). |
 
 | Method | Description |
 | --- | --- |
@@ -536,6 +642,26 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn parse(text: &str) -> Result<Self, String>` | Parses a template: every `{` closes with a `}` and holds an expression. |
 | `fn source(&self) -> &str` | The template as written. |
 
+### ResolvedPalette { #resolvedpalette }
+
+*struct.* A `TerminalPalette` with the scheme's colors filled in: what a terminal paints with.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `ansi` | `[Color; 16]` |  |
+| `foreground` | `Color` |  |
+| `background` | `Color` |  |
+| `cursor` | `Color` |  |
+| `selection` | `Color` |  |
+
+| Method | Description |
+| --- | --- |
+| `fn background_of(&self, color: CellColor) -> Color` |  |
+| `fn foreground_of(&self, color: CellColor) -> Color` |  |
+| `fn indexed(&self, index: u8) -> Color` | One of the 256 indexed colors: the palette's 16, then the 6x6x6 color cube, then the 24-step grey ramp. |
+
 ### RowAnswer { #rowanswer }
 
 *struct.* The answer to a `RowQuery`: a byte offset in `content`, the x the caret was held at (for the next vertical move), and whether it moved to another…
@@ -548,25 +674,156 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `goal_x` | `f32` |  |
 | `moved` | `bool` |  |
 
+### SchemeColors { #schemecolors }
+
+*struct.* The resolved role table of one window: a baseline with overrides applied.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html)
+
+| Method | Description |
+| --- | --- |
+| `fn baseline(scheme: Scheme) -> Self` | The published baseline of `scheme`, no overrides. |
+| `fn caret(&self) -> Color` | A text input's caret with no `caret_color`, and a terminal's cursor. |
+| `fn get(&self, role: Role) -> Color` |  |
+| `fn iter(&self) -> impl Iterator<Item = (Role, Color)> + '_` | Every role with its colour, in the order of `Role::ALL`. |
+| `fn placeholder(&self) -> Color` | A text input's placeholder with no `placeholder_fill`. |
+| `fn scheme(&self) -> Scheme` | Which baseline this table started from. |
+| `fn scrollbar_thumb(&self) -> Color` | A scroll view's thumb with no `scrollbar_fill`. |
+| `fn selection(&self) -> Color` | The highlight behind selected text, with no `selection_fill`. |
+| `fn set(&mut self, role: Role, color: Color)` |  |
+| `fn text(&self) -> Color` | The colour of the text a node with no `fill` paints. |
+
+### ScrollChange { #scrollchange }
+
+*struct.* A scroll view's offset changed (`Tree::take_scroll_changes`): the main-axis offset before (`old`) and after (`new`), and where the content is now…
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `view` | `NodeId` |  |
+| `old` | `f64` |  |
+| `new` | `f64` |  |
+| `x` | `f64` |  |
+| `y` | `f64` |  |
+
 ### ScrollViewState { #scrollviewstate }
 
 *struct.* The state of a scroll view: offset, direction and scrollbar look.
 
+**Implements:** [`Scroller`](#scroller)
+
 | Field | Type | Description |
 | --- | --- | --- |
 | `scroll` | `Animated<f64>` | The scroll offset in pixels, animatable. |
+| `scroll_x` | `Animated<f64>` | The horizontal offset of a `both` view (`scroll_offset_x`). |
 | `snap` | `Option<SnapAlign>` | When set, the view settles on the item nearest the alignment once the user stops scrolling it. |
 | `horizontal` | `bool` | Whether the view scrolls horizontally instead of vertically. |
-| `thumb_drag_anchor` | `Option<(f64, f64)>` | The pointer position and scroll offset at the start of a thumb drag. |
-| `scrollbar_fill` | `Option<Color>` | The scrollbar thumb color; None uses the default. |
-| `scrollbar_width` | `f64` | The scrollbar thumb thickness in pixels. |
+| `both` | `bool` | The view scrolls on both axes, with the spec scrollbar (see `scrollbar.rs`). |
+| `bar` | `Box<ScrollbarState>` | The scrollbar and scroll feel of the view. |
 | `reported` | `f64` | The offset last reported to the app as a scroll event. |
+| `reported_x` | `f64` | The same for `scroll_x`. |
 
 | Method | Description |
 | --- | --- |
+| `fn animated(&mut self, axis: ScrollAxis) -> &mut Animated<f64>` | The animated offset along `axis`. |
+| `fn axes(&self) -> &'static [ScrollAxis]` | The axes this view scrolls along, `vertical` first. |
+| `fn main_axis(&self) -> ScrollAxis` | The axis `scroll_offset` is the offset of. |
+| `fn near_insets(&self, size: (f64, f64), content: (f64, f64)) -> (f64, f64)` | The room the gutter takes at the near edge (left, top) of the view, `(x, y)`: what the other axis' bar reserves there when it sits on that edge… |
 | `fn new(horizontal: bool) -> Self` | Creates scroll state, horizontal or vertical. |
+| `fn offset(&self, axis: ScrollAxis) -> f64` | Where the content is scrolled to along `axis`: 0 for an axis the view does not scroll along. |
+| `fn offsets(&self) -> (f64, f64)` | `(x, y)` — how far the content is scrolled right and down. |
+| `fn offsets_at(&self, main: f64, x: f64) -> (f64, f64)` | `offsets` as they would be with the main offset at `main` and `scroll_x` at `x`. |
+| `fn orientation(&self) -> ScrollOrientation` |  |
+| `fn overflows(&self, size: (f64, f64), content: (f64, f64)) -> [bool; 2]` | Which axes of this view overflow: those whose content is longer than the viewport, as measured. |
+| `fn set_orientation(&mut self, orientation: ScrollOrientation)` |  |
 | `fn thumb_geometry(&self, viewport_extent: f64, content_extent: f64) -> (f64, f64, f64)` | Returns the scrollbar track length, thumb length and thumb position. |
 | `fn thumb_geometry_at(&self, viewport_extent: f64, content_extent: f64, offset: f64) -> (f64, f64, f64)` | `thumb_geometry` as it would be at scroll offset `offset` (0.5.4, #126: where the thumb was, for a frame that moved it). |
+| `fn thumb_opacity(&self, axis: ScrollAxis) -> f64` | The thumb's opacity now, off its emphasis `level`. |
+
+### ScrollbarMetrics { #scrollbarmetrics }
+
+*struct.* The measures a scrollbar and the scroll feel are built from, resolved: what the user set, else the defaults of the scroller (`Defaults`).
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `thickness` | `f64` | Painted size across the axis. |
+| `hit` | `f64` | Pointer-sensitive size across the axis, centred on the thumb. |
+| `margin` | `f64` | Between thumb and view edge, and thumb end and lane end. |
+| `min_length` | `f64` | The shortest thumb. |
+| `gutter` | `f64` | Reserved at the edge of an axis that overflows (see `reserved_gutter`). |
+| `corner` | `f64` | How much a lane stops short when the other axis has a bar too. |
+| `radius` | `f64` | The thumb's (and track's) corner radius. |
+| `along_slop` | `f64` | How far past the thumb's ends still grabs it. |
+| `opacity_rest` | `f64` |  |
+| `opacity_hover` | `f64` |  |
+| `opacity_drag` | `f64` |  |
+| `track_opacity` | `f64` | Multiplies the track fill's alpha. |
+| `edges` | `[Edge; 2]` | The edge each bar sits on, by `ScrollAxis::index`. |
+| `show` | `Show` |  |
+| `hide_delay_ms` | `f64` |  |
+| `fade_in_ms` | `f64` |  |
+| `fade_out_ms` | `f64` |  |
+| `hover_delay_ms` | `f64` |  |
+| `fade_easing` | `Easing` |  |
+| `gutter_reserve` | `bool` | Whether the gutter is reserved (`true`) or the thumb overlays content. |
+| `arrows` | `Arrows` |  |
+| `arrow_step` | `f64` |  |
+| `lane_click` | `LaneClick` |  |
+| `wheel_notch` | `f64` |  |
+| `key_line` | `f64` |  |
+| `page_fraction` | `f64` |  |
+| `smooth_ms` | `f64` |  |
+| `scroll_easing` | `Easing` |  |
+| `page_delay_ms` | `f64` |  |
+| `page_repeat_ms` | `f64` |  |
+| `snap_settle_ms` | `f64` | How long a snapping view waits after its last input before it settles. |
+| `snap_duration_ms` | `f64` | How long the settle takes (nothing under reduced motion). |
+| `snap_easing` | `Easing` |  |
+| `fling_tau_ms` | `f64` | The time constant of a fling's decay, milliseconds. |
+| `fling_stop_speed` | `f64` | A fling ends at this speed, pixels a second. |
+| `fling_min_speed` | `f64` | A flick slower than this does not coast, pixels a second. |
+
+| Method | Description |
+| --- | --- |
+| `fn arrow_len(&self) -> f64` | The length of one arrow button along the lane: none without arrows. |
+| `fn edge(&self, axis: ScrollAxis) -> Edge` | The edge the bar of `axis` sits on. |
+| `fn get(&self, prop: Prop) -> Option<Value>` | What property `prop` reads: the value in force, for every property that is not a colour (colours and the side names are what the user set… |
+| `fn opacity(&self, level: f64) -> f64` | The thumb's opacity at emphasis `level` (0 rest, 1 hover, 2 drag; in between while it fades). |
+| `fn reserved_gutter(&self) -> f64` | What the gutter reserves along the edge of an overflowing axis: nothing when `scrollbar_gutter_reserve` is off (the thumb overlays content) or no… |
+| `fn resolve(o: &Overrides, d: Defaults) -> Self` | What `overrides` and the defaults `d` make of every measure. |
+| `fn shows(&self, viewport: f64, content: f64) -> bool` | Whether `show` lets a bar show for the axis of a view of `viewport` over `content` along it: never for `never`, always for `always`, else when the… |
+| `fn smooth(&self, reduced: bool) -> Duration` | How long a smooth scroll takes: nothing under reduced motion. |
+| `fn snap_duration(&self, reduced: bool) -> Duration` | How long a snap settle takes: nothing under reduced motion (the spec's AC-SCB-17). |
+| `fn thumbs(&self, axes: &[ScrollAxis], size: (f64, f64), content: (f64, f64), offsets: (f64, f64)) -> [Option<Thumb>; 2]` | The thumbs, `[vertical, horizontal]`, of a view of `size` over `content` scrolled to `offsets` (all `(x, y)`): one for each of `axes` whose bar… |
+
+### ScrollbarState { #scrollbarstate }
+
+*struct.* The state a scroll view and a virtual list share for their scrollbar: what the user set, and how emphasised and how visible each bar is.
+
+**Implements:** [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `settings` | `Overrides` | What the user set (`Prop`); the rest are defaults (`Defaults`). |
+| `level` | `[Animated<f64>; 2]` | How emphasised each thumb is, `[vertical, horizontal]`: 0 at rest, 1 with the pointer over its hit area, 2 while dragged. |
+| `shown` | `Animated<f64>` | How visible the bars are, 0 to 1: 1 unless `scrollbar_show` is `auto_hide` and the bars have faded out. |
+| `hovered` | `[bool; 2]` | Which thumb the pointer is over, and since when. |
+| `drag_anchor` | `Option<(f64, f64)>` | `Some((pointer_coord, scroll_at_start))`, set the instant a thumb drag begins and cleared when it ends: a *relative*-delta anchor, so grabbing the… |
+| `drag_axis` | `ScrollAxis` | Which thumb the drag in progress holds. |
+
+| Method | Description |
+| --- | --- |
+| `fn get(&self, prop: Prop, d: Defaults) -> Option<Value>` | What property `prop` reads: the value in force, except for a colour and a side, which read what was set (`None`: the default). |
+| `fn metrics(&self, d: Defaults) -> ScrollbarMetrics` | The measures in force for a scroller with defaults `d`. |
+| `fn new() -> Self` |  |
+| `fn set_hover(&mut self, axis: ScrollAxis, on: bool, now: Instant)` | The pointer moved on or off the thumb of `axis`. |
+| `fn sync_levels(&mut self, d: Defaults, now: Instant, reduced: bool) -> bool` | Starts fading each thumb to the emphasis it should have (`level`), by `scrollbar_fade_in_ms` going up and `scrollbar_fade_out_ms` coming down… |
+| `fn thumb_color(&self, m: &ScrollbarMetrics, axis: ScrollAxis, default_fill: Color) -> Color` | The thumb's colour for `axis` now: `fill`, `fill_hover` or `fill_drag` by how emphasised it is (`default_fill` when none is set), at that level's… |
+| `fn tick(&mut self, d: Defaults, offsets: (f64, f64), now: Instant, reduced: bool, completed: &mut Vec<CompletionHandle>) -> bool` | Advances the bar to `now`: the emphasis fades, and `auto_hide`'s visibility. |
+| `fn track_color(&self, m: &ScrollbarMetrics) -> Option<Color>` | The track's colour now, `None` when no `scrollbar_track_fill` is set (a track-less bar, the default). |
 
 ### Shader { #shader }
 
@@ -626,6 +883,41 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | Field | Type | Description |
 | --- | --- | --- |
 | `0` | `Vec<Shadow>` | The shadows in paint order. |
+
+### StateHolds { #stateholds }
+
+*struct.* Which of the three states hold for a node right now.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `hovered` | `bool` |  |
+| `pressed` | `bool` |  |
+| `focused` | `bool` | Focus that shows a layer: the node has focus and either the focus is visible (keyboard or assistive technology) or the node asked for the layer on… |
+
+### StateLayer { #statelayer }
+
+*struct.* A node's state layers and the fade between them.
+
+**Implements:** [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `hover` | `Option<Color>` | Drawn while the pointer is over the node or a descendant. |
+| `pressed` | `Option<Color>` | Drawn while a primary press that started on the node or a descendant is held. |
+| `focus` | `Option<Color>` | Drawn while the node has keyboard focus (see `focus_any_modality`). |
+| `focus_any_modality` | `bool` | Also draw `focus` when focus came from a pointer press (a text input). |
+| `ms` | `f64` | How long a change of layer takes. |
+| `easing` | `Easing` | The curve of that change. |
+| `shown` | `Animated<Color>` | What is drawn now: the colour of the layer in force, fading in or out. |
+
+| Method | Description |
+| --- | --- |
+| `fn sync(&mut self, target: Option<Color>, now: Instant, reduced: bool) -> bool` | Starts the fade to `target` (`None`: nothing). |
+| `fn target(&self, holds: StateHolds) -> Option<Color>` | The layer that applies when `holds`, by the precedence pressed, focus, hover: the first whose state holds and that has a colour. |
+| `fn tick(&mut self, now: Instant, completed: &mut Vec<CompletionHandle>) -> bool` | Advances the fade; whether it is still running. |
+| `fn visible(&self) -> Option<Color>` | The colour to draw now, if any. |
 
 ### SvgBitmap { #svgbitmap }
 
@@ -852,16 +1144,14 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | Field | Type | Description |
 | --- | --- | --- |
 | `ansi` | `[Color; 16]` | The 16 standard ANSI colors. |
-| `foreground` | `Color` | The default text color. |
+| `foreground` | `Option<Color>` | The default text color. |
 | `background` | `Color` | The default background color. |
-| `cursor` | `Color` | The cursor color. |
-| `selection` | `Color` | The selection highlight color. |
+| `cursor` | `Option<Color>` | The cursor color. |
+| `selection` | `Option<Color>` | The selection highlight color. |
 
 | Method | Description |
 | --- | --- |
-| `fn background_of(&self, color: CellColor) -> Color` | Resolves a cell color to an actual color, using the default background. |
-| `fn foreground_of(&self, color: CellColor) -> Color` | Resolves a cell color to an actual color, using the default foreground. |
-| `fn indexed(&self, index: u8) -> Color` | Returns one of the 256 indexed colors. |
+| `fn resolve(&self, scheme: &SchemeColors) -> ResolvedPalette` | The palette with `scheme`'s colors where this one has none. |
 
 ### TerminalState { #terminalstate }
 
@@ -882,6 +1172,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `selection_start` | `Option<(u16, u16)>` | The row and column where the mouse selection began. |
 | `selection_end` | `Option<(u16, u16)>` | The row and column where the mouse selection currently ends. |
 | `palette` | `TerminalPalette` | The colors the terminal paints with. |
+| `escape_chord` | `Option<KeyChord>` | The chord that leaves this terminal, forward in tab order, without being sent to the shell (WCAG 2.1.2). |
+| `escape_chord_reverse` | `Option<KeyChord>` | The chord that leaves it backward; `None` (the default) has none. |
 
 | Method | Description |
 | --- | --- |
@@ -903,6 +1195,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `selection_anchor` | `Option<usize>` | The fixed end of the selection as a byte offset; None when nothing is selected. |
 | `preedit` | `Option<String>` | The uncommitted text of an input-method composition, if any. |
 | `text_tint` | `Animated<Color>` | The color of the text, caret and selection, animatable. |
+| `tint_scheme` | `bool` | `true` while the field has no colour of its own: the window's scheme then decides it at paint time, and `text_tint` is not read. |
 | `multiline` | `bool` | Whether the field holds several lines instead of one. |
 | `show_whitespace` | `bool` | Whether spaces and tabs are drawn as visible marks. |
 | `syntax_spans` | `Vec<(Range<usize>, Color)>` | Byte ranges with colors supplied by the app for syntax highlighting. |
@@ -911,8 +1204,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `scroll_offset` | `Animated<f64>` | The vertical scroll of an overflowing multiline field, animatable. |
 | `horizontal_scroll_offset` | `Animated<f64>` | The horizontal scroll of an overflowing line, animatable. |
 | `placeholder` | `String` | The hint shown while `content` is empty; empty shows none. |
-| `placeholder_fill` | `Option<Color>` | The placeholder's color; `None` is `text_tint` at 60% alpha. |
-| `caret_color` | `Option<Animated<Color>>` | The caret's color; `None` is `text_tint`. |
+| `placeholder_fill` | `Option<Color>` | The placeholder's color; `None` is the scheme's `on_surface_variant` while `tint_scheme`, else `text_tint` at 60% alpha. |
+| `caret_color` | `Option<Animated<Color>>` | The caret's color; `None` is the scheme's `primary` while `tint_scheme`, else `text_tint`. |
 | `max_length` | `Option<usize>` | The most characters the field holds; typing, paste and IME commits that would pass it are cut short. |
 | `read_only` | `bool` | The text can be selected and copied but not edited. |
 | `input_mode` | `InputMode` | What kind of text the field takes, for a keyboard that can adapt to it. |
@@ -924,17 +1217,22 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `caret_epoch` | `Option<Instant>` |  |
 | `preedit_cursor` | `Option<(usize, usize)>` | The IME's cursor range inside the preedit text, in bytes. |
 | `last_inserted` | `Option<Range<usize>>` | The bytes the last edit inserted, for `caret_move`. |
-| `selection_fill` | `Option<Color>` | The selection highlight's color; `None` is `text_tint` at 30% alpha. |
+| `selection_fill` | `Option<Color>` | The selection highlight's color; `None` is the scheme's `primary` at 30% while `tint_scheme`, else `text_tint` at 30% alpha. |
 | `obscured` | `bool` | A password field — every character paints as a bullet, and its text never leaves through copy or cut. |
 | `wrap` | `Option<bool>` | `Some(true)` wraps a multiline input's lines at its width (by word); `Some(false)` keeps each line whole and scrolls sideways. |
 | `overflow` | `Option<FieldOverflow>` | How a single-line input shows a line longer than its box. |
 | `follow_stamp` | `u64` | What `follow_caret` last saw, so a field that did not change is not shaped again. |
 | `overwrite` | `bool` | Overwrite mode (the Insert key toggles it): a typed character replaces the one after the caret instead of being added before it. |
+| `tab_navigates` | `bool` | T-018 (TRE-REQ-018): Tab and Shift+Tab move focus out of a multi-line input instead of typing a tab character, as they do from a single-line one. |
 | `goal_x` | `Option<f32>` | The x (in pixels along the text) Up, Down, Page Up and Page Down hold across a run of vertical moves, so passing a short row does not lose the column. |
+| `vertical_align` | `Option<VerticalAlign>` | Where the lines sit in the content box when it is taller than they are. |
+| `letter_spacing` | `f32` | Extra space after each character, in pixels (as on a `text` node). |
+| `line_height` | `Option<f32>` | A line height as a multiple of the font size (as on a `text` node); `None` is the font's own. |
 
 | Method | Description |
 | --- | --- |
 | `fn clips(&self) -> bool` | Whether the painted text is clipped to the box (every input but a legacy single line, which wraps inside it). |
+| `fn effective_vertical_align(&self) -> VerticalAlign` | The vertical alignment in force: what was set, or `Center` for a single-line input (text in a field taller than its line sits in the middle, as in… |
 | `fn fit<'a>(&self, text: &'a str) -> &'a str` | `text` cut to what `room` allows, on a character boundary. |
 | `fn follows_caret(&self, focused: bool) -> bool` | Whether the scroll offsets follow the caret by the shaped layout (`follow_caret`), rather than the editor heuristic in… |
 | `fn moves_by_rows(&self) -> bool` | Whether the caret keys move by the rows the shaped text shows (a multiline input that has a `wrap`, either value) and not by the logical lines of… |
@@ -959,6 +1257,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `spans` | `Vec<TextSpan>` | Styles for ranges of the text, over the node's own. |
 | `selectable` | `bool` | Whether a press and drag on the text selects it, and Copy takes the selection. |
 | `selection` | `Option<(usize, usize)>` | The selected bytes as `(anchor, focus)`, either order. |
+| `vertical_align` | `VerticalAlign` | Where the laid-out lines sit in the node's content box when the box is taller than they are. |
 
 | Method | Description |
 | --- | --- |
@@ -999,6 +1298,32 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `line_height` | `Option<f32>` | The line height as a multiple of the font size; None uses the font's own. |
 | `options` | `TextOptions` | Line layout options beyond the font. |
 
+### Thumb { #thumb }
+
+*struct.* One thumb, with the regions around it, all in the view's own coordinates.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `axis` | `ScrollAxis` |  |
+| `thumb` | `Rect` | The painted thumb. |
+| `hit` | `Rect` | Where a press grabs the thumb. |
+| `lane` | `Rect` | The strip along the axis a press pages in (the thumb is in it), between the arrows when there are any. |
+| `track_rect` | `Rect` | The painted track: the lane, as wide as the thumb. |
+| `arrows` | `Option<[Arrow; 2]>` | The arrow buttons at the lane's ends, `[start, end]`, with `scrollbar_arrows`. |
+| `track` | `f64` | The lane's length. |
+| `length` | `f64` | The thumb's length. |
+| `max_scroll` | `f64` | How far the content can scroll along this axis. |
+
+| Method | Description |
+| --- | --- |
+| `fn arrow_at(&self, point: Point) -> Option<usize>` | The arrow button a press at `point` (view coordinates) is on: 0 for the one at the start of the lane, 1 for the end. |
+| `fn lane_start(&self) -> f64` | The lane's start along its axis. |
+| `fn painted(&self, track: bool) -> impl Iterator<Item = Rect>` | Every region the bar paints: the track (when it has a fill, `track`), the thumb, the arrows. |
+| `fn span(&self) -> (f64, f64)` | The thumb's span along its axis. |
+| `fn travel(&self) -> f64` | How far the thumb travels from one end of the lane to the other. |
+
 ### Touched { #touched }
 
 *struct.* The nodes touched since the last `take_touched`.
@@ -1027,10 +1352,13 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn ancestors(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_` | Iterates a node and then each of its ancestors up to the root, innermost first. |
 | `fn anchor_cycle(&self, id: NodeId, anchor: NodeId) -> bool` | Whether anchoring `id` to `anchor` would be a cycle: it is `id` itself, or inside `id`'s subtree (so its position would depend on where `id` is put). |
 | `fn animate_layout(&mut self, id: NodeId, prop: LayoutProp, to: f64, duration: Duration, curve: MotionCurve, now: Instant, completion: Option<CompletionHandle>) -> Result<(), LayoutAnimError>` | Starts animating a layout property of `id` to `to` pixels. |
+| `fn announce(&mut self, text: &str, assertive: bool)` | TRE-REQ-021: raises one live announcement through the accessibility tree, with no node of the caller's. |
 | `fn apply_active_tab(&mut self, container: NodeId, zone: &DockZone)` | Attaches only the zone's active tab panel to the container and detaches the others. |
 | `fn build_access_update(&self, root: NodeId) -> TreeUpdate` | Builds a fresh accessibility tree update from the current nodes. |
 | `fn build_access_update_scaled(&self, root: NodeId, scale: f64) -> TreeUpdate` | `build_access_update` with every node's bounds multiplied by `scale`: layout is in logical pixels, and assistive technology wants the window's… |
+| `fn build_access_update_titled(&self, root: NodeId, scale: f64, title: &str) -> TreeUpdate` | `build_access_update_scaled`, with the root named after the window's `title` (a `LayerWindow`'s namespace) when the app gave it no label. |
 | `fn can_scroll(&self, id: NodeId, delta: f64) -> bool` | Returns whether a scroll view or list can move by the given amount along its axis. |
+| `fn can_scroll_axis(&self, id: NodeId, axis: ScrollAxis, delta: f64) -> bool` | `can_scroll` for scroller `id` along `axis`. |
 | `fn cancel_press(&mut self) -> Option<NodeId>` | Ends the current press without a click and releases any pointer capture. |
 | `fn caret_following_fields(&self) -> Vec<NodeId>` | The text inputs whose scroll follows the caret by the shaped layout, which `engine-core` cannot do (no font), so the window's text renderer does… |
 | `fn children_in_paint_order(&self, id: NodeId) -> Cow<'_, [NodeId]>` | Returns a node's children bottom first, ordered by z-index then child order. |
@@ -1045,17 +1373,20 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn detach(&mut self, parent: NodeId, child: NodeId)` | Detaches a child from its parent without deleting it. |
 | `fn detach_collectible(&mut self, id: NodeId)` | Detaches a node from its parent and keeps it alive until it is collected. |
 | `fn dispatch(&mut self, root: NodeId, event: InputEvent, now: Instant) -> DispatchOutcome` | Handles one input event for a root and returns what the host must act on. |
+| `fn edit_state_layer(&mut self, id: NodeId, edit: impl FnOnce(&mut StateLayer))` | Edits `id`'s state layers through `edit` (given the existing ones, or fresh defaults, with which a node starts having any) and looks at them again… |
 | `fn extend_static_selection(&mut self, key: Key) -> bool` | `extend_static_selection_by` by one character. |
 | `fn extend_static_selection_by(&mut self, key: Key, by_word: bool) -> bool` | Shift+Left, Shift+Right, Shift+Home or Shift+End in static text (`by_word`: with Ctrl, Left and Right move a word): moves the selection's focus end… |
 | `fn extend_terminal_selection(&mut self, id: NodeId, row: u16, col: u16) -> bool` | Moves the end of a terminal selection to a cell, growing the selection. |
 | `fn extend_text_field_selection(&mut self, field: NodeId, offset: usize) -> bool` | Moves the end of a text field selection to an offset, keeping the anchor. |
 | `fn extend_text_selection(&mut self, id: NodeId, focus: usize) -> bool` | Moves the focus end of the selection to `focus` in text node `id`, keeping its anchor (a drag), even if that is another text node; starts a… |
 | `fn fling_scroll(&mut self, from: NodeId, velocity: Vec2, now: Instant) -> bool` | Lets the scroller under a lifted finger coast. |
+| `fn focus_visible(&self) -> bool` | Whether the current focus is "visible": it came from the keyboard or assistive technology, not a pointer press. |
 | `fn focused(&self) -> Option<NodeId>` | Returns the node that currently has keyboard focus, if any. |
 | `fn get(&self, id: NodeId) -> Option<&Node>` | Returns a node by id, or None if it no longer exists. |
 | `fn get_mut(&mut self, id: NodeId) -> Option<&mut Node>` | Returns a mutable node by id and marks the tree as needing a frame. |
 | `fn has_images(&self) -> bool` | Every real `Image` node currently in this tree. |
 | `fn has_input_grab(&self) -> bool` | Whether an open layer wants presses outside itself: a dismissible or modal one. |
+| `fn has_pending_announcements(&self) -> bool` | Whether an announcement is waiting for an update (so the window wakes to send it). |
 | `fn has_shaders(&self) -> bool` | Returns whether any node has a shader. |
 | `fn has_svgs(&self) -> bool` | Whether the tree holds any `Svg` node. |
 | `fn hide_layer(&mut self, node: NodeId) -> Option<OverlayMeta>` | Closes a layer, keeping it alive, and returns the settings it was opened with. |
@@ -1074,25 +1405,36 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn local_to_window(&self, id: NodeId, point: Point) -> Point` | Converts a point in a node's own space into window space. |
 | `fn margin_drag_allowed(&self) -> bool` |  |
 | `fn mark_dirty(&mut self)` | Marks the tree as needing a frame. |
+| `fn mark_state_layer(&mut self, id: NodeId)` | For `Window.set` after a layer property or `disabled` changed on `id`: its layers are looked at again on the next tick. |
 | `fn max_scroll(&self, view: NodeId) -> Option<f64>` | Returns how far a scroll view can scroll, or None if it is not a scroll view. |
+| `fn max_scroll_axis(&self, view: NodeId, axis: ScrollAxis) -> Option<f64>` | `max_scroll` along `axis`. |
 | `fn move_focus(&mut self, root: NodeId, direction: FocusDirection) -> Option<(Option<NodeId>, Option<NodeId>)>` | Moves keyboard focus to the next or previous node in tab order, wrapping at the ends. |
 | `fn new() -> Self` | Creates an empty tree. |
 | `fn node_count(&self) -> usize` | How many nodes the tree holds. |
 | `fn open_overlay(&mut self, root: NodeId, anchor: NodeId, content: NodeId, meta: OverlayMeta)` | Opens content as an overlay positioned just below its anchor node. |
+| `fn outline_of(&self, id: NodeId) -> Option<Outline>` | The outline `id` draws now, if any: its `focus_outline_*` while it has keyboard focus that is visible, else its `outline_*`. |
 | `fn overlay_meta(&self, id: NodeId) -> Option<&OverlayMeta>` | Returns the settings of an open overlay, if the node is one. |
 | `fn pointer_capture(&self) -> Option<NodeId>` | Returns the node that currently captures pointer events, if any. |
 | `fn position_overlay_over(&mut self, content: NodeId, rect: Rect)` | Positions an overlay's content so it covers a given rectangle. |
+| `fn reduced_motion(&self) -> bool` | Whether motion is reduced: the window's own say (`Window.reduced_motion`) if it has one, else the OS's. |
+| `fn reduced_motion_override(&self) -> Option<bool>` | The window's own say, if it has one. |
 | `fn relayout(&mut self, id: NodeId)` | Marks `id` for layout again: its text, font or fit changed, and a fit side's size depends on all of those. |
 | `fn remove(&mut self, id: NodeId) -> bool` | Removes a node and its whole subtree, detaching it from its parent. |
 | `fn reparse_svgs(&mut self, fonts: &SvgFonts)` | Every SVG node whose document has text is parsed again with `fonts`. |
 | `fn resolve_text_part(&self, id: NodeId) -> Option<TextPart>` | What the synthetic accessibility id `id` stands for, if it is the run or link of one of this tree's text nodes (0.5.4, #151). |
 | `fn root_of(&self, id: NodeId) -> NodeId` | Returns the top of a node's tree, or the node itself if it has no parent. |
+| `fn scheme_colors(&self) -> &SchemeColors` | The scheme colours a node with no colour of its own paints in. |
+| `fn scheme_revision(&self) -> u64` | How many times the scheme colours changed. |
+| `fn scroll_axis_by(&mut self, id: NodeId, axis: ScrollAxis, delta: f64)` | `scroll_scroll_view_by` along one axis. |
 | `fn scroll_by_key(&mut self, view: NodeId, key: Key) -> bool` | Scrolls a view for a key: arrows by a line, Page keys by a page, Home and End to the ends. |
 | `fn scroll_into_view(&mut self, id: NodeId) -> bool` | Scrolls the enclosing scroll views just enough to show a node. |
 | `fn scroll_scroll_view_by(&mut self, id: NodeId, delta: f64)` | Moves a scroll view's position by a pixel amount, clamped to its range. |
 | `fn scroll_shift(&self, id: NodeId) -> (f64, f64)` | How far `id`'s parent scrolls it, as the translation to add to its layout location when painting and hit-testing: the single child of a `ScrollView`… |
+| `fn scroll_thumbs(&self, view: NodeId) -> Option<[Option<Thumb>; 2]>` | The scrollbar thumbs `[vertical, horizontal]` of scroller `view` (a scroll view or a virtual list), in its own coordinates and by its live offsets… |
+| `fn scroll_thumbs_at(&self, view: NodeId, offsets: (f64, f64)) -> Option<[Option<Thumb>; 2]>` | `scroll_thumbs` as they would be with the content scrolled to `offsets` (`(x, y)`): where the thumbs were, for a frame that moved them. |
 | `fn scroll_view_for_key(&self, from: NodeId, key: Key) -> Option<NodeId>` | Returns the scroll view that a key press scrolls, starting from a node. |
 | `fn scroll_virtual_list_by(&mut self, id: NodeId, delta_y: f64)` | Moves a virtual list's scroll offset by a pixel amount, clamped to its range. |
+| `fn scroll_virtual_list_to_index(&mut self, list: NodeId, index: usize, align: ScrollAlign) -> Option<bool>` | Scrolls virtual list `list` so row `index` shows as `align` says, from the offsets the list knows. |
 | `fn select_across(&mut self, anchor: (NodeId, usize), focus: (NodeId, usize)) -> bool` | Selects from `anchor` to `focus`, each a text node and a byte offset (clamped to a character boundary). |
 | `fn select_all_static_text(&mut self) -> bool` | Ctrl+A in static text: selects all of the text node the selection started in. |
 | `fn select_all_text_field(&mut self, field: NodeId) -> bool` | Selects all the text in a text field. |
@@ -1104,12 +1446,16 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn set_field_rows(&mut self, rows: FieldRows)` | Installs what answers a text input's questions about its shaped rows. |
 | `fn set_fit_content(&mut self, id: NodeId, fit: FitContent)` | Sets which sides of text node `id` take the text's own size. |
 | `fn set_focus_to(&mut self, node: NodeId) -> Option<(Option<NodeId>, Option<NodeId>)>` | Moves keyboard focus directly to a node and returns the old and new focus. |
+| `fn set_focus_visible(&mut self, visible: bool)` | See `Tree::focus_visible`. |
 | `fn set_held_modifiers(&mut self, held: Modifiers)` | Tells the tree which modifier keys are held; the window calls it before each event. |
-| `fn set_hit_testable(&mut self, id: NodeId, hit_testable: bool)` | Sets whether a node can claim a hit by itself. |
+| `fn set_hit_testable(&mut self, id: NodeId, hit_testable: Option<bool>)` | Sets whether a node can claim a hit by itself. |
 | `fn set_hovered(&mut self, hit: Option<NodeId>) -> Option<NodeId>` | Sets the hovered node and returns the previous one if it changed. |
 | `fn set_layout_style(&mut self, id: NodeId, style: Style)` | Updates a node's layout style and keeps the layout engine in sync. |
 | `fn set_margin_drag_allowed(&mut self, allowed: bool)` |  |
+| `fn set_os_reduced_motion(&mut self, reduced: bool)` | What the OS asks for (the window reads it at creation and on each change, `InputEvent::ReducedMotionChanged`). |
 | `fn set_pointer_capture(&mut self, node: Option<NodeId>)` | Routes all later pointer events to a node until capture is cleared. |
+| `fn set_reduced_motion_override(&mut self, reduced: Option<bool>)` | The window's own say, `None` to follow the OS. |
+| `fn set_scheme_colors(&mut self, colors: SchemeColors) -> bool` | Sets the scheme colours; `true` when they changed, in which case every node is repainted at the next frame. |
 | `fn set_sticky(&mut self, id: NodeId, inset: Option<f64>)` | Advances every running animation to `now`. |
 | `fn set_terminal_selection_start(&mut self, id: NodeId, row: u16, col: u16) -> bool` | Starts a terminal selection at a cell, collapsing any existing selection. |
 | `fn set_text_access_lines(&mut self, lines: HashMap<NodeId, Vec<AccessLine>>)` | Hands the tree the shaped lines of its text nodes, for their runs' bounds and character positions (the text renderer makes them; see `AccessLine`). |
@@ -1137,7 +1483,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn take_dismissals(&mut self) -> Vec<NodeId>` | Returns the layers an outside press or Escape asked to dismiss since the last call. |
 | `fn take_layout_changes(&mut self) -> Vec<LayoutChange>` | Every watched node whose laid-out size has changed since this was last asked, as `(node, old, new)` with `old` `None` the first time. |
 | `fn take_overwrite_changes(&mut self) -> Vec<(NodeId, bool)>` | The text fields whose caret moved, or whose text changed, since the last call, each with the bytes the edit inserted, if it did. |
-| `fn take_scroll_changes(&mut self) -> Vec<(NodeId, f64, f64)>` | Returns each scroll view whose offset changed since the last call, as (view, old, new). |
+| `fn take_scroll_changes(&mut self) -> Vec<ScrollChange>` | Returns each scroll view whose offset changed since the last call, as (view, old, new). |
 | `fn take_touched(&self) -> Touched` | The nodes handed out mutably since the last call (see `Touched`), and a fresh start. |
 | `fn terminal_selected_text(&self, id: NodeId) -> Option<String>` | Returns the text selected in a terminal, if any. |
 | `fn text_field_selected_text(&self, field: NodeId) -> Option<String>` | Returns the text selected in a text field, if any. |
@@ -1158,6 +1504,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 *struct.* The state of a virtual list, which builds only the visible items.
 
+**Implements:** [`Scroller`](#scroller)
+
 | Field | Type | Description |
 | --- | --- | --- |
 | `item_count` | `usize` | The total number of items in the list. |
@@ -1165,7 +1513,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `materialized` | `BTreeMap<usize, NodeId>` | The item index to node map of the items currently built. |
 | `scroll_offset` | `Animated<f64>` | The vertical scroll position in pixels, animatable. |
 | `resolved_offsets` | `BTreeMap<usize, f64>` | Cached top offsets of items in a variable-height list. |
-| `thumb_drag_anchor` | `Option<(f64, f64)>` | The pointer position and scroll offset at the start of a thumb drag. |
+| `bar` | `Box<ScrollbarState>` | The scrollbar and scroll feel of the list. |
+| `reported` | `f64` | The offset last reported as a `scroll` event (see `ScrollViewState::reported`). |
 
 | Method | Description |
 | --- | --- |
@@ -1185,6 +1534,42 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- | --- |
 | `Text` | `(String)` | A text value. |
 | `Number` | `(f64)` | A numeric value, such as a slider position. |
+
+### Arrows { #arrows }
+
+*enum.* `scrollbar_arrows`: buttons at the ends of the lane.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `None` |  |  |
+| `Both` |  |  |
+
+| Method | Description |
+| --- | --- |
+| `fn from_index(index: u8) -> Self` |  |
+| `fn index(self) -> u8` |  |
+
+### BarSide { #barside }
+
+*enum.* Where the bar of an axis sits, as a user names it.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `End` |  |  |
+| `Start` |  |  |
+| `Left` |  |  |
+| `Right` |  |  |
+| `Top` |  |  |
+| `Bottom` |  |  |
+
+| Method | Description |
+| --- | --- |
+| `fn edge(self, axis: ScrollAxis, direction: Direction) -> Edge` | Which edge this names for the bar of `axis` (a vertical bar sits at the left or right edge, a horizontal one at the top or bottom): **the one place… |
+| `fn from_index(axis: ScrollAxis, index: u8) -> Option<Self>` | The side named by index `index` of `axis`' name list (`VERTICAL_SIDE_NAMES`, `HORIZONTAL_SIDE_NAMES`). |
 
 ### Blend { #blend }
 
@@ -1325,6 +1710,17 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Circle` | `{ cx: f64, cy: f64, radius: f64 }` | Hits when the point is within a radius of a center, in node-local units. |
 | `Path` | `{ path: BezPath, tolerance: f64 }` | Hits when the point is within a tolerance of a path, in node-local units. |
 
+### Direction { #direction }
+
+*enum.* The direction text and inline content run.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `LeftToRight` |  |  |
+| `RightToLeft` |  |  |
+
 ### DispatchOutcome { #dispatchoutcome }
 
 *enum.* What the tree reports back to the host after handling one input event.
@@ -1369,6 +1765,36 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `FillRect` | `{ x: f64, y: f64, width: f64, height: f64, color: Color, gradient: Option<Gradient> }` | Fills a rectangle with a color. |
 | `FillCircle` | `{ cx: f64, cy: f64, radius: f64, color: Color, gradient: Option<Gradient> }` | Fills a circle with a color. |
 | `StrokePath` | `{ path: BezPath, color: Color, width: f64, gradient: Option<Gradient> }` | Strokes a path with a color and line width. |
+
+### Easing { #easing }
+
+*enum.* An easing a property names: a preset or a cubic bezier.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Linear` |  |  |
+| `Bezier` | `(f64, f64, f64, f64)` | A CSS `cubic-bezier(x1, y1, x2, y2)`; `x1` and `x2` lie in `0..=1`. |
+
+| Method | Description |
+| --- | --- |
+| `fn bezier(x1: f64, y1: f64, x2: f64, y2: f64) -> Option<Self>` | A bezier with these control points, if they are a valid curve: finite, with `x1` and `x2` in `0..=1` (the precondition of CSS and of… |
+| `fn curve(self) -> MotionCurve` | The animation curve. |
+| `fn from_name(name: &str) -> Option<Self>` | The preset called `name`. |
+| `fn name(self) -> Option<&'static str>` | The preset name of this easing, if it is one. |
+| `fn names() -> String` | The preset names, comma separated, for an error message. |
+
+### Edge { #edge }
+
+*enum.* The edge of the view a bar sits on: the left or top (`Near`) or the right or bottom (`Far`).
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Near` |  |  |
+| `Far` |  |  |
 
 ### FieldOverflow { #fieldoverflow }
 
@@ -1487,6 +1913,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `ThemeChanged` | `{ dark: bool }` | The system switched between light and dark appearance. |
 | `Focused` | `{ focused: bool }` | The window gained or lost system focus. |
 | `Occluded` | `{ occluded: bool }` | The OS says the window is completely hidden (`true`) or showing again. |
+| `ActivationToken` | `{ token: String }` | T-051: the OS answered `Window.request_activation_token` with this token (`winit::WindowEvent::ActivationTokenDone`). |
 | `Resized` | `{ width: f32, height: f32 }` | The window's client area changed size. |
 | `Key` | `{ name: String, pressed: bool, repeat: bool }` | A named key was pressed or released, with a flag for auto-repeat. |
 | `ModifiersChanged` | `(Modifiers)` | The held modifier keys changed. |
@@ -1541,6 +1968,23 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `PageUp` |  | The Page Up key, which scrolls a view up by its viewport. |
 | `PageDown` |  | The Page Down key, which scrolls a view down by its viewport. |
 | `Insert` |  | The Insert key: in a text input it toggles insert and overwrite mode. |
+
+### LaneClick { #laneclick }
+
+*enum.* `scrollbar_lane_click`: what a press on the lane beside the thumb does.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Page` |  | Scroll one page toward the press, repeating while held. |
+| `Jump` |  | Put the thumb's centre at the press and carry on dragging. |
+| `None` |  | Nothing: the press goes to what is under the lane. |
+
+| Method | Description |
+| --- | --- |
+| `fn from_index(index: u8) -> Self` |  |
+| `fn index(self) -> u8` |  |
 
 ### LayoutAnimError { #layoutanimerror }
 
@@ -1657,6 +2101,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | Method | Description |
 | --- | --- |
 | `fn name(&self) -> &'static str` | The kind's name as `window.create` takes it (0.5.4, #135: one list, for `get("kind")` and for statistics by kind). |
+| `fn scroller(&self) -> Option<&dyn Scroller>` | The scrollbar-carrying view of a scroll view or a virtual list. |
+| `fn scroller_mut(&mut self) -> Option<&mut dyn Scroller>` |  |
 
 ### Placement { #placement }
 
@@ -1696,6 +2142,38 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Back` |  | The mouse's back side button. |
 | `Forward` |  | The mouse's forward side button. |
 
+### PropKind { #propkind }
+
+*enum.* How a property's value is checked, and what its names are.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Number` | `{ min: f64, max: f64 }` | A finite number from `min` to `max`. |
+| `Colour` |  | A colour. |
+| `Flag` |  | `true` or `false`. |
+| `Choice` | `(&'static [&'static str])` | One of these names, by index. |
+| `Easing` |  | A preset name or a cubic bezier (`Easing`). |
+
+| Method | Description |
+| --- | --- |
+| `fn accepts(self, value: &Value) -> bool` | Whether `value` is one this kind takes. |
+
+### PropValue { #propvalue }
+
+*enum.* A property's value: what a `Kind` checks.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Number` | `(f64)` |  |
+| `Colour` | `(Color)` |  |
+| `Flag` | `(bool)` |  |
+| `Choice` | `(u8)` | The index into the property's `Kind::Choice` names. |
+| `Easing` | `(Easing)` |  |
+
 ### RowQuery { #rowquery }
 
 *enum.* A question about the rows a text input's shaped text shows, which `engine-core` (with no font) puts to whatever the window installed…
@@ -1708,6 +2186,132 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `End` |  | The end of that row: after its last character that is not a space or a line break. |
 | `Vertical` | `{ down: bool, page: bool, goal_x: Option<f32> }` | The caret one row up or down (`page`: as many rows as the box shows), at the x `goal_x` (`None`: where the caret is now). |
 
+### Scheme { #scheme }
+
+*enum.* The two baselines.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html), [`Hash`](https://doc.rust-lang.org/std/hash/trait.Hash.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Light` |  |  |
+| `Dark` |  |  |
+
+| Method | Description |
+| --- | --- |
+| `fn from_name(name: &str) -> Option<Self>` |  |
+| `fn name(self) -> &'static str` |  |
+
+### SchemeRole { #schemerole }
+
+*enum.* One named colour of the scheme.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Primary` |  |  |
+| `OnPrimary` |  |  |
+| `PrimaryContainer` |  |  |
+| `OnPrimaryContainer` |  |  |
+| `InversePrimary` |  |  |
+| `PrimaryFixed` |  |  |
+| `PrimaryFixedDim` |  |  |
+| `OnPrimaryFixed` |  |  |
+| `OnPrimaryFixedVariant` |  |  |
+| `Secondary` |  |  |
+| `OnSecondary` |  |  |
+| `SecondaryContainer` |  |  |
+| `OnSecondaryContainer` |  |  |
+| `SecondaryFixed` |  |  |
+| `SecondaryFixedDim` |  |  |
+| `OnSecondaryFixed` |  |  |
+| `OnSecondaryFixedVariant` |  |  |
+| `Tertiary` |  |  |
+| `OnTertiary` |  |  |
+| `TertiaryContainer` |  |  |
+| `OnTertiaryContainer` |  |  |
+| `TertiaryFixed` |  |  |
+| `TertiaryFixedDim` |  |  |
+| `OnTertiaryFixed` |  |  |
+| `OnTertiaryFixedVariant` |  |  |
+| `Error` |  |  |
+| `OnError` |  |  |
+| `ErrorContainer` |  |  |
+| `OnErrorContainer` |  |  |
+| `SurfaceDim` |  |  |
+| `Surface` |  |  |
+| `SurfaceTint` |  |  |
+| `SurfaceBright` |  |  |
+| `SurfaceContainerLowest` |  |  |
+| `SurfaceContainerLow` |  |  |
+| `SurfaceContainer` |  |  |
+| `SurfaceContainerHigh` |  |  |
+| `SurfaceContainerHighest` |  |  |
+| `OnSurface` |  |  |
+| `OnSurfaceVariant` |  |  |
+| `Outline` |  |  |
+| `OutlineVariant` |  |  |
+| `InverseSurface` |  |  |
+| `InverseOnSurface` |  |  |
+| `SurfaceVariant` |  |  |
+| `Background` |  |  |
+| `OnBackground` |  |  |
+| `Shadow` |  |  |
+| `Scrim` |  |  |
+
+| Method | Description |
+| --- | --- |
+| `const fn baseline(self, scheme: Scheme) -> Color` | The baseline colour of this role in `scheme`. |
+| `fn from_name(name: &str) -> Option<Self>` |  |
+| `fn name(self) -> &'static str` | The role's snake-case name, as Python spells it. |
+
+### ScrollAlign { #scrollalign }
+
+*enum.* Where `Tree::scroll_virtual_list_to_index` puts a row in the viewport.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Nearest` |  | The least scroll that shows the whole row; none if it is already shown. |
+| `Start` |  | The row's top at the viewport's top (as far as the list can scroll). |
+| `Center` |  | The row's middle at the viewport's middle. |
+| `End` |  | The row's bottom at the viewport's bottom. |
+
+| Method | Description |
+| --- | --- |
+| `fn from_name(name: &str) -> Option<Self>` | `"nearest"`, `"start"`, `"center"` or `"end"`. |
+
+### ScrollAxis { #scrollaxis }
+
+*enum.* One of a scroll view's two axes.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html), [`Hash`](https://doc.rust-lang.org/std/hash/trait.Hash.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Vertical` |  |  |
+| `Horizontal` |  |  |
+
+| Method | Description |
+| --- | --- |
+| `fn index(self) -> usize` | 0 for vertical, 1 for horizontal: the index into `[vertical, horizontal]` pairs. |
+| `fn other(self) -> ScrollAxis` |  |
+| `fn pick(self, (x, y): (f64, f64)) -> f64` | This axis' share of an `(x, y)` pair. |
+
+### ScrollDefaults { #scrolldefaults }
+
+*enum.* Which defaults a scroller's unset properties take.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Spec` |  | The Tesserae UX spec: a `both` scroll view. |
+| `Legacy` |  | What a `vertical` or `horizontal` scroll view always had: a 4 px thumb with the colour's own alpha, a 6 px slop, no lane click, a page that is the… |
+| `List` |  | What a virtual list always had: the legacy bar, and a page of nine tenths of the viewport. |
+
 ### ScrollDelta { #scrolldelta }
 
 *enum.* How far a wheel or trackpad scrolled, in lines or in pixels.
@@ -1718,6 +2322,74 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- | --- |
 | `Lines` | `(f64, f64)` | A scroll amount counted in lines, as (x, y). |
 | `Pixels` | `(f64, f64)` | A scroll amount counted in pixels, as (x, y). |
+
+### ScrollOrientation { #scrollorientation }
+
+*enum.* The axes a scroll view moves along: `orientation`.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Vertical` |  |  |
+| `Horizontal` |  |  |
+| `Both` |  |  |
+
+### ScrollProp { #scrollprop }
+
+*enum.* A scrollbar or scroll-feel property.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Width` |  |  |
+| `HitWidth` |  |  |
+| `Margin` |  |  |
+| `MinLength` |  |  |
+| `Gutter` |  |  |
+| `Corner` |  |  |
+| `Radius` |  |  |
+| `Opacity` |  |  |
+| `OpacityHover` |  |  |
+| `OpacityDrag` |  |  |
+| `Fill` |  |  |
+| `FillHover` |  |  |
+| `FillDrag` |  |  |
+| `TrackFill` |  |  |
+| `TrackOpacity` |  |  |
+| `SideV` |  |  |
+| `SideH` |  |  |
+| `Show` |  |  |
+| `HideDelay` |  |  |
+| `FadeIn` |  |  |
+| `FadeOut` |  |  |
+| `HoverDelay` |  |  |
+| `FadeEasing` |  |  |
+| `GutterReserve` |  |  |
+| `Arrows` |  |  |
+| `ArrowStep` |  |  |
+| `LaneClick` |  |  |
+| `WheelNotch` |  |  |
+| `KeyLine` |  |  |
+| `PageFraction` |  |  |
+| `ScrollSmooth` |  |  |
+| `ScrollEasing` |  |  |
+| `PageRepeatDelay` |  |  |
+| `PageRepeat` |  |  |
+| `SnapSettle` |  |  |
+| `SnapDuration` |  |  |
+| `SnapEasing` |  |  |
+| `FlingTau` |  |  |
+| `FlingStop` |  |  |
+| `FlingMin` |  |  |
+
+| Method | Description |
+| --- | --- |
+| `fn choices(self) -> Option<&'static [&'static str]>` | The choice names of the property, for a `Kind::Choice` one. |
+| `fn from_name(name: &str) -> Option<Self>` | The property called `name`. |
+| `const fn kind(self) -> Kind` | How its value is checked. |
+| `const fn name(self) -> &'static str` | The node property's name. |
 
 ### ShaderMode { #shadermode }
 
@@ -1734,6 +2406,24 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- |
 | `fn name(self) -> &'static str` | Returns the mode's name as used from Python. |
 
+### Show { #show }
+
+*enum.* When the bar shows: `scrollbar_show`.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Overflow` |  | Whenever the axis overflows (the default). |
+| `Always` |  | Always, even without overflow (then a thumb as long as the lane). |
+| `AutoHide` |  | When it overflows, fading out after `scrollbar_hide_delay_ms` of nothing happening to it, and back in on scroll, hover and drag. |
+| `Never` |  | Never: the view still scrolls. |
+
+| Method | Description |
+| --- | --- |
+| `fn from_index(index: u8) -> Self` |  |
+| `fn index(self) -> u8` |  |
+
 ### SnapAlign { #snapalign }
 
 *enum.* A real, general scrollable viewport over exactly one child, grounded directly in the sibling `pyCopper` project's own real `ScrollViewElement`…
@@ -1745,6 +2435,18 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Start` |  |  |
 | `Center` |  |  |
 | `End` |  |  |
+
+### Spread { #spread }
+
+*enum.* What a gradient does past one pass of its ramp (TRE-REQ-006): hold the last colour, start the ramp again, or run it back.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Pad` |  |  |
+| `Repeat` |  |  |
+| `Reflect` |  |  |
 
 ### SvgNode { #svgnode }
 
@@ -1853,6 +2555,24 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- |
 | `fn kind(&self) -> UniformKind` | Returns the uniform type of this value. |
 
+### VerticalAlign { #verticalalign }
+
+*enum.* Where text sits in the vertical room its node's content box leaves it: at the top, centred, or at the bottom.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html), [`Hash`](https://doc.rust-lang.org/std/hash/trait.Hash.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Start` |  |  |
+| `Center` |  |  |
+| `End` |  |  |
+
+| Method | Description |
+| --- | --- |
+| `fn name(self) -> &'static str` |  |
+| `fn offset(self, box_height: f32, text_height: f32) -> f32` | How far down from the top of a box `box_height` tall text of `text_height` sits. |
+| `fn parse(name: &str) -> Option<Self>` |  |
+
 ### WindowRegion { #windowregion }
 
 *enum.* A node's role in moving the window when the app draws its own title bar.
@@ -1877,6 +2597,23 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn interpolate(&self, other: &Self, t: f64) -> Self` | Returns the blend between this value and another at progress t from 0 to 1. |
 | `fn scalar(&self) -> Option<f64>` | The value as one number, for the types that are one (`f64`): what lets a spring carry its velocity into a retarget. |
 
+### Scroller { #scroller }
+
+*trait.* A node that scrolls and carries a scrollbar: a scroll view or a virtual list, so the bar's geometry, hit-testing, hover, drag and fade are one…
+
+**Implemented by:** [`ScrollViewState`](#scrollviewstate), [`VirtualListState`](#virtualliststate)
+
+| Method | Description |
+| --- | --- |
+| `fn bar(&self) -> &ScrollbarState` |  |
+| `fn bar_mut(&mut self) -> &mut ScrollbarState` |  |
+| `fn defaults(&self) -> Defaults` | Which defaults its unset properties take. |
+| `fn scroll_axes(&self) -> &'static [ScrollAxis]` | The axes it scrolls along, `vertical` first. |
+| `fn scroll_offsets(&self) -> (f64, f64)` | `(x, y)`: how far its content is scrolled right and down. |
+| `fn offset_anim(&mut self, axis: ScrollAxis) -> &mut Animated<f64>` | The animated offset along `axis` (only called for one of `scroll_axes`). |
+| `fn metrics(&self) -> ScrollbarMetrics` | The measures in force. |
+| `fn thumbs(&self, size: (f64, f64), content: (f64, f64), offsets: (f64, f64)) -> [Option<Thumb>; 2]` | The thumbs, `[vertical, horizontal]`, for a view of `size` over `content` scrolled to `offsets`. |
+
 ### Functions (engine-core) { #functions-engine-core }
 
 | Function | Description |
@@ -1897,13 +2634,25 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 | Constant | Type | Description |
 | --- | --- | --- |
+| `EASINGS` | `[(&str, Easing); 11]` | The presets, by the name a property takes. |
 | `FIT_CONTENT_SLACK` | `f32` | Pixels added to a fit width. |
 | `FRAME_BLOCK_SIZE` | `usize` | The size in bytes of the per-frame shader uniform block. |
+| `HORIZONTAL_SIDE_NAMES` | `[&str; 4]` | The names `scrollbar_side_h` takes. |
+| `KEY_LINE` | `f64` | How far an arrow key, or a click on an arrow button, scrolls: `key_line`, `scrollbar_arrow_step`. |
 | `KEY_SCROLL_LINE` | `f64` | How far an arrow key scrolls a scroll view, in pixels. |
+| `MAX_SCROLL_MILLIS` | `f64` | The most a time property takes: an hour, in milliseconds. |
+| `OUTLINE_ROLE` | `SchemeRole` | The role an outline with no colour of its own takes from its window's scheme: the focus ring of the UX specification (`Focus Ring`, "Colour: role… |
+| `PAGE_DELAY` | `Duration` | A press on the lane pages again after this long, then every `PAGE_REPEAT`: `page_repeat_delay_ms`, `page_repeat_ms`. |
+| `PAGE_FRACTION` | `f64` | How much of the viewport a page (Page Up/Down, a click on the lane) scrolls: the viewport less a tenth, so a line of context stays: `page_fraction`. |
+| `PAGE_REPEAT` | `Duration` |  |
+| `SCROLLBAR_FADE` | `Duration` | A thumb changes opacity over this long (Motion `short2`): `scrollbar_fade_in_ms`, `scrollbar_fade_out_ms`. |
 | `SCROLLBAR_GRAB_SLOP` | `f64` | How far either side of a scrollbar thumb still counts as grabbing it. |
 | `SCROLLBAR_MARGIN` | `f64` | The gap between a scrollbar track and the edge of its view. |
 | `SCROLLBAR_MIN_LENGTH` | `f64` | The shortest a scrollbar thumb is drawn. |
 | `SCROLLBAR_THICKNESS` | `f64` | The width of a scrollbar. |
+| `STATE_LAYER_MS` | `f64` | The fade, in milliseconds: the UX spec's Motion `short2`. |
+| `VERTICAL_SIDE_NAMES` | `[&str; 4]` | The names `scrollbar_side_v` takes, in `BarSide` order of `VERTICAL_SIDES`. |
+| `WHEEL_NOTCH` | `f64` | How far one wheel notch scrolls, in pixels (`Lines` deltas; `Pixels` deltas are taken as they come): `wheel_notch`. |
 
 ### Re-exports (engine-core) { #reexports-engine-core }
 
@@ -1913,6 +2662,7 @@ Types re-exported from other crates:
 - `ActionData` from `access`
 - `AriaCurrent` from `access`
 - `Live` from `access`
+- `Orientation` from `access`
 - `Role` from `access`
 - `Toggled` from `access`
 
@@ -1948,6 +2698,23 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 *struct.* Each node's subtree extent (see `DamageTracker::extents`).
 
 **Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html)
+
+### FieldColors { #fieldcolors }
+
+*struct.* The three colours a text input paints besides its text: what `draw_field_with` takes.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `placeholder` | `Color` |  |
+| `caret` | `Color` |  |
+| `selection` | `Color` |  |
+
+| Method | Description |
+| --- | --- |
+| `fn from_scheme(state: &TextFieldState, scheme: &SchemeColors, alpha: f64) -> Self` | A field with no colour of its own: each of the three is the field's own setting, or the scheme's role. |
+| `fn from_tint(state: &TextFieldState, text: Color) -> Self` | A field with a colour of its own: each of the three is the field's own setting, or `text` at 60% (placeholder), as it is (caret) and at 30%… |
 
 ### FontSpec { #fontspec }
 
@@ -1990,6 +2757,7 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | `fn render_over(&mut self, scene: &Scene, device: &Device, queue: &Queue, encoder: &mut CommandEncoder, render_size: &RenderSize, target: &TextureView)` | Renders a scene on top of the target's existing pixels without clearing anything. |
 | `fn resources_mut(&self) -> RefMut<'_, Resources>` | Gives access to the renderer's resources, which glyph drawing needs. |
 | `fn run_shader_passes(&mut self, tree: &Tree, root: NodeId, width: u16, height: u16, time: f32, scale: f64, device: &Device, queue: &Queue, text: &mut TextRenderer, geometry: &mut GeometryCache) -> ShaderTextures` | Runs this frame's shader passes and offscreen effect renders in dependency order. |
+| `fn set_backdrop(&mut self, color: Color) -> bool` | The colour the frame is cleared to before the scene paints (default transparent); returns whether it changed, in which case the whole frame is out… |
 | `fn shader_pass_count(&self) -> usize` | How many shader passes the last `run_shader_passes` recorded. |
 | `fn shaders_animated(&self) -> bool` | Whether a shader drawn by the last `run_shader_passes` is animated. |
 | `fn sharing(shared: &SharedRenderer, format: TextureFormat) -> Self` | A `FrameRenderer` that draws with `shared`'s renderer and resources (0.5.9, #235), for a surface of `format` (the format `shared` was made for). |
@@ -2111,8 +2879,10 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | --- | --- |
 | `fn active(&self) -> bool` | Whether resize pacing is in effect (a resize is in progress, or ended less than `RESIZE_HOLD` ago). |
 | `fn choice(&self, steady: PresentChoice) -> PresentChoice` | What to present with, given the app's `steady` choice: low latency while resizing, the app's choice otherwise. |
+| `fn presented(&mut self, now: Instant)` | The window presented at `now`. |
 | `fn resized(&mut self, now: Instant)` | The window is being given a new size at `now`. |
 | `fn settle(&mut self, now: Instant) -> bool` | Ends resize pacing once `now` is `RESIZE_HOLD` past the last resize. |
+| `fn throttle(&self, now: Instant) -> Option<Duration>` | How long the window must still wait before it may present again at `now`: `None` when it may present now (not resizing, nothing presented yet, or… |
 
 ### ShaderPasses { #shaderpasses }
 
@@ -2184,6 +2954,7 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | `y` | `f64` | The top edge of the text, in the node's local coordinates. |
 | `max_width` | `f32` | The node's taffy-computed box width. |
 | `color` | `Color` | The color the text is drawn in. |
+| `box_height` | `Option<f32>` | The height of the node's content box, when the text is to be aligned vertically in it (the node's own `vertical_align`: the lines' own height is… |
 
 ### TextRenderer { #textrenderer }
 
@@ -2196,8 +2967,10 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | `fn access_lines(&mut self, node_id: NodeId, state: &TextState, at: TextPlacement) -> Vec<AccessLine>` | The shown lines of a static text node, with where each character sits, for its accessibility runs. |
 | `fn draw(&mut self, scene: &mut Scene, resources: &mut Resources, state: &TextState, at: TextPlacement, node_id: NodeId)` | Shapes and wraps a text node's content and draws its glyphs into the scene. |
 | `fn draw_field(&mut self, scene: &mut Scene, resources: &mut Resources, state: &TextFieldState, at: TextPlacement, show_caret: bool, node_id: NodeId)` | Draws an editable text field, including its selection and optionally its caret. |
-| `fn draw_painted(&mut self, scene: &mut Scene, resources: &mut Resources, state: &TextState, at: TextPlacement, node_id: NodeId, gradient: Option<&Gradient>)` | `draw`, with the glyphs painted by a gradient (0.5.4, #129) instead of the flat `at.color`, resolved against the shaped text's own extent (not the… |
+| `fn draw_field_with(&mut self, scene: &mut Scene, resources: &mut Resources, state: &TextFieldState, at: TextPlacement, show_caret: bool, node_id: NodeId, colors: FieldColors)` | `draw_field` with the placeholder, caret and selection colours given, for a field whose colours the window's scheme decides… |
+| `fn draw_painted(&mut self, scene: &mut Scene, resources: &mut Resources, state: &TextState, at: TextPlacement, node_id: NodeId, gradient: Option<&Gradient>, selection_fill: Option<Color>)` | `draw`, with the glyphs painted by a gradient (0.5.4, #129) instead of the flat `at.color`, resolved against the shaped text's own extent (not the… |
 | `fn draw_terminal(&mut self, scene: &mut Scene, resources: &mut Resources, state: &TerminalState, at: TextPlacement, show_caret: bool, node_id: NodeId)` | Draws a terminal's cell grid with backgrounds, glyphs and optionally the cursor. |
+| `fn draw_terminal_with(&mut self, scene: &mut Scene, resources: &mut Resources, state: &TerminalState, at: TextPlacement, show_caret: bool, node_id: NodeId, palette: &ResolvedPalette)` | `draw_terminal` with the palette resolved by the caller: the terminal's own colours and, where it has none, its window's scheme… |
 | `fn evict_stale_layouts(&mut self, tree: &Tree)` | Drops cached text layouts belonging to nodes that no longer exist in the tree. |
 | `fn field_caret_rect(&mut self, state: &TextFieldState, at: TextPlacement) -> Rect` | The caret's rectangle in the field's own coordinates (`at` placing the text in the node, scroll offsets already in it): the bar's, with… |
 | `fn field_range_rects(&mut self, state: &TextFieldState, at: TextPlacement, start: usize, end: usize) -> Vec<Rect>` | The rectangles covering `start..end` (bytes of `state.content`), one per line it crosses, in the field's coordinates. |
@@ -2244,6 +3017,7 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | `fn prepare(&mut self, tree: &Tree, root: NodeId, width: u16, height: u16, partial: bool, device: &Device, queue: &Queue) -> Damage` | Uploads images, drops stale caches and returns what changed since the last frame. |
 | `fn reset(&mut self)` | Makes the next frame a full one. |
 | `fn resize(&mut self, device: &Device, width: u32, height: u32)` | Resizes the kept target; a recreated one has lost its frame, so the next is drawn in full. |
+| `fn set_backdrop(&mut self, color: Color)` | The colour every frame is cleared to before the scene paints over it (default transparent). |
 | `fn set_glyph_cache(&mut self, on: bool)` | Draws text from the glyph cache (see `TextRenderer::set_glyph_cache`). |
 | `fn set_persistent(&mut self, device: &Device, width: u32, height: u32, on: bool) -> bool` | Keeps the frame or lets it go, live. |
 | `fn set_profiling(&mut self, on: bool)` | Turns the per-node timing of the paint walk on or off (default off: it costs two clock reads a node). |
@@ -2452,11 +3226,13 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `fn create_popup(&self, id: u64, config: PopupConfig)` | Makes the popup surface `id` from `config`; its events follow. |
 | `fn destroy(&self, id: u64)` | Destroys the surface; the `wgpu` surface must be dropped first. |
 | `fn frame_pending(&self, id: u64) -> bool` | Whether a frame callback asked for by `request_frame` is out. |
+| `fn request_activation_token(&self, id: u64, request: u64, app_id: Option<String>)` | T-051: asks the compositor for an `xdg_activation_v1` token for the surface `id`, so an app this one starts (`XDG_ACTIVATION_TOKEN`) can take focus. |
 | `fn request_frame(&self, id: u64)` | Asks the compositor for a frame callback with the next commit of the surface `id`, which the caller's present makes. |
 | `fn set_cursor(&self, id: u64, icon: CursorIcon)` | Sets the pointer's shape over the surface. |
 | `fn set_ime(&self, id: u64, info: Option<ImeInfo>)` | Tells the input method about the surface's focused text input (`None`: none has focus): the layer thread enables text input for the surface, places… |
 | `fn set_input_region(&self, id: u64, region: Option<Vec<Rect>>)` | Sets only the input region (`None`: the whole surface) and applies it at once, with a commit of its own: an idle surface draws no frame to carry it. |
 | `fn set_margin(&self, id: u64, margin: (i32, i32, i32, i32))` | Sets only the margin `(top, right, bottom, left)` and commits it at once: one cheap commit per animation step, with no other property re-sent. |
+| `fn set_size(&self, id: u64, size: (u32, u32))` | TRE-REQ-022: asks the compositor for a new size (logical pixels) for the surface `id` and nothing else; the compositor answers with a configure… |
 | `fn update(&self, id: u64, config: LayerConfig)` | Applies `config` to the surface `id` in one commit. |
 
 ### LayerHooks { #layerhooks }
@@ -2517,7 +3293,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | Field | Type | Description |
 | --- | --- | --- |
 | `keep_alive` | `bool` | Keep running when no window and no layer surface is open: a desktop shell that waits for an output to come back. |
-| `on_wake` | `Option<Box<dyn FnMut()>>` | Runs on every `EventLoopWaker::wake` while there is nothing open to draw a frame, so work a host queued from another thread (`LoopHandle.call_soon`)… |
+| `on_wake` | `Option<Box<dyn FnMut()>>` | Runs on a `EventLoopWaker::wake` that no window answers with a frame (not once the loop is exiting). |
 
 ### OutputInfo { #outputinfo }
 
@@ -2612,6 +3388,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `always_on_top` | `bool` | Keep the window above others (a hint on X11; ignored on Wayland). |
 | `resizable` | `bool` | Whether the user can resize the window. |
 | `skip_taskbar` | `bool` | Keep the window off the taskbar (Windows only). |
+| `start_hidden` | `bool` | Leave the window hidden after it is made; the host shows it (`Window::set_visible(true)`) once its first frame is presented, so the OS never shows… |
 
 ### WindowRequest { #windowrequest }
 
@@ -2694,6 +3471,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `MarginMoved` | `{ id: u64, margin: (i32, i32, i32, i32) }` | A margin drag the engine ran ended; `margin` is `(top, right, bottom, left)`. |
 | `PopupPlaced` | `{ id: u64, x: i32, y: i32 }` | Where the compositor placed a popup, in its parent's surface coordinates (logical px). |
 | `Warning` | `{ id: u64, key: &'static str, message: String }` | A setting this compositor cannot take (an older layer shell): the surface opens anyway. |
+| `ActivationToken` | `{ id: u64, request: u64, token: Option<String> }` | T-051: the answer to `LayerController::request_activation_token`: the token, or `None` when the compositor has no `xdg_activation_v1`. |
 
 ### LayerKind { #layerkind }
 
@@ -2727,6 +3505,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `MarginMoved` | `((i32, i32, i32, i32))` | A margin drag ended: the final `(top, right, bottom, left)`. |
 | `PopupPlaced` | `(i32, i32)` | Where the compositor placed a popup (parent coordinates, logical px). |
 | `Warning` | `(&'static str, String)` | A setting the compositor cannot take: `(key, message)`. |
+| `ActivationToken` | `(u64, Option<String>)` | T-051: the answer to an activation-token request: `(request, token)`, `None` when the compositor has no `xdg_activation_v1`. |
 
 ### OutputEvent { #outputevent }
 
@@ -2780,7 +3559,8 @@ The `winit` event loop, window creation, platform input translation and the acce
 
 | Function | Description |
 | --- | --- |
-| `fn availability() -> Availability` | Where this process stands on layer surfaces. |
+| `fn availability() -> Availability` | Where this process stands on layer surfaces, as first found out. |
+| `fn availability_with(refresh: bool) -> Availability` | As `availability`; `refresh` asks the compositor again instead of using the remembered answer. |
 | `fn default_output(outputs: &[(String, i32, i32)]) -> Option<usize>` | Which output a surface with no `output` goes to, given each output's `(name, x, y)`: the one at (0, 0), else the first by name. |
 | `fn double_click_time() -> Duration` | Returns the longest gap between two presses that still counts as a double-click. |
 | `fn effective_scale(mode: Option<(i32, i32)>, logical: Option<(i32, i32)>, transform: &str, integer_scale: i32) -> f64` | The effective scale: the current mode's physical size over the logical size, rounded to 1/120 (the unit the fractional-scale protocol speaks), so… |
@@ -2792,7 +3572,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `fn run_windowed<F, A>(config: WindowConfig, on_frame: F, build_access_update: A) -> Result<(), EventLoopError>` | Runs an event loop for a single window that calls a per-frame callback. |
 | `fn run_windowed_multi<C, F, A, S, N, X, L>(on_window_created: C, on_frame: F, build_access_update: A, on_input: N, on_access_action: X, on_lifecycle: L, setup: S) -> Result<(), EventLoopError>` | Runs an event loop that manages any number of windows through callbacks. |
 | `fn run_windowed_multi_with<C, F, A, S, N, X, L>(on_window_created: C, on_frame: F, build_access_update: A, on_input: N, on_access_action: X, on_lifecycle: L, setup: S, idle: Option<IdleHooks>, layers: Option<LayerHooks>, options: LoopOptions) -> Result<(), EventLoopError>` | Runs the multi-window loop with optional hooks around its idle wait. |
-| `fn supported() -> bool` | Whether this session's compositor offers `zwlr_layer_shell_v1`: `false` off Wayland, on X11, and on a compositor without it (GNOME's). |
+| `fn supported(refresh: bool) -> bool` | Whether this session's compositor offers `zwlr_layer_shell_v1`: `false` off Wayland, on X11, and on a compositor without it (GNOME's). |
 | `fn transform_name(value: u32) -> &'static str` | The names the Python layer shows for a Wayland transform, by its protocol value (`wl_output.transform`: 0 normal, 1 to 3 rotations, 4 flipped, 5 to… |
 | `fn turn_instant() -> Instant` | The instant the loop's current turn began, or the real clock off the loop (headless). |
 
