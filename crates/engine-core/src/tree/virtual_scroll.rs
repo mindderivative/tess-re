@@ -32,10 +32,6 @@ impl ScrollAlign {
     }
 }
 
-/// A page key moves by the viewport less this share of it, so the rows at
-/// the old edge stay in view.
-const PAGE_OVERLAP: f64 = 0.1;
-
 impl Tree {
     /// A virtual list's current offset, viewport height and furthest offset;
     /// `None` for any other node.
@@ -81,24 +77,6 @@ impl Tree {
             .find_map(|(&idx, &id)| (id == row).then_some(idx))
             // A row past the end (the list shrank) is not kept: it has no offset.
             .filter(|&idx| idx < state.item_count)
-    }
-
-    /// `scroll_by_key` for a virtual list: `None` when `list` is not one.
-    /// An arrow moves `KEY_SCROLL_LINE`, Page Up/Down the viewport less 10
-    /// percent, Home/End to the ends; at once, not eased.
-    pub(super) fn virtual_list_scroll_by_key(&mut self, list: NodeId, key: Key) -> Option<bool> {
-        let (now, viewport, max) = self.virtual_list_span(list)?;
-        let page = viewport * (1.0 - PAGE_OVERLAP);
-        let to = match key {
-            Key::ArrowUp => now - KEY_SCROLL_LINE,
-            Key::ArrowDown => now + KEY_SCROLL_LINE,
-            Key::PageUp => now - page,
-            Key::PageDown => now + page,
-            Key::Home => 0.0,
-            Key::End => max,
-            _ => return Some(false),
-        };
-        Some(self.set_virtual_list_offset(list, to))
     }
 
     /// Scrolls virtual list `list` by the least that shows the span

@@ -3,7 +3,8 @@
 //! full draw (the block copy and the thumbs' damage).
 
 use engine_core::{
-    NodeId, NodeKind, PaintProperties, ScrollAxis, ScrollOrientation, ScrollViewState, Tree,
+    NodeId, NodeKind, PaintProperties, ScrollAxis, ScrollOrientation, ScrollProp, ScrollViewState,
+    Tree,
 };
 use engine_render::{Damage, WindowRenderer};
 use peniko::Color;
@@ -255,9 +256,13 @@ fn assert_same(got: &[u8], want: &[u8], context: &str) {
 fn bare_world() -> World {
     let mut world = world();
     let state = state_of(&mut world);
-    state.scrollbar.opacity = Some(0.0);
-    state.scrollbar.opacity_hover = Some(0.0);
-    state.scrollbar.opacity_drag = Some(0.0);
+    for prop in [
+        ScrollProp::Opacity,
+        ScrollProp::OpacityHover,
+        ScrollProp::OpacityDrag,
+    ] {
+        state.bar.settings.set_number(prop, Some(0.0));
+    }
     world
 }
 
@@ -340,8 +345,8 @@ fn a_thumb_fading_in_and_out_redraws_what_it_covers() {
     window.frame(&gpu, &world.tree, world.root, true);
     // The emphasis of each thumb through a fade: only that pixels change, and all of them are redrawn.
     for (step, level) in [0.25, 0.5, 1.0, 1.5, 2.0, 1.0, 0.0].into_iter().enumerate() {
-        state_of(&mut world).level[ScrollAxis::Vertical.index()].current = level;
-        state_of(&mut world).level[ScrollAxis::Horizontal.index()].current = 2.0 - level;
+        state_of(&mut world).bar.level[ScrollAxis::Vertical.index()].current = level;
+        state_of(&mut world).bar.level[ScrollAxis::Horizontal.index()].current = 2.0 - level;
         let damage = window.frame(&gpu, &world.tree, world.root, true);
         assert!(
             !matches!(damage, Damage::None),

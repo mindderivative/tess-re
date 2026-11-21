@@ -317,6 +317,18 @@ class Node:
         `text_input` to `None`, which is `"center"` single-line and `"start"`
         multiline. `letter_spacing` and `line_height` work on a `text_input`
         too.
+
+        (0.6.11) A scroll view and a virtual list take the scrollbar and scroll-feel
+        properties -- `scrollbar_width`, `_hit_width`, `_margin`, `_min_length`,
+        `_gutter`, `_corner`, `_radius`, `_opacity`, `_opacity_hover`, `_opacity_drag`,
+        `_fill`, `_fill_hover`, `_fill_drag`, `_track_fill`, `_track_opacity`,
+        `_side_v`, `_side_h`, `_show`, `_hide_delay_ms`, `_fade_in_ms`, `_fade_out_ms`,
+        `_hover_delay_ms`, `_fade_easing`, `_gutter_reserve`, `_arrows`, `_arrow_step`,
+        `_lane_click` (each `scrollbar_*`), and `wheel_notch`, `key_line`,
+        `page_fraction`, `scroll_smooth_ms`, `scroll_easing`, `page_repeat_delay_ms`,
+        `page_repeat_ms`. Each is a number, a bool, a colour `(r, g, b, a)`, a name or an
+        easing (a preset name or a cubic bezier `(x1, y1, x2, y2)`); `None` is the
+        default, and `get` reads the value in force.
         """
         ...
     def redraw(self) -> None:
@@ -586,6 +598,7 @@ class Window:
         touch_slop: float = ...,
         touch_target_slop: float = ...,
         pause_when_occluded: bool = ...,
+        reduced_motion: bool | None = ...,
     ) -> None:
         """M94: sets window properties -- `title`, and (0.4.0 M5)
         `partial_redraw`: `True` (the default) redraws only what changed
@@ -650,7 +663,12 @@ class Window:
         so clicks, scrolls and hover reach what is behind it; live, and a
         `ValueError` where the platform can't. `x`, `y`: (0.5.6) the window's
         place on the desktop in logical pixels (not on Wayland), `always_on_top`,
-        `resizable`, and `skip_taskbar` (Windows only); live, or at open."""
+        `resizable`, and `skip_taskbar` (Windows only); live, or at open.
+        (0.6.11) `reduced_motion`: `True` or `False` makes the engine's own
+        animations take no time or their normal time -- the scrollbar's fades,
+        smooth scrolling (`scroll_smooth_ms`) and the scroll snap settle -- whatever
+        the OS says; `None` (the default) follows the OS. `get("reduced_motion")`
+        reads the window's own say, else the OS's."""
         ...
     @overload
     def get(

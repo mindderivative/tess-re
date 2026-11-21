@@ -1483,6 +1483,13 @@ impl App {
                 };
                 let setup = &setup_owned;
                 *setup.handles.os_window.borrow_mut() = Some(window.clone());
+                // 0.6.11: the engine's own animations follow the OS's motion preference
+                // (until a `reduced_motion` of the window says otherwise); changes arrive
+                // as `ReducedMotionChanged` events.
+                setup.handles.tree.borrow_mut().set_os_reduced_motion(
+                    engine_platform::appearance::current_reduced_motion(Some(&window))
+                        .unwrap_or(false),
+                );
                 // 0.5.0 M2: `winit` can open a window maximized, but not
                 // minimized -- a `minimize()` before `App.run()` lands here.
                 if setup.handles.minimized.get() {

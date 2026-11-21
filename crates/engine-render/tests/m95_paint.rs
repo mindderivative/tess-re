@@ -8,8 +8,8 @@
 
 use engine_core::{
     CellColor, CornerRadii, Interpolate, NodeId, NodeKind, PaintProperties, PathData, PathState,
-    SCROLLBAR_MARGIN, ScrollViewState, Shadow, Shadows, TerminalCell, TerminalState,
-    TextFieldState, Tree,
+    PropValue, SCROLLBAR_MARGIN, ScrollProp, ScrollViewState, Shadow, Shadows, TerminalCell,
+    TerminalState, TextFieldState, Tree,
 };
 use peniko::Color;
 use peniko::kurbo::Point;
@@ -243,8 +243,11 @@ fn a_scroll_view_paints_its_scrollbar_fill_and_width() {
     pollster::block_on(async {
         let (mut tree, root) = scene();
         let mut state = ScrollViewState::new(false);
-        state.scrollbar_fill = Some(RED);
-        state.scrollbar.thickness = Some(10.0);
+        state
+            .bar
+            .settings
+            .set(ScrollProp::Fill, Some(PropValue::Colour(RED)));
+        state.bar.settings.set_number(ScrollProp::Width, Some(10.0));
         let view = tree.insert(
             NodeKind::ScrollView(state),
             placed(0.0, 0.0, 100.0, 100.0),

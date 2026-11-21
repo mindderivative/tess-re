@@ -30,13 +30,11 @@ use crate::animation::CompletionHandle;
 use crate::canvas::CanvasState;
 use crate::canvas::{CustomHitTest, DrawCommand};
 use crate::input::{ChangedValue, DispatchOutcome, InputEvent, Key, PointerButton, ScrollDelta};
-use crate::node::{
-    ImageState, Node, NodeId, NodeKind, PaintProperties, SCROLLBAR_GRAB_SLOP, SCROLLBAR_MARGIN,
-    SCROLLBAR_THICKNESS, ScrollViewState, TextFieldState,
-};
+use crate::node::{ImageState, Node, NodeId, NodeKind, PaintProperties, TextFieldState};
 #[cfg(test)]
 use crate::node::{ItemExtent, TerminalCell, TerminalState, VirtualListState};
 use crate::overlay::{OverlayMeta, Placement};
+use crate::scrollbar::Scroller;
 #[cfg(test)]
 use peniko::kurbo::BezPath;
 use peniko::kurbo::{Affine, ParamCurveNearest, Point, Rect};
@@ -142,6 +140,14 @@ pub struct Tree {
     /// 0.6.11: a press holding the lane of a thumb pages again until it is
     /// released or the thumb reaches the press.
     page_repeat: Option<scroll::PageRepeat>,
+    /// 0.6.11: whether the OS asks for less motion, and the window's own
+    /// say (`Window.reduced_motion`): the scrollbar's fades and the smooth
+    /// scroll and the snap settle take no time while it is on.
+    os_reduced_motion: bool,
+    reduced_motion_override: Option<bool>,
+    /// 0.6.11: the time of the last event or tick the tree was given, for
+    /// scrolling that starts from a key, which carries none.
+    clock: Instant,
     /// §14 step 13 (§11.3): keyed by the overlay root's own `NodeId` --
     /// metadata only, never the node itself, which already lives in
     /// `nodes` like any other.
@@ -285,6 +291,9 @@ impl Tree {
             dragging: None,
             scrollbar_hover: None,
             page_repeat: None,
+            os_reduced_motion: false,
+            reduced_motion_override: None,
+            clock: Instant::now(),
             overlays: Vec::new(),
             dismissals: Vec::new(),
             dirty: true,
@@ -818,10 +827,12 @@ impl Tree {
     }
 
     /// One node's animatable values, ticked: whether any is still running.
+    /// `reduced` is whether motion is reduced (`Tree::reduced_motion`).
     fn tick_node(
         id: NodeId,
         node: &mut Node,
         now: Instant,
+        reduced: bool,
         completed: &mut Vec<CompletionHandle>,
         layout_changed: &mut Vec<NodeId>,
     ) -> bool {
@@ -869,19 +880,27 @@ impl Tree {
             active = true;
         }
         if let NodeKind::ScrollView(state) = &mut node.kind {
-            // 0.6.11: its other offset and its thumbs' fades, with the main one.
-            let [vertical, horizontal] = &mut state.level;
-            for animated in [&mut state.scroll, &mut state.scroll_x, vertical, horizontal] {
+            // 0.6.11: its other offset, with the main one, and the bar's fades.
+            for animated in [&mut state.scroll, &mut state.scroll_x] {
                 if animated.tick(now, completed) {
                     active = true;
                 }
             }
+            let (defaults, offsets) = (state.defaults(), state.offsets());
+            if state.bar.tick(defaults, offsets, now, reduced, completed) {
+                active = true;
+            }
         }
-        // 0.5.4 (#136): a virtual list's offset animates too (a fling).
-        if let NodeKind::VirtualList(state) = &mut node.kind
-            && state.scroll_offset.tick(now, completed)
-        {
-            active = true;
+        // 0.5.4 (#136): a virtual list's offset animates too (a fling), and
+        // so does its bar (0.6.11).
+        if let NodeKind::VirtualList(state) = &mut node.kind {
+            if state.scroll_offset.tick(now, completed) {
+                active = true;
+            }
+            let (defaults, offsets) = (state.defaults(), state.scroll_offsets());
+            if state.bar.tick(defaults, offsets, now, reduced, completed) {
+                active = true;
+            }
         }
         active
     }
@@ -989,20 +1008,25 @@ impl Tree {
     }
 
     pub fn tick_all(&mut self, now: Instant) -> (bool, Vec<CompletionHandle>) {
+        self.clock = now;
+        let reduced = self.reduced_motion();
         let mut completed = Vec::new();
         let started = crate::animation::animations_started();
-        let started_new = self.scanned_at != Some(started);
         // What was reached mutably since the last tick: an animation can only
         // have been started on one of these. Drained every tick so it cannot
         // pile up while nothing starts.
         let (all_reached, reached) = self.nodes.take_animation_candidates();
+        // A scroller that auto-hides its bar starts nothing itself when it
+        // scrolls: that it was written to is reason enough to tick it.
+        let started_new =
+            self.scanned_at != Some(started) || reached.iter().any(|&id| self.hides_its_bar(id));
         let mut still = Vec::new();
         let mut layout_changed = Vec::new();
         if started_new && all_reached {
             // Every node may be new to us (or too many to say which): look at
             // all of them.
             for (id, node) in &mut self.nodes {
-                if Self::tick_node(id, node, now, &mut completed, &mut layout_changed) {
+                if Self::tick_node(id, node, now, reduced, &mut completed, &mut layout_changed) {
                     still.push(id);
                 }
             }
@@ -1022,7 +1046,7 @@ impl Tree {
             ids.dedup();
             for id in ids {
                 if let Some(node) = self.nodes.get_mut(id)
-                    && Self::tick_node(id, node, now, &mut completed, &mut layout_changed)
+                    && Self::tick_node(id, node, now, reduced, &mut completed, &mut layout_changed)
                 {
                     still.push(id);
                 }

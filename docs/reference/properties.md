@@ -232,33 +232,87 @@ Plus the colors on [Paint, Paths, and Animation](paint.md#text-inputs-scroll-vie
 
 | Property | Value |
 | --- | --- |
-| `orientation` | `"vertical"` (default), `"horizontal"` or (0.6.11) `"both"`. A `"vertical"` or `"horizontal"` view scrolls along one axis; `scroll_offset` on a vertical view is its vertical offset, and a sideways strip needs `orientation="horizontal"` (chosen on the scroll view, not by its content's `flex_direction`). A `"both"` view scrolls along both and has the scrollbar of the Tesserae UX spec "Scrollbar and Scroll Container" (see [Scrollbar](#scrollbar-0611)); its `scroll_offset` stays the vertical offset |
+| `orientation` | `"vertical"` (default), `"horizontal"` or (0.6.11) `"both"`. A `"vertical"` or `"horizontal"` view scrolls along one axis; `scroll_offset` on a vertical view is its vertical offset, and a sideways strip needs `orientation="horizontal"` (chosen on the scroll view, not by its content's `flex_direction`). A `"both"` view scrolls along both and has the scrollbar of the Tesserae UX spec "Scrollbar and Scroll Container" (see [Scrollbar](#scrollbar-and-scroll-feel-0611)); its `scroll_offset` stays the vertical offset |
 | `scroll_snap` | (0.5.6) `"none"` (default), `"start"`, `"center"` or `"end"`: when the user stops scrolling, the view settles on the item nearest that alignment. See [Scrolling](../guide/nodes-and-layout.md#scrolling) |
 | `scroll_offset` | Pixels scrolled; on a scroll view or (0.5.6) a virtual list; any other node raises `ValueError` (animatable, so a carousel can ease to a snap point). `set` and `animate` clamp it to the view's range at once — past the end reads back as the end (0.4.3); an offset given to `create`, before the content is attached, is clamped at the first layout. On a `"both"` view it is the vertical offset |
 | `scroll_offset_x` | (0.6.11) Pixels scrolled to the right, on a scroll view; settable, readable and animatable like `scroll_offset`, and clamped the same way. Only a `"both"` view has a horizontal range: on a `"vertical"` or `"horizontal"` view it is always `0` (a horizontal view's offset is `scroll_offset`) |
 
-### Scrollbar (0.6.11)
+### Scrollbar and scroll feel (0.6.11)
 
-The thumb of every scroll view is the existing `scrollbar_fill` and `scrollbar_width`, plus the properties below. A
-`"both"` view takes the numbers of the Tesserae UX note "Scrollbar and Scroll Container" as its defaults; a
-`"vertical"` or `"horizontal"` view keeps the scrollbar it had before (the default of its column), so nothing changes for
-it unless you set a property. Each takes a number, or `None` for the default, and reads back the value in force.
+Every aspect of a scrollbar, and of how a scroll view feels, is a property of a `scroll_view` **and** of a
+`virtual_list`: one implementation of the geometry, hit-testing, hover, drag and fade serves both (a list's bar used
+to be fixed). The tree draws what you set; nothing is a callback. Each takes a value of the type below, or `None` for
+the default, and `get` reads the value in force (a colour or a side reads what was set, `None`: the default). Set one on
+a node, or on a family of nodes from your own defaults table: every property is per node.
 
-| Property | Default, `"both"` | Default, one axis | Meaning |
+The defaults are the Tesserae UX note "Scrollbar and Scroll Container" for a `"both"` view. A `"vertical"` or
+`"horizontal"` view and a virtual list keep the scrollbar they had before (the *one axis / list* column) so nothing
+changes for them unless you set a property. A durations column is milliseconds; a number of pixels is a layout pixel.
+
+**Measures and colours**
+
+| Property | Type | Default, `"both"` | Default, one axis / list | Meaning, example |
+| --- | --- | --- | --- | --- |
+| `scrollbar_fill` | colour `(r, g, b, a)` | `#CAC4D0` opaque (the role `on_surface_variant`) | `#CAC4D0` at 55% | The thumb's colour; its own alpha is multiplied by the opacity below. `scrollbar_fill=(202, 196, 208, 255)` |
+| `scrollbar_fill_hover` | colour | = `scrollbar_fill` | = `scrollbar_fill` | The colour with the pointer in the hit area (fades from the rest colour). `scrollbar_fill_hover=(255, 255, 255, 255)` |
+| `scrollbar_fill_drag` | colour | = `scrollbar_fill` | = `scrollbar_fill` | The colour while the thumb is dragged. `scrollbar_fill_drag=(103, 80, 164, 255)` |
+| `scrollbar_width` | px, ≥ 0 | 8 | 4 | The thumb's thickness, across its axis. `scrollbar_width=6` |
+| `scrollbar_radius` | px, ≥ 0 | 4 (a pill, the thickness ÷ 2) | 2 | The thumb's and the track's corner radius. `scrollbar_radius=0` is square |
+| `scrollbar_hit_width` | px, ≥ 0 | 12 | the thickness plus 12 | The pointer strip across the axis, centred on the thumb: a press in it grabs the thumb, one along the lane outside the thumb is a lane click. `scrollbar_hit_width=24` |
+| `scrollbar_margin` | px, ≥ 0 | 2 | 2 | Between the thumb and the view's edge, and the thumb's end and the lane's end. `scrollbar_margin=4` |
+| `scrollbar_min_length` | px, ≥ 0 | 32 | 32 | The shortest the thumb gets along its axis. `scrollbar_min_length=24` |
+| `scrollbar_corner` | px, ≥ 0 | 12 | 0 | How far each lane stops short of the end where the other axis has a bar, so the bars never meet. `scrollbar_corner=0` |
+| `scrollbar_opacity` | 0 to 1 | 0.70 | 1.0 | The thumb's opacity at rest. `scrollbar_opacity=0.5` |
+| `scrollbar_opacity_hover` | 0 to 1 | 0.80 | = rest | …with the pointer in the hit area. `scrollbar_opacity_hover=0.9` |
+| `scrollbar_opacity_drag` | 0 to 1 | 1.0 | = rest | …while dragged. `scrollbar_opacity_drag=1.0` |
+| `scrollbar_track_fill` | colour | `None`: no track (the spec is track-less) | `None` | A track behind the thumb, as long as the lane and as thick as the thumb. `scrollbar_track_fill=(231, 224, 236, 255)` |
+| `scrollbar_track_opacity` | 0 to 1 | 1.0 | 1.0 | Multiplies the track fill's alpha; nothing is painted until `scrollbar_track_fill` is set. `scrollbar_track_opacity=0.4` |
+
+**Where, and when it shows**
+
+| Property | Type | Default | Meaning, example |
 | --- | --- | --- | --- |
-| `scrollbar_fill` | the role `on_surface_variant`, `#CAC4D0`, opaque | `#CAC4D0` at 55% | The thumb's colour; its own alpha is multiplied by the opacity below |
-| `scrollbar_width` | 8 | 4 | The thumb's thickness, across its axis (a `"both"` thumb is a pill) |
-| `scrollbar_hit_width` | 12 | the thickness plus 12 | The pointer-sensitive strip across the axis, centred on the thumb: a press in it grabs the thumb, a press along the lane outside the thumb pages |
-| `scrollbar_margin` | 2 | 2 | Between the thumb and the view's edge, and the thumb's end and the lane's end |
-| `scrollbar_min_length` | 32 | 32 | The shortest the thumb gets, along its axis |
-| `scrollbar_gutter` | 12 | 0 | What an overflowing axis reserves at its end edge ([how](../guide/nodes-and-layout.md#two-axes-0611)); only a `"both"` view reserves any |
-| `scrollbar_corner` | 12 | 0 | How far each lane stops short of the end when the other axis overflows too, so the thumbs never meet |
-| `scrollbar_opacity` | 0.70 | 1.0 | The thumb's opacity at rest |
-| `scrollbar_opacity_hover` | 0.80 | = rest | …with the pointer in the thumb's hit area |
-| `scrollbar_opacity_drag` | 1.0 | = rest | …while the thumb is dragged |
+| `scrollbar_side_v` | `"end"`, `"start"`, `"left"`, `"right"` | `"end"` | The edge of the vertical bar. `"end"` and `"start"` follow the layout direction: today every layout is left-to-right, so they are the right and the left edge until a direction property exists (one place resolves them, `BarSide::edge`). `scrollbar_side_v="start"` |
+| `scrollbar_side_h` | `"end"`, `"start"`, `"bottom"`, `"top"` | `"end"` | The edge of the horizontal bar: `"end"` and `"bottom"` are the bottom, `"start"` and `"top"` the top. `scrollbar_side_h="top"` |
+| `scrollbar_show` | `"overflow"`, `"always"`, `"auto_hide"`, `"never"` | `"overflow"` | `"overflow"`: whenever the axis overflows (today's behaviour). `"always"`: also without overflow, then a thumb as long as the lane (nothing to drag; no gutter is reserved). `"auto_hide"`: when it overflows, fading out `scrollbar_hide_delay_ms` after the last scroll, hover or drag, and back in on the next; the faded bar still takes the pointer, so hovering its edge shows it. `"never"`: no bar and no gutter; the view still scrolls. `scrollbar_show="auto_hide"` |
+| `scrollbar_hide_delay_ms` | ms, 0 to an hour | 1000 | How long `"auto_hide"` waits. `scrollbar_hide_delay_ms=1500` |
+| `scrollbar_fade_in_ms` | ms | 100 | The duration of a fade toward more emphasis or visibility (hover, drag, `"auto_hide"` showing). Replaces the engine's fixed 100 ms. `scrollbar_fade_in_ms=150` |
+| `scrollbar_fade_out_ms` | ms | 100 | …toward less (leaving the hit area, `"auto_hide"` hiding). `scrollbar_fade_out_ms=300` |
+| `scrollbar_hover_delay_ms` | ms | 0 | How long the pointer stays in the hit area before the hover emphasis starts. `scrollbar_hover_delay_ms=200` |
+| `scrollbar_fade_easing` | preset name or `(x1, y1, x2, y2)` | `"standard"` | The curve of those fades. Presets: `linear`, `standard` (0.2, 0, 0, 1), `emphasized` (0.3, 0, 0, 1), `standard_accelerate`, `standard_decelerate`, `ease`, `ease_in`, `ease_out`, `ease_in_out`; a bezier takes `x1` and `x2` from 0 to 1 (CSS `cubic-bezier`). `scrollbar_fade_easing="ease_out"` |
+| `scrollbar_gutter` | px, ≥ 0 | 12 (`"both"`), 0 | The room an overflowing axis reserves at its bar's edge ([how](../guide/nodes-and-layout.md#two-axes-0611)). `scrollbar_gutter=16` |
+| `scrollbar_gutter_reserve` | bool | `True` | `False`: no room is reserved and the thumb overlays the content. `scrollbar_gutter_reserve=False` |
 
-Setting `scrollbar_opacity` (or the thickness, minimum length or margin) on a one-axis view works as it does on a
-`"both"` one; the hover and drag opacity, the lane click, the corner and the gutter are the `"both"` view's.
+**Buttons and lane clicks**
+
+| Property | Type | Default | Meaning, example |
+| --- | --- | --- | --- |
+| `scrollbar_arrows` | `"none"`, `"both"` | `"none"` | `"both"`: a square arrow button, as thick as the thumb, at each end of the lane (the lane and so the thumb get 2 × thickness shorter). A press scrolls `scrollbar_arrow_step` and repeats while held (`page_repeat_delay_ms`, `page_repeat_ms`). The arrows are minimal: a triangle in the thumb's colour, with no background, hover state or disabled look. `scrollbar_arrows="both"` |
+| `scrollbar_arrow_step` | px, ≥ 0 | 40 | What one arrow press scrolls. `scrollbar_arrow_step=20` |
+| `scrollbar_lane_click` | `"page"`, `"jump"`, `"none"` | `"page"` (`"both"`), `"none"` (one axis, list: a press beside the thumb has always gone to the content) | What a press on the lane beside the thumb does. `"page"`: one page (`page_fraction` of the viewport) toward it, repeating while held until the thumb reaches the press. `"jump"`: the thumb's middle goes to the press and the press goes on as a drag. `"none"`: nothing. `scrollbar_lane_click="jump"` |
+
+**Scroll feel** (the wheel, the keys and the page; scroll views and virtual lists)
+
+| Property | Type | Default | Meaning, example |
+| --- | --- | --- | --- |
+| `wheel_notch` | px, ≥ 0 | 40 | What one notch of a wheel that reports lines scrolls (pixel deltas, a trackpad or a touch pan, are taken as they come). `wheel_notch=60` |
+| `key_line` | px, ≥ 0 | 40 | What an arrow key scrolls. `key_line=24` |
+| `page_fraction` | 0.01 to 1 | 0.9 (a `"vertical"` or `"horizontal"` view keeps a whole viewport, 1.0) | The share of the viewport Page Up/Down and a lane click scroll. `page_fraction=0.75` |
+| `scroll_smooth_ms` | ms | 0 (the spec: keys and wheel jump) | When above 0 the wheel and the keys ease over this long; a second notch goes on from where the first was heading. A drag, a lane or arrow press and `scroll_offset=` stay direct. `scroll_smooth_ms=150` |
+| `scroll_easing` | preset name or bezier | `"standard"` | The curve of a smooth scroll. `scroll_easing="ease_out"` |
+| `page_repeat_delay_ms` | ms | 400 | How long a held lane or arrow press waits before it repeats. `page_repeat_delay_ms=300` |
+| `page_repeat_ms` | ms, 1 to an hour | 100 | The interval of the repeat. `page_repeat_ms=50` |
+
+```python
+# A design system's scrollbar: a thin pill that shows on hover or scroll, with arrows and a track.
+view.set(scrollbar_width=6, scrollbar_show="auto_hide", scrollbar_fade_out_ms=250,
+         scrollbar_track_fill=(231, 224, 236, 255), scrollbar_track_opacity=0.5,
+         scrollbar_arrows="both", scrollbar_side_v="start", scroll_smooth_ms=120)
+```
+
+**Reduced motion.** `Window.set(reduced_motion=True)` (`None`, the default, follows the OS, the value
+`window.get("reduced_motion")` and the `reduced_motion` event report) makes the fades, `scroll_smooth_ms` and the
+scroll snap settle take no time. Any one scroller can still be given its own durations of `0`.
 
 ## Virtual list
 
@@ -291,6 +345,12 @@ rules apply). `node.scroll_to_index(index, align="nearest")` scrolls to a row by
 index, built or not; `scroll_into_view()` and focus reveal a built row by the least
 distance; `scroll` fires for every change. A row holding focus is kept built when it
 scrolls out of the window.
+
+(0.6.11) A virtual list takes every [scrollbar and scroll-feel property](#scrollbar-and-scroll-feel-0611) a scroll
+view does (`scrollbar_*`, `wheel_notch`, `key_line`, `page_fraction`, `scroll_smooth_ms`, `scroll_easing`,
+`page_repeat_*`), and draws, hit-tests, hovers, drags and fades its bar with the same code. A list that sets none keeps
+the bar it had (4 px, 2 px radius, no hover or drag emphasis, no lane click); the keys and the page (nine tenths of the
+viewport) are the spec's.
 
 ## Terminal
 

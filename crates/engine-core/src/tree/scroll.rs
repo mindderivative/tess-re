@@ -1,13 +1,13 @@
 //! Scrolling: scroll views and virtual lists, their windows of rows, and their scrollbar-thumb drags.
 
 use super::*;
-use crate::scrollbar::{
-    FADE as SCROLLBAR_FADE, PAGE_DELAY, PAGE_FRACTION, PAGE_REPEAT, ScrollAxis, Thumb, holds,
-};
+use crate::scrollbar::{ScrollAxis, Scroller, Thumb, animate_offset, holds, millis};
+use crate::scrollbar_props::{Edge, LaneClick};
 use std::time::Duration;
 
-/// 0.4.2 M12: how far an arrow key scrolls a scroll view, in pixels.
-pub const KEY_SCROLL_LINE: f64 = 40.0;
+/// 0.4.2 M12: how far an arrow key scrolls a scroll view, in pixels (the
+/// default of `key_line`).
+pub const KEY_SCROLL_LINE: f64 = crate::scrollbar::KEY_LINE;
 
 /// 0.5.4 (#136): how a flick at `speed` (pixels a second, signed along the
 /// scroller's axis, positive toward the end) coasts: velocity decays
@@ -185,28 +185,93 @@ impl Tree {
         self.scroll_axis_by(id, axis, delta);
     }
 
-    /// 0.6.11: `scroll_scroll_view_by` along one axis -- a `both` view has two.
-    /// An axis the view does not scroll along has no range, so nothing moves.
+    /// 0.6.11: `scroll_scroll_view_by` along one axis -- a `both` view has two,
+    /// a virtual list its vertical one. An axis the scroller does not scroll
+    /// along has no range, so nothing moves. At once (the animation of the
+    /// offset, if any, stops); the user's own scrolls take `scroll_input`.
     pub fn scroll_axis_by(&mut self, id: NodeId, axis: ScrollAxis, delta: f64) {
         self.dirty = true;
         let node = self
             .nodes
             .get(id)
             .expect("scroll_axis_by: NodeId not found in this Tree");
-        if !matches!(node.kind, NodeKind::ScrollView(_)) {
-            panic!("scroll_axis_by: {id:?} is not a NodeKind::ScrollView");
+        let Some(scroller) = node.kind.scroller() else {
+            panic!("scroll_axis_by: {id:?} is not a scroll view or a virtual list");
+        };
+        if !scroller.scroll_axes().contains(&axis) {
+            return;
         }
         let Some(max_scroll) = self.max_scroll_axis(id, axis) else {
             return;
         };
-        let NodeKind::ScrollView(state) = &mut self.nodes[id].kind else {
-            unreachable!("checked above")
-        };
+        let scroller = self.nodes[id].kind.scroller_mut().expect("checked above");
         // A hand on the content stops a fling in flight.
-        let offset = state.animated(axis);
+        let offset = scroller.offset_anim(axis);
         offset.stop();
         offset.current = (offset.current + delta).clamp(0.0, max_scroll);
         self.note_scroll_input(id);
+    }
+
+    /// 0.6.11: scrolls `id` along `axis` by `delta` as the wheel or a key asks:
+    /// at once, or eased over `scroll_smooth_ms` with `scroll_easing` when that
+    /// is set (never under reduced motion). A smooth scroll in flight goes on
+    /// from where it was heading, so notches add up.
+    pub(super) fn scroll_input(&mut self, id: NodeId, axis: ScrollAxis, delta: f64, now: Instant) {
+        let Some(max) = self.max_scroll_axis(id, axis) else {
+            return;
+        };
+        let reduced = self.reduced_motion();
+        let Some(scroller) = self.nodes.get_mut(id).and_then(|n| n.kind.scroller_mut()) else {
+            return;
+        };
+        if !scroller.scroll_axes().contains(&axis) {
+            return;
+        }
+        let m = scroller.metrics();
+        let smooth = m.smooth(reduced);
+        if smooth.is_zero() {
+            self.scroll_axis_by(id, axis, delta);
+            return;
+        }
+        let offset = scroller.offset_anim(axis);
+        let to = (*offset.target() + delta).clamp(0.0, max);
+        animate_offset(offset, to, smooth, m.scroll_easing.curve(), now);
+        self.dirty = true;
+        self.note_scroll_input(id);
+    }
+
+    /// 0.6.11: whether motion is reduced: the window's own say
+    /// (`Window.reduced_motion`) if it has one, else the OS's.
+    pub fn reduced_motion(&self) -> bool {
+        self.reduced_motion_override
+            .unwrap_or(self.os_reduced_motion)
+    }
+
+    /// 0.6.11: the window's own say, if it has one.
+    pub fn reduced_motion_override(&self) -> Option<bool> {
+        self.reduced_motion_override
+    }
+
+    /// 0.6.11: what the OS asks for (the window reads it at creation and on each
+    /// change, `InputEvent::ReducedMotionChanged`).
+    pub fn set_os_reduced_motion(&mut self, reduced: bool) {
+        self.os_reduced_motion = reduced;
+    }
+
+    /// 0.6.11: the window's own say, `None` to follow the OS.
+    pub fn set_reduced_motion_override(&mut self, reduced: Option<bool>) {
+        self.reduced_motion_override = reduced;
+    }
+
+    /// Whether `id` is a scroller whose bar auto-hides (`tick_all` ticks one
+    /// that was written to).
+    pub(super) fn hides_its_bar(&self, id: NodeId) -> bool {
+        self.nodes.get(id).is_some_and(|n| {
+            n.kind.scroller().is_some_and(|s| {
+                s.bar().settings.choice(crate::scrollbar_props::Prop::Show)
+                    == Some(crate::scrollbar_props::Show::AutoHide.index())
+            })
+        })
     }
 
     /// 0.5.6 (#166): the user scrolled `id`: if it snaps, it settles on a snap
@@ -296,13 +361,21 @@ impl Tree {
                     keep.push((id, since));
                 }
                 Some(_) => {
+                    // Under reduced motion the settle takes no time (the spec's
+                    // AC-SCB-17).
+                    let duration = if self.reduced_motion() {
+                        Duration::ZERO
+                    } else {
+                        SNAP_DURATION
+                    };
                     if let Some(target) = self.snap_target(id)
                         && let Some(NodeKind::ScrollView(state)) =
                             self.nodes.get_mut(id).map(|n| &mut n.kind)
                     {
-                        state.scroll.animate_to(
+                        animate_offset(
+                            &mut state.scroll,
                             target,
-                            SNAP_DURATION,
+                            duration,
                             crate::MotionCurve::Bezier(0.2, 0.0, 0.0, 1.0),
                             now,
                         );
@@ -315,33 +388,49 @@ impl Tree {
         started
     }
 
-    /// 0.6.11: a scroll view's own size and its content's, `(width, height)`
-    /// each, by the last layout. `None` for a node that is not a scroll view or
-    /// has no content yet.
-    pub(super) fn scroll_view_boxes(&self, view: NodeId) -> Option<((f64, f64), (f64, f64))> {
+    /// 0.6.11: the box of scroller `view` -- a scroll view or a virtual list --
+    /// and of its content, `(width, height)` each, by the last layout. A scroll
+    /// view's content is its first child, and whatever a bar on the near edge
+    /// reserves there (`ScrollViewState::near_insets`); a list's is its rows'
+    /// extent. `None` for another node, or a scroll view without content.
+    pub(super) fn scroller_boxes(&self, view: NodeId) -> Option<((f64, f64), (f64, f64))> {
         let node = self.nodes.get(view)?;
-        if !matches!(node.kind, NodeKind::ScrollView(_)) {
-            return None;
+        let layout = self.layout(view).size;
+        let size = (f64::from(layout.width), f64::from(layout.height));
+        match &node.kind {
+            NodeKind::ScrollView(state) => {
+                let &child = node.children.first()?;
+                let laid = self.layout(child).size;
+                let content = (f64::from(laid.width), f64::from(laid.height));
+                let inset = state.near_insets(size, content);
+                Some((size, (content.0 + inset.0, content.1 + inset.1)))
+            }
+            NodeKind::VirtualList(state) => Some((size, (size.0, state.total_extent()))),
+            _ => None,
         }
-        let &child = node.children.first()?;
-        let (size, content) = (self.layout(view).size, self.layout(child).size);
-        Some((
-            (f64::from(size.width), f64::from(size.height)),
-            (f64::from(content.width), f64::from(content.height)),
-        ))
     }
 
-    /// 0.6.11: the scrollbar thumbs `[vertical, horizontal]` of scroll view
-    /// `view`, in its own coordinates and by its live offsets: one for each
-    /// axis that overflows. The geometry painting, hit-testing, dragging and
-    /// damage all read (`ScrollViewState::thumbs`). `None` for a node that is
-    /// not a scroll view or has no content yet.
+    /// 0.6.11: the scrollbar thumbs `[vertical, horizontal]` of scroller `view`
+    /// (a scroll view or a virtual list), in its own coordinates and by its live
+    /// offsets: one for each axis whose bar shows (`scrollbar_show`). The
+    /// geometry painting, hit-testing, dragging and damage all read
+    /// (`Scroller::thumbs`). `None` for another node, or a scroll view
+    /// without content yet.
     pub fn scroll_thumbs(&self, view: NodeId) -> Option<[Option<Thumb>; 2]> {
-        let (size, content) = self.scroll_view_boxes(view)?;
-        let NodeKind::ScrollView(state) = &self.nodes[view].kind else {
-            return None;
-        };
-        Some(state.thumbs(size, content, state.offsets()))
+        let scroller = self.nodes.get(view)?.kind.scroller()?;
+        self.scroll_thumbs_at(view, scroller.scroll_offsets())
+    }
+
+    /// `scroll_thumbs` as they would be with the content scrolled to `offsets`
+    /// (`(x, y)`): where the thumbs were, for a frame that moved them.
+    pub fn scroll_thumbs_at(
+        &self,
+        view: NodeId,
+        offsets: (f64, f64),
+    ) -> Option<[Option<Thumb>; 2]> {
+        let (size, content) = self.scroller_boxes(view)?;
+        let scroller = self.nodes[view].kind.scroller()?;
+        Some(scroller.thumbs(size, content, offsets))
     }
 
     /// `point` (window coordinates) in `view`'s own.
@@ -350,15 +439,15 @@ impl Tree {
         Point::new(point.x - ox, point.y - oy)
     }
 
-    /// M38 Phase 6 (§5, §7, §11.7): which of `view`'s scrollbar thumbs a real
-    /// press at `point` (absolute canvas coordinates, the same space
-    /// `PointerPressed`'s own `position` already arrives in) grabs --
-    /// ported from pyCopper's own real `ScrollViewElement.grabs_thumb`
-    /// (`widgets/scroll.py`): the thumb's hit area, which is wider than the
-    /// thumb (a bare 4 px target is unusable with a mouse). `None` for a
-    /// `ScrollView` with nothing to scroll (no thumb painted at all) or no
-    /// children yet.
-    pub(super) fn grabs_scroll_view_thumb(&self, view: NodeId, point: Point) -> Option<ScrollAxis> {
+    /// Which of scroller `view`'s thumbs a press at `point` (absolute canvas
+    /// coordinates, the same space `PointerPressed`'s own `position` arrives in)
+    /// grabs: the thumb's hit area, which is wider than the thumb (a bare 4 px
+    /// target is unusable with a mouse). The thumb is a paint-only overlay
+    /// drawn over the scrolled content, so a point-based hit test resolves to
+    /// whatever content sits underneath; the press handler walks the hit
+    /// node's ancestors for a scroller whose thumb it grabs. `None` when no
+    /// bar shows.
+    pub(super) fn grabs_thumb(&self, view: NodeId, point: Point) -> Option<ScrollAxis> {
         let thumbs = self.scroll_thumbs(view)?;
         let local = self.local_to_view(view, point);
         thumbs
@@ -368,99 +457,153 @@ impl Tree {
             .map(|t| t.axis)
     }
 
-    /// 0.6.11: a press at `point` on the lane of a `both` view's thumb, off the
-    /// thumb itself, scrolls one page (`PAGE_FRACTION` of the viewport) toward
-    /// it, and goes on doing so while held: after `PAGE_DELAY`, then every
-    /// `PAGE_REPEAT` (`repeat_pages`), until the thumb reaches the press.
-    /// Whether the press was on a lane (and is used up).
-    pub(super) fn press_scroll_lane(&mut self, view: NodeId, point: Point, now: Instant) -> bool {
-        let Some(NodeKind::ScrollView(state)) = self.nodes.get(view).map(|n| &n.kind) else {
+    /// 0.6.11: a press at `point` on an arrow button or on the lane of a thumb,
+    /// off the thumb itself. An arrow scrolls `scrollbar_arrow_step` and goes
+    /// on doing so while held; the lane does what `scrollbar_lane_click` says:
+    /// `page` scrolls one page (`page_fraction` of the viewport) toward the
+    /// press and repeats while held until the thumb reaches the press, `jump`
+    /// puts the thumb's centre at the press and goes on as a drag, `none` leaves
+    /// the press to what is under it. A held press pages again after
+    /// `page_repeat_delay_ms`, then every `page_repeat_ms` (`repeat_pages`).
+    /// Whether the press was on one (and is used up).
+    pub(super) fn press_scrollbar(&mut self, view: NodeId, point: Point, now: Instant) -> bool {
+        let Some(scroller) = self.nodes.get(view).and_then(|n| n.kind.scroller()) else {
             return false;
         };
-        if !state.both {
-            return false;
-        }
-        let (Some(thumbs), Some((size, _))) =
-            (self.scroll_thumbs(view), self.scroll_view_boxes(view))
+        let m = scroller.metrics();
+        let (Some(thumbs), Some((size, _))) = (self.scroll_thumbs(view), self.scroller_boxes(view))
         else {
             return false;
         };
         let local = self.local_to_view(view, point);
+        let delay = millis(m.page_delay_ms);
+        for thumb in thumbs.iter().flatten() {
+            if let Some(end) = thumb.arrow_at(local) {
+                let dir = if end == 0 { -1.0 } else { 1.0 };
+                self.scroll_axis_by(view, thumb.axis, dir * m.arrow_step);
+                self.page_repeat = Some(PageRepeat {
+                    view,
+                    axis: thumb.axis,
+                    press: thumb.axis.pick((point.x, point.y)),
+                    dir,
+                    next: now + delay,
+                    line: true,
+                });
+                return true;
+            }
+        }
+        if m.lane_click == LaneClick::None {
+            return false;
+        }
         let Some(thumb) = thumbs.iter().flatten().find(|t| holds(t.lane, local)) else {
             return false;
         };
         let axis = thumb.axis;
+        if m.lane_click == LaneClick::Jump {
+            // The thumb's middle goes to the press, and the press carries on as a drag.
+            let travel = thumb.travel();
+            let start = axis.pick((local.x, local.y)) - thumb.length / 2.0 - thumb.lane_start();
+            let progress = if travel > 0.0 {
+                (start / travel).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let target = progress * thumb.max_scroll;
+            let coord = axis.pick((point.x, point.y));
+            if let Some(scroller) = self.nodes.get_mut(view).and_then(|n| n.kind.scroller_mut()) {
+                let offset = scroller.offset_anim(axis);
+                offset.stop();
+                offset.current = target;
+                let bar = scroller.bar_mut();
+                bar.drag_anchor = Some((coord, target));
+                bar.drag_axis = axis;
+            }
+            self.dragging = Some(view);
+            self.note_scroll_input(view);
+            self.dirty = true;
+            self.refresh_bar(view, now);
+            return true;
+        }
         let (start, _) = thumb.span();
         let dir = if axis.pick((local.x, local.y)) < start {
             -1.0
         } else {
             1.0
         };
-        self.scroll_axis_by(view, axis, dir * axis.pick(size) * PAGE_FRACTION);
+        self.scroll_axis_by(view, axis, dir * axis.pick(size) * m.page_fraction);
         self.page_repeat = Some(PageRepeat {
             view,
             axis,
             press: axis.pick((point.x, point.y)),
             dir,
-            next: now + PAGE_DELAY,
+            next: now + delay,
+            line: false,
         });
         true
     }
 
-    /// 0.6.11: the pages a held lane press (`press_scroll_lane`) is owed by
-    /// `now`. It stops when the thumb has reached the press (or gone past it),
-    /// or the view can go no further. Whether a press is still repeating,
-    /// which keeps the loop ticking.
+    /// 0.6.11: the pages (or lines, for an arrow) a held press (`press_scrollbar`)
+    /// is owed by `now`. A lane press stops when the thumb has reached the press
+    /// (or gone past it); either stops when the view can go no further.
+    /// Whether a press is still repeating, which keeps the loop ticking.
     pub(super) fn repeat_pages(&mut self, now: Instant) -> bool {
         let Some(mut repeat) = self.page_repeat else {
             return false;
         };
-        // A held press owes a page every `PAGE_REPEAT`; a stalled loop catches up.
+        // A held press owes a step every `page_repeat_ms`; a stalled loop catches up.
         for _ in 0..64 {
             if now < repeat.next {
                 self.page_repeat = Some(repeat);
                 return true;
             }
-            let (Some(thumbs), Some((size, _))) = (
+            let (Some(thumbs), Some((size, _)), Some(scroller)) = (
                 self.scroll_thumbs(repeat.view),
-                self.scroll_view_boxes(repeat.view),
+                self.scroller_boxes(repeat.view),
+                self.nodes.get(repeat.view).and_then(|n| n.kind.scroller()),
             ) else {
                 break;
             };
+            let m = scroller.metrics();
             let Some(thumb) = thumbs[repeat.axis.index()] else {
                 break;
             };
-            let (start, end) = thumb.span();
-            let origin = repeat.axis.pick(self.absolute_position(repeat.view));
-            // The thumb has the press under it, or has gone past it.
-            let toward = if repeat.press < origin + start {
-                -1.0
-            } else if repeat.press > origin + end {
-                1.0
-            } else {
-                0.0
-            };
-            if toward != repeat.dir || !self.can_scroll_axis(repeat.view, repeat.axis, repeat.dir) {
+            if !repeat.line {
+                let (start, end) = thumb.span();
+                let origin = repeat.axis.pick(self.absolute_position(repeat.view));
+                // The thumb has the press under it, or has gone past it.
+                let toward = if repeat.press < origin + start {
+                    -1.0
+                } else if repeat.press > origin + end {
+                    1.0
+                } else {
+                    0.0
+                };
+                if toward != repeat.dir {
+                    break;
+                }
+            }
+            if !self.can_scroll_axis(repeat.view, repeat.axis, repeat.dir) {
                 break;
             }
-            self.scroll_axis_by(
-                repeat.view,
-                repeat.axis,
-                repeat.dir * repeat.axis.pick(size) * PAGE_FRACTION,
-            );
-            repeat.next += PAGE_REPEAT;
+            let step = if repeat.line {
+                m.arrow_step
+            } else {
+                repeat.axis.pick(size) * m.page_fraction
+            };
+            self.scroll_axis_by(repeat.view, repeat.axis, repeat.dir * step);
+            repeat.next += millis(m.page_repeat_ms);
         }
         self.page_repeat = None;
         false
     }
 
-    /// 0.6.11: the thumb of a `both` view the pointer is over -- its hit area,
-    /// the nearest view first -- walking up from `from`, the node under it.
+    /// 0.6.11: the thumb of a scroller the pointer is over -- its hit area, the
+    /// nearest scroller first -- walking up from `from`, the node under it.
     fn scrollbar_under(&self, from: Option<NodeId>, point: Point) -> Option<(NodeId, ScrollAxis)> {
         let mut current = from;
         while let Some(id) = current {
-            if matches!(&self.nodes[id].kind, NodeKind::ScrollView(state) if state.both)
-                && let Some(axis) = self.grabs_scroll_view_thumb(id, point)
+            if self.nodes[id].kind.scroller().is_some()
+                && let Some(axis) = self.grabs_thumb(id, point)
             {
                 return Some((id, axis));
             }
@@ -470,14 +613,18 @@ impl Tree {
     }
 
     /// 0.6.11: the pointer moved over `hit` at `point`: the thumb under it
-    /// takes the hover opacity, the one it left goes back to rest.
+    /// takes the hover emphasis (after `scrollbar_hover_delay_ms`), the one it
+    /// left goes back to rest.
     pub(super) fn update_scrollbar_hover(
         &mut self,
         hit: Option<NodeId>,
         point: Point,
         now: Instant,
     ) {
-        if self.scroll_view_count == 0 && self.scrollbar_hover.is_none() {
+        if self.scroll_view_count == 0
+            && self.virtual_list_count == 0
+            && self.scrollbar_hover.is_none()
+        {
             return;
         }
         let under = self.scrollbar_under(hit, point);
@@ -485,76 +632,55 @@ impl Tree {
             return;
         }
         let before = std::mem::replace(&mut self.scrollbar_hover, under);
-        for (view, axis) in before.into_iter().chain(under) {
-            self.fade_thumb(view, axis, now);
+        if let Some((view, axis)) = before {
+            self.set_bar_hover(view, axis, false, now);
+        }
+        if let Some((view, axis)) = under {
+            self.set_bar_hover(view, axis, true, now);
         }
     }
 
-    /// 0.6.11: starts fading a `both` view's thumb to the emphasis it should have:
-    /// dragged 2, hovered 1, else rest 0 (`ScrollViewState::level`), over
-    /// `SCROLLBAR_FADE`.
-    pub(super) fn fade_thumb(&mut self, view: NodeId, axis: ScrollAxis, now: Instant) {
-        let Some(NodeKind::ScrollView(state)) = self.nodes.get(view).map(|n| &n.kind) else {
-            return;
-        };
-        if !state.both {
-            return;
-        }
-        let target = if self.dragging == Some(view)
-            && state.thumb_drag_anchor.is_some()
-            && state.thumb_drag_axis == axis
-        {
-            2.0
-        } else if self.scrollbar_hover == Some((view, axis)) {
-            1.0
-        } else {
-            0.0
-        };
-        if (*state.level[axis.index()].target() - target).abs() < 1e-9 {
-            return;
-        }
-        if let NodeKind::ScrollView(state) = &mut self.nodes[view].kind {
-            state.level[axis.index()].animate_to(
-                target,
-                SCROLLBAR_FADE,
-                crate::MotionCurve::Bezier(0.2, 0.0, 0.0, 1.0),
-                now,
-            );
+    /// 0.6.11: the pointer is on (or left) `axis`' thumb of `view`.
+    pub(super) fn set_bar_hover(&mut self, view: NodeId, axis: ScrollAxis, on: bool, now: Instant) {
+        let reduced = self.reduced_motion();
+        if let Some(scroller) = self.nodes.get_mut(view).and_then(|n| n.kind.scroller_mut()) {
+            let defaults = scroller.defaults();
+            let bar = scroller.bar_mut();
+            bar.set_hover(axis, on, now);
+            bar.sync_levels(defaults, now, reduced);
         }
     }
 
-    /// M38 Phase 6 (§5, §7, §11.7): live-follows-the-cursor thumb drag,
-    /// `update_drag`'s own real `ScrollView` arm -- ported directly
-    /// from pyCopper's own real `ScrollViewElement.on_pointer_move`
-    /// (`widgets/scroll.py`): thumb travel (`track - thumb`) maps to
-    /// scroll travel (`max_scroll`) 1:1 by ratio, so the content keeps
-    /// pace with the pointer instead of running ahead of or behind it.
-    /// A relative-delta computation from `state.thumb_drag_anchor` (set
-    /// by `PointerPressed`'s own dispatch arm below), not an absolute
-    /// pointer-to-scroll mapping -- preserves wherever along the
-    /// thumb's own length the real press actually grabbed it, the
-    /// identical real UX pyCopper's own design already chose. It follows the
-    /// pointer wherever it goes, outside the hit area too. A true
-    /// no-op if the drag anchor is missing (defensive: `update_drag`'s
-    /// own caller already guarantees `self.dragging == Some(view)`
-    /// only after a real successful grab set it) or the real track has
-    /// no room to travel.
-    pub(super) fn update_scroll_view_thumb_drag(
-        &mut self,
-        view: NodeId,
-        point: Point,
-        _now: Instant,
-    ) {
+    /// 0.6.11: starts fading `view`'s thumbs to the emphasis they should have
+    /// now: dragged 2, hovered 1, else rest 0 (`ScrollbarState::level`).
+    pub(super) fn refresh_bar(&mut self, view: NodeId, now: Instant) {
+        let reduced = self.reduced_motion();
+        if let Some(scroller) = self.nodes.get_mut(view).and_then(|n| n.kind.scroller_mut()) {
+            let defaults = scroller.defaults();
+            scroller.bar_mut().sync_levels(defaults, now, reduced);
+        }
+    }
+
+    /// Live-follows-the-cursor thumb drag (M38 Phase 6, M47; 0.6.11: one for
+    /// scroll views and lists): thumb travel (`track - thumb`) maps to scroll
+    /// travel (`max_scroll`) 1:1 by ratio, so the content keeps pace with the
+    /// pointer instead of running ahead of or behind it. A relative-delta
+    /// computation from the bar's drag anchor (set by the press), not an
+    /// absolute pointer-to-scroll mapping -- preserves wherever along the
+    /// thumb's own length the press grabbed it. It follows the pointer
+    /// wherever it goes, outside the hit area too. A no-op if the drag anchor
+    /// is missing or the track has no room to travel.
+    pub(super) fn update_thumb_drag(&mut self, view: NodeId, point: Point) {
         let Some(thumbs) = self.scroll_thumbs(view) else {
             return;
         };
-        let NodeKind::ScrollView(state) = &self.nodes[view].kind else {
+        let Some(scroller) = self.nodes.get_mut(view).and_then(|n| n.kind.scroller_mut()) else {
             return;
         };
-        let Some((anchor_coord, anchor_scroll)) = state.thumb_drag_anchor else {
+        let Some((anchor_coord, anchor_scroll)) = scroller.bar().drag_anchor else {
             return;
         };
-        let axis = state.thumb_drag_axis;
+        let axis = scroller.bar().drag_axis;
         let Some(thumb) = thumbs[axis.index()] else {
             return;
         };
@@ -565,112 +691,23 @@ impl Tree {
         let moved = axis.pick((point.x, point.y)) - anchor_coord;
         let target =
             (anchor_scroll + moved * (thumb.max_scroll / travel)).clamp(0.0, thumb.max_scroll);
-        let NodeKind::ScrollView(state) = &mut self.nodes[view].kind else {
-            unreachable!("checked above")
-        };
-        // A real, direct write, not `animate_to` -- the identical
-        // "driven directly, never eased" precedent `ScrollViewState.
-        // scroll`'s own doc comment already establishes for every
-        // other real scroll mutation (`scroll_scroll_view_by`).
-        state.animated(axis).current = target;
+        // A direct write, not `animate_to`: driven by the pointer, never eased.
+        let offset = scroller.offset_anim(axis);
+        offset.stop();
+        offset.current = target;
         self.note_scroll_input(view);
-    }
-
-    /// M47 (§5, §7, §11.7): a real `VirtualList`'s own live viewport
-    /// extent along its (always vertical) scroll axis -- mirrors
-    /// `scroll_view_extents`'s own viewport half, but `VirtualList` has
-    /// no single measured child to read a "content extent" from (it's
-    /// windowed materialization, `Fixed` or `Variable`), so content
-    /// extent comes from `VirtualListState::total_extent()` directly at
-    /// each real call site instead of being returned from here. `None`
-    /// if `id` isn't a real `NodeKind::VirtualList` in this `Tree`.
-    pub(super) fn virtual_list_viewport_extent(&self, id: NodeId) -> Option<f64> {
-        let node = self.nodes.get(id)?;
-        if !matches!(node.kind, NodeKind::VirtualList(_)) {
-            return None;
-        }
-        Some(f64::from(self.layout(id).size.height))
-    }
-
-    /// M47 (§5, §7, §11.7): whether a real press at `point` grabs
-    /// `list`'s own real scrollbar thumb -- the identical real grab-
-    /// tolerance technique `grabs_scroll_view_thumb` (M38 Phase 6)
-    /// already established, narrowed to `VirtualList`'s own vertical-
-    /// only axis. `false` when there's nothing to scroll (`total_
-    /// extent() <= viewport`, the same real condition `engine-render`'s
-    /// own thumb-paint arm uses) or the list has no real viewport yet.
-    pub(super) fn grabs_virtual_list_thumb(&self, list: NodeId, point: Point) -> bool {
-        let Some(viewport) = self.virtual_list_viewport_extent(list) else {
-            return false;
-        };
-        let NodeKind::VirtualList(state) = &self.nodes[list].kind else {
-            return false;
-        };
-        if state.total_extent() <= viewport {
-            return false;
-        }
-        let (track, thumb, along) = state.thumb_geometry(viewport);
-        if track <= 0.0 {
-            return false;
-        }
-        let (ox, oy) = self.absolute_position(list);
-        let size = self.layout(list).size;
-        let slop = SCROLLBAR_GRAB_SLOP;
-        let tx = ox + f64::from(size.width) - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN;
-        let ty = oy + along;
-        (tx - slop..=tx + SCROLLBAR_THICKNESS + slop).contains(&point.x)
-            && (ty - slop..=ty + thumb + slop).contains(&point.y)
-    }
-
-    /// M47 (§5, §7, §11.7): live-follows-the-cursor thumb drag for a
-    /// `VirtualList` -- the identical real ratio-mapped technique
-    /// `update_scroll_view_thumb_drag` (M38 Phase 6) already
-    /// established, narrowed to the vertical-only axis, writing through
-    /// the same clamp `Tree::scroll_virtual_list_by` already uses so
-    /// wheel-scroll and thumb-drag can never disagree about the real
-    /// clamp bounds. A true no-op if the drag anchor is missing or the
-    /// real track has no room to travel.
-    pub(super) fn update_virtual_list_thumb_drag(&mut self, list: NodeId, point: Point) {
-        let Some(viewport) = self.virtual_list_viewport_extent(list) else {
-            return;
-        };
-        let NodeKind::VirtualList(state) = &self.nodes[list].kind else {
-            return;
-        };
-        let max_scroll = (state.total_extent() - viewport).max(0.0);
-        let Some((anchor_y, anchor_scroll)) = state.thumb_drag_anchor else {
-            return;
-        };
-        let (track, thumb, _along) = state.thumb_geometry(viewport);
-        let travel = track - thumb;
-        if travel <= 0.0 {
-            return;
-        }
-        let moved = point.y - anchor_y;
-        let target = (anchor_scroll + moved * (max_scroll / travel)).clamp(0.0, max_scroll);
-        let NodeKind::VirtualList(state) = &mut self.nodes[list].kind else {
-            unreachable!("checked above")
-        };
-        // A real, direct write, not `animate_to` -- the identical
-        // "driven directly, never eased" precedent `VirtualListState.
-        // scroll_offset`'s own doc comment already establishes.
-        state.scroll_offset.current = target;
     }
 
     /// Moves the drag in progress along with the pointer: a scrollbar
     /// thumb's, the only drags the engine still owns (M99 removed the
     /// splitter, slider, carousel, and time-picker-dial drags with their
     /// kinds). `PointerPressed` only sets `self.dragging` after a real
-    /// thumb grab (`grabs_scroll_view_thumb`/`grabs_virtual_list_thumb`).
-    pub(super) fn update_drag(&mut self, point: Point, now: Instant) {
+    /// thumb grab (`grabs_thumb`).
+    pub(super) fn update_drag(&mut self, point: Point, _now: Instant) {
         let Some(dragging) = self.dragging else {
             return;
         };
-        match &self.nodes[dragging].kind {
-            NodeKind::ScrollView(_) => self.update_scroll_view_thumb_drag(dragging, point, now),
-            NodeKind::VirtualList(_) => self.update_virtual_list_thumb_drag(dragging, point),
-            _ => {}
-        }
+        self.update_thumb_drag(dragging, point);
     }
 
     /// §14 step 15 (§11.7): materializes/recycles a `NodeKind::
@@ -777,24 +814,15 @@ impl Tree {
     /// panics if `id` isn't a real `NodeKind::VirtualList` in this
     /// `Tree` (an internal bug, not a runtime condition).
     pub fn scroll_virtual_list_by(&mut self, id: NodeId, delta_y: f64) {
-        self.dirty = true;
         let node = self
             .nodes
             .get(id)
             .expect("scroll_virtual_list_by: NodeId not found in this Tree");
-        let NodeKind::VirtualList(state) = &node.kind else {
-            panic!("scroll_virtual_list_by: {id:?} is not a NodeKind::VirtualList");
-        };
-        let content_extent = state.total_extent();
-        let viewport_height = f64::from(self.layout(id).size.height);
-        let max_offset = (content_extent - viewport_height).max(0.0);
-
-        let NodeKind::VirtualList(state) = &mut self.nodes[id].kind else {
-            unreachable!("checked above")
-        };
-        state.scroll_offset.stop();
-        state.scroll_offset.current =
-            (state.scroll_offset.current + delta_y).clamp(0.0, max_offset);
+        assert!(
+            matches!(node.kind, NodeKind::VirtualList(_)),
+            "scroll_virtual_list_by: {id:?} is not a NodeKind::VirtualList"
+        );
+        self.scroll_axis_by(id, ScrollAxis::Vertical, delta_y);
     }
 
     /// M96: the rows of `list` its viewport shows -- every row whose extent
@@ -912,14 +940,16 @@ impl Tree {
         state.resolved_offsets.extend(offsets);
     }
 
-    /// The axis `key` scrolls `state`'s content along, if it scrolls it at all:
-    /// Up/Down and Page Up/Down for a vertical view, Left/Right for a
+    /// The axis `key` scrolls `scroller`'s content along, if it scrolls it at
+    /// all: Up/Down and Page Up/Down for a vertical one, Left/Right for a
     /// horizontal one, Home/End for either (0.6.11: a `both` view takes Up,
     /// Down, Home and End on the vertical axis, Left and Right on the
     /// horizontal, and Page Up/Down on the vertical or, with Shift, the
-    /// horizontal -- one-axis views take Shift as no different).
-    fn key_axis(state: &ScrollViewState, key: Key, shift: bool) -> Option<ScrollAxis> {
-        if state.both {
+    /// horizontal -- one-axis views take Shift as no different). A virtual list
+    /// is vertical.
+    fn key_axis(scroller: &dyn Scroller, key: Key, shift: bool) -> Option<ScrollAxis> {
+        let axes = scroller.scroll_axes();
+        if axes.len() == 2 {
             return match key {
                 Key::ArrowUp | Key::ArrowDown | Key::Home | Key::End => Some(ScrollAxis::Vertical),
                 Key::ArrowLeft | Key::ArrowRight => Some(ScrollAxis::Horizontal),
@@ -928,13 +958,14 @@ impl Tree {
                 _ => None,
             };
         }
+        let main = axes[0];
         let wants = match key {
             Key::ArrowUp | Key::ArrowDown | Key::PageUp | Key::PageDown => ScrollAxis::Vertical,
             Key::ArrowLeft | Key::ArrowRight => ScrollAxis::Horizontal,
-            Key::Home | Key::End => state.main_axis(),
+            Key::Home | Key::End => main,
             _ => return None,
         };
-        (wants == state.main_axis()).then_some(wants)
+        (wants == main).then_some(wants)
     }
 
     /// 0.4.2 M12 (issue #24): the scroll view `key` scrolls from `from` --
@@ -955,57 +986,62 @@ impl Tree {
             Key::ArrowDown | Key::PageDown | Key::ArrowRight | Key::End => 1.0,
             _ => return None,
         };
-        self.ancestors(from).find(|&id| match &self.nodes[id].kind {
-            NodeKind::ScrollView(state) => Self::key_axis(state, key, self.held.shift)
-                .is_some_and(|axis| self.can_scroll_axis(id, axis, toward)),
-            // A virtual list is vertical: every key but Left/Right.
-            NodeKind::VirtualList(_) => {
-                !matches!(key, Key::ArrowLeft | Key::ArrowRight) && self.can_scroll(id, toward)
-            }
-            _ => false,
+        self.ancestors(from).find(|&id| {
+            self.nodes[id]
+                .kind
+                .scroller()
+                .and_then(|s| Self::key_axis(s, key, self.held.shift))
+                .is_some_and(|axis| self.can_scroll_axis(id, axis, toward))
         })
     }
 
-    /// 0.4.2 M12: scrolls `view` as `key` says -- an arrow by
-    /// `KEY_SCROLL_LINE`, Page Up/Down by the viewport (0.6.11: a `both` view's
-    /// by the viewport less a tenth), Home/End to the ends -- at once, not
-    /// eased. Whether the offset changed.
+    /// 0.4.2 M12: scrolls scroller `view` as `key` says -- an arrow by
+    /// `key_line`, Page Up/Down by `page_fraction` of the viewport (the whole
+    /// viewport for a one-axis scroll view, which kept that), Home/End to the
+    /// ends -- at once, or eased over `scroll_smooth_ms` when that is set (never
+    /// under reduced motion). Whether the offset changed (or, eased, is on its
+    /// way to change).
     pub fn scroll_by_key(&mut self, view: NodeId, key: Key) -> bool {
-        if let Some(moved) = self.virtual_list_scroll_by_key(view, key) {
-            return moved;
-        }
-        let Some((size, content)) = self.scroll_view_boxes(view) else {
+        let Some((size, content)) = self.scroller_boxes(view) else {
             return false;
         };
-        let NodeKind::ScrollView(state) = &mut self.nodes[view].kind else {
+        let (reduced, now, shift) = (self.reduced_motion(), self.clock, self.held.shift);
+        let Some(scroller) = self.nodes.get_mut(view).and_then(|n| n.kind.scroller_mut()) else {
             return false;
         };
-        let Some(axis) = Self::key_axis(state, key, self.held.shift) else {
+        let Some(axis) = Self::key_axis(scroller, key, shift) else {
             return false;
         };
+        let m = scroller.metrics();
         let viewport = axis.pick(size);
         let max_scroll = (axis.pick(content) - viewport).max(0.0);
-        let page = if state.both {
-            viewport * PAGE_FRACTION
+        let smooth = m.smooth(reduced);
+        let offset = scroller.offset_anim(axis);
+        // An eased scroll in flight goes on from where it is heading.
+        let from = if smooth.is_zero() {
+            offset.current
         } else {
-            viewport
+            *offset.target()
         };
-        let offset = state.animated(axis);
-        let now = offset.current;
         let to = match key {
-            Key::ArrowUp | Key::ArrowLeft => now - KEY_SCROLL_LINE,
-            Key::ArrowDown | Key::ArrowRight => now + KEY_SCROLL_LINE,
-            Key::PageUp => now - page,
-            Key::PageDown => now + page,
+            Key::ArrowUp | Key::ArrowLeft => from - m.key_line,
+            Key::ArrowDown | Key::ArrowRight => from + m.key_line,
+            Key::PageUp => from - viewport * m.page_fraction,
+            Key::PageDown => from + viewport * m.page_fraction,
             Key::Home => 0.0,
             Key::End => max_scroll,
             _ => return false,
         }
         .clamp(0.0, max_scroll);
-        if to == now {
+        if to == from {
             return false;
         }
-        offset.current = to;
+        if smooth.is_zero() {
+            offset.stop();
+            offset.current = to;
+        } else {
+            animate_offset(offset, to, smooth, m.scroll_easing.curve(), now);
+        }
         self.dirty = true;
         true
     }
@@ -1046,32 +1082,37 @@ impl Tree {
                 }
                 continue;
             }
-            let Some((view_size, content)) = self.scroll_view_boxes(view) else {
+            let Some((view_size, content)) = self.scroller_boxes(view) else {
                 continue;
             };
             let NodeKind::ScrollView(state) = &self.nodes[view].kind else {
                 continue;
             };
-            let (axes, both) = (state.axes(), state.both);
-            // AC-SCB-15: the other axis' thumb sits in a gutter at this axis' end edge
-            // (a `both` view whose other axis overflows), so a revealed node stops short of it.
+            let axes = state.axes();
+            // AC-SCB-15: the other axis' thumb sits in a gutter at its edge of this
+            // axis' viewport (when that axis overflows), so a revealed node stops
+            // short of it.
             let overflow = state.overflows(view_size, content);
-            let gutter = state.metrics().gutter;
+            let m = state.metrics();
+            let gutter = m.reserved_gutter();
             let origin = self.absolute_position(view);
             for &axis in axes {
-                let reserve = if both && overflow[axis.other().index()] {
-                    gutter
+                let (near, far) = if overflow[axis.other().index()] {
+                    match m.edge(axis.other()) {
+                        Edge::Near => (gutter, 0.0),
+                        Edge::Far => (0.0, gutter),
+                    }
                 } else {
-                    0.0
+                    (0.0, 0.0)
                 };
                 let (viewport, content) = (axis.pick(view_size), axis.pick(content));
                 let (start, end) = match axis {
                     ScrollAxis::Horizontal => (x0, x1),
                     ScrollAxis::Vertical => (y0, y1),
                 };
-                let v_start = axis.pick(origin);
-                let v_end = v_start + viewport - reserve;
-                let delta = if start < v_start || end - start > viewport - reserve {
+                let v_start = axis.pick(origin) + near;
+                let v_end = axis.pick(origin) + viewport - far;
+                let delta = if start < v_start || end - start > viewport - near - far {
                     start - v_start
                 } else if end > v_end {
                     end - v_end
@@ -1110,11 +1151,12 @@ impl Tree {
         moved
     }
 
-    /// 0.4.3 M15: how far scroll view `view` can scroll along its axis --
-    /// its content (first child) past its viewport, `0.0` if it fits --
-    /// by the last layout; `None` for a node that isn't a scroll view or has
-    /// no content yet. The one range every clamp uses: layout's own, and
-    /// `animate`'s target. A `both` view's is its vertical (main) axis'.
+    /// 0.4.3 M15: how far scroll view or virtual list `view` can scroll along
+    /// its axis -- its content (a scroll view's first child, a list's rows)
+    /// past its viewport, `0.0` if it fits -- by the last layout; `None` for a
+    /// node that isn't one or has no content yet. The one range every clamp
+    /// uses: layout's own, and `animate`'s target. A `both` view's is its
+    /// vertical (main) axis'.
     pub fn max_scroll(&self, view: NodeId) -> Option<f64> {
         let node = self.nodes.get(view)?;
         // 0.5.6 (#166): a virtual list's furthest offset: its rows' extent less its height.
@@ -1128,23 +1170,19 @@ impl Tree {
         self.max_scroll_axis(view, state.main_axis())
     }
 
-    /// 0.6.11: `max_scroll` along `axis`. An axis the view does not scroll
+    /// 0.6.11: `max_scroll` along `axis`. An axis the scroller does not scroll
     /// along has a range of nothing.
     pub fn max_scroll_axis(&self, view: NodeId, axis: ScrollAxis) -> Option<f64> {
-        let node = self.nodes.get(view)?;
-        let NodeKind::ScrollView(state) = &node.kind else {
-            return None;
-        };
-        let &child = node.children.first()?;
-        if !state.axes().contains(&axis) {
+        let (size, content) = self.scroller_boxes(view)?;
+        if !self.nodes[view]
+            .kind
+            .scroller()?
+            .scroll_axes()
+            .contains(&axis)
+        {
             return Some(0.0);
         }
-        let (outer, inner) = (self.layout(view).size, self.layout(child).size);
-        let (content, viewport) = match axis {
-            ScrollAxis::Horizontal => (inner.width, outer.width),
-            ScrollAxis::Vertical => (inner.height, outer.height),
-        };
-        Some((f64::from(content) - f64::from(viewport)).max(0.0))
+        Some((axis.pick(content) - axis.pick(size)).max(0.0))
     }
 
     /// 0.4.4 M21: whether scroll view or virtual list `id` can move by
@@ -1154,31 +1192,23 @@ impl Tree {
     /// wheel, or the key, to the next. `false` for any other node, or a
     /// `delta` of zero. A `both` view's own axis is its vertical.
     pub fn can_scroll(&self, id: NodeId, delta: f64) -> bool {
-        let (current, max) = match self.nodes.get(id).map(|n| &n.kind) {
-            Some(NodeKind::ScrollView(state)) => {
-                return self.can_scroll_axis(id, state.main_axis(), delta);
-            }
-            Some(NodeKind::VirtualList(state)) => {
-                let viewport = f64::from(self.layout(id).size.height);
-                (
-                    state.scroll_offset.current,
-                    (state.total_extent() - viewport).max(0.0),
-                )
-            }
+        let main = match self.nodes.get(id).map(|n| &n.kind) {
+            Some(NodeKind::ScrollView(state)) => state.main_axis(),
+            Some(NodeKind::VirtualList(_)) => ScrollAxis::Vertical,
             _ => return false,
         };
-        (delta > 0.0 && current < max) || (delta < 0.0 && current > 0.0)
+        self.can_scroll_axis(id, main, delta)
     }
 
-    /// 0.6.11: `can_scroll` for scroll view `id` along `axis`.
+    /// 0.6.11: `can_scroll` for scroller `id` along `axis`.
     pub fn can_scroll_axis(&self, id: NodeId, axis: ScrollAxis, delta: f64) -> bool {
-        let Some(NodeKind::ScrollView(state)) = self.nodes.get(id).map(|n| &n.kind) else {
+        let Some(scroller) = self.nodes.get(id).and_then(|n| n.kind.scroller()) else {
             return false;
         };
         let Some(max) = self.max_scroll_axis(id, axis) else {
             return false;
         };
-        let current = state.offset(axis);
+        let current = axis.pick(scroller.scroll_offsets());
         (delta > 0.0 && current < max) || (delta < 0.0 && current > 0.0)
     }
 
@@ -1244,4 +1274,6 @@ pub(super) struct PageRepeat {
     press: f64,
     dir: f64,
     next: Instant,
+    /// An arrow button's press (a line each time, no stop at the press), not a lane's.
+    line: bool,
 }

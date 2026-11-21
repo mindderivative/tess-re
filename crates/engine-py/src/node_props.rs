@@ -26,7 +26,7 @@ use crate::node_layout::{LAYOUT_PROPS, StyleEdit, parse_layout, read_layout};
 
 /// Every property `set` accepts besides the layout ones
 /// (`node_layout::LAYOUT_PROPS`), in the order its error lists them.
-const SETTABLE: [&str; 84] = [
+const SETTABLE: [&str; 74] = [
     // 0.5.7 (#179): placed against another node.
     "anchor",
     "placement",
@@ -72,16 +72,6 @@ const SETTABLE: [&str; 84] = [
     "caret_blink",
     "selection_fill",
     "obscured",
-    "scrollbar_fill",
-    "scrollbar_width",
-    "scrollbar_hit_width",
-    "scrollbar_margin",
-    "scrollbar_min_length",
-    "scrollbar_gutter",
-    "scrollbar_corner",
-    "scrollbar_opacity",
-    "scrollbar_opacity_hover",
-    "scrollbar_opacity_drag",
     "palette",
     "role",
     "label",
@@ -281,10 +271,6 @@ pub(crate) enum Change {
     CaretBlink(u32),
     SelectionFill(Option<Color>),
     Obscured(bool),
-    ScrollbarFill(Option<Color>),
-    /// 0.6.11: one of the scrollbar's measures, by property name (`engine_core::SCROLLBAR_PROPS`);
-    /// `None` is the default of the view's orientation.
-    Scrollbar(&'static str, Option<f64>),
     Palette(Box<PalettePatch>),
 }
 
@@ -787,9 +773,6 @@ impl Change {
         fn text_input(kind: &NodeKind) -> bool {
             matches!(kind, NodeKind::TextField(_))
         }
-        fn scroll_view(kind: &NodeKind) -> bool {
-            matches!(kind, NodeKind::ScrollView(_))
-        }
         fn terminal(kind: &NodeKind) -> bool {
             matches!(kind, NodeKind::Terminal(_))
         }
@@ -820,8 +803,6 @@ impl Change {
             Change::CaretBlink(_) => ("caret_blink", "text_input", text_input),
             Change::SelectionFill(_) => ("selection_fill", "text_input", text_input),
             Change::Obscured(_) => ("obscured", "text_input", text_input),
-            Change::ScrollbarFill(_) => ("scrollbar_fill", "scroll_view", scroll_view),
-            Change::Scrollbar(name, _) => (name, "scroll_view", scroll_view),
             Change::Palette(_) => ("palette", "terminal", terminal),
             Change::FillGradient(_) => ("fill", "box, path or text", box_node),
             _ => return None,
@@ -942,35 +923,6 @@ fn plain_size(height: bool, dimension: Dimension) -> Change {
 }
 
 fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
-    // 0.6.11: the scrollbar's measures, a number or `None` for the default; the
-    // opacities are fractions.
-    if let Some(&prop) = engine_core::SCROLLBAR_PROPS.iter().find(|p| **p == name) {
-        if value.is_none() {
-            return Ok(Change::Scrollbar(prop, None));
-        }
-        let is_opacity = prop.starts_with("scrollbar_opacity");
-        let number: f64 = required(
-            value,
-            name,
-            if is_opacity {
-                "a number from 0 to 1, or None"
-            } else {
-                "a non-negative number, or None"
-            },
-        )?;
-        let ok = number.is_finite() && number >= 0.0 && (!is_opacity || number <= 1.0);
-        if !ok {
-            return Err(invalid(
-                name,
-                if is_opacity {
-                    "a number from 0 to 1, or None"
-                } else {
-                    "a non-negative number, or None"
-                },
-            ));
-        }
-        return Ok(Change::Scrollbar(prop, Some(number)));
-    }
     if name == "width" || name == "height" {
         let height = name == "height";
         let auto_side: StyleEdit = Box::new(move |style| {
@@ -1395,7 +1347,6 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
         ),
         "selection_fill" => Change::SelectionFill(optional_color(value, name)?),
         "obscured" => Change::Obscured(boolean(value, name)?),
-        "scrollbar_fill" => Change::ScrollbarFill(optional_color(value, name)?),
         "palette" => Change::Palette(Box::new(parse_palette(value, name)?)),
         _ => {
             return Err(PyValueError::new_err(format!(
@@ -1403,7 +1354,12 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
                  size_hint",
                 LAYOUT_PROPS.join(", "),
                 SETTABLE.join(", "),
-                KIND_PROPS.join(", ")
+                KIND_PROPS
+                    .iter()
+                    .copied()
+                    .chain(crate::scrollbar_props::names())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )));
         }
     })
@@ -2087,20 +2043,6 @@ impl Node {
                         _ => any(state.obscured.into_pyobject(py)?.to_owned().into_any()),
                     }
                 }
-                _ if name == "scrollbar_fill" || engine_core::SCROLLBAR_PROPS.contains(&name) => {
-                    let NodeKind::ScrollView(state) = &node.kind else {
-                        return Err(PyValueError::new_err(format!(
-                            "node property `{name}` applies only to a scroll_view node"
-                        )));
-                    };
-                    match state.metrics().get(name) {
-                        Some(value) => any(value.into_pyobject(py)?.into_any()),
-                        None => match state.scrollbar_fill {
-                            Some(c) => color_to_py(c, py)?,
-                            None => py.None(),
-                        },
-                    }
-                }
                 "palette" => {
                     let NodeKind::Terminal(state) = &node.kind else {
                         return Err(PyValueError::new_err(
@@ -2698,18 +2640,6 @@ impl Node {
                 Change::Obscured(obscured) => {
                     if let NodeKind::TextField(state) = &mut node.kind {
                         state.obscured = obscured;
-                    }
-                }
-                Change::ScrollbarFill(color) => {
-                    if let NodeKind::ScrollView(state) = &mut node.kind {
-                        state.scrollbar_fill = color;
-                    }
-                }
-                Change::Scrollbar(name, value) => {
-                    if let NodeKind::ScrollView(state) = &mut node.kind
-                        && let Some(slot) = state.scrollbar.slot(name)
-                    {
-                        *slot = value;
                     }
                 }
                 Change::Palette(patch) => {

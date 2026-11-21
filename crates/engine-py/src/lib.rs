@@ -34,6 +34,7 @@ mod node_props;
 mod outputs;
 mod popup_window;
 mod scale;
+mod scrollbar_props;
 mod shader;
 mod shaper;
 mod terminal;
