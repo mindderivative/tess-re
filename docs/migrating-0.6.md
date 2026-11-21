@@ -362,6 +362,21 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   the scrollbar's fades, the smooth scroll and the scroll snap settle take no time (a snap settle took 200 ms before
   whatever the OS said): this closes the "reduced motion is not wired" limit of the two-axis scroll view.
 - **Internal (Rust):** `ScrollViewState::scrollbar_width` is a `Prop::Width` setting of `bar` (`ScrollbarState`, shared with `VirtualListState`; the per-kind `thumb_drag_anchor`, `level`, `scrollbar_fill` and `scrollbar` fields are gone); `ScrollbarOverrides` and `SCROLLBAR_PROPS` are the `ScrollProp` table; `grabs_virtual_list_thumb` and `grabs_scroll_view_thumb` are `Tree::grabs_thumb`;
+- **Colour scheme: the engine's own default colours follow `Window(scheme=...)` (new; changes defaults; P4, tess-ui
+  finding 5).** `scheme` (`"light"`, `"dark"`, `"auto"` = follow the OS, light while unknown) on `Window`, `LayerWindow`,
+  `PopupWindow`, `window.set` and `App(scheme=...)` / `app.set`; `window.get("scheme_resolved")`,
+  `tess_re.scheme_colors("light" | "dark")` (49 role colours) and `window.set(scheme_colors={...})` overrides.
+  **Changed defaults:** a text's and a text input's unset `fill` is `on_surface` (`#1D1B20` light) instead of opaque
+  black, so `get("fill")` reads that, and an animation of an unset `fill` starts from it; a text input with no `fill`
+  paints its caret in `primary` and its selection in `secondary_container` (were the text colour, and the text colour
+  at 30%) and its placeholder in `on_surface_variant`; a scroll view's default thumb is `on_surface_variant`
+  (`#49454F` light, `#CAC4D0` dark; it was `#CAC4D0` in both); a terminal's `palette` `foreground`, `cursor` and
+  `selection` read `None` until set (the scheme's `on_surface`, `primary` at 50%, `secondary_container`; were
+  `#1C1B1F`-based). A node with a colour of its own is unchanged, and a text input with a `fill` keeps the derived
+  placeholder/caret/selection. To keep the old look, set the colours. `fill=None` on a text or text input gives it
+  back to the scheme; `palette` takes `None` for those three keys. See
+  [Colour scheme](guide/painting.md#colour-scheme-0611).
+- **Internal (Rust):** `ScrollViewState::scrollbar_width` is `scrollbar.thickness: Option<f64>`;
   `Tree::take_scroll_changes` returns `ScrollChange` values, not tuples; `grabs_scroll_view_thumb` returns the
   `ScrollAxis` it grabbed. The Python API has no such change.
 - **`hit_testable` is on every node, and a plain `text` is hovered by default (changed, P2; tess-ui finding #4).**

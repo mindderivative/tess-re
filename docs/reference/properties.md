@@ -28,8 +28,9 @@ field = window.create("text_input", placeholder="Search", width=240)
 
 `create` makes a **detached** node: attach it with `add_child` or
 `insert_child`. Until it's attached, it's freed once no handle points into it
-(see [Lifetime](node.md#lifetime)). A text's fill defaults to opaque black, and
-so does a text input's; every other color defaults to transparent.
+(see [Lifetime](node.md#lifetime)). A text's and a text input's `fill` have no value of their own until set:
+the window's [colour scheme](../guide/painting.md#colour-scheme-0611) gives them `on_surface` (`#1D1B20` in the
+light scheme, `#E6E0E9` in the dark one); every other color defaults to transparent.
 
 ### Building many nodes (0.5.10)
 
@@ -163,6 +164,7 @@ On `text` and `text_input` unless noted.
 | `font_weight` | 1–1000 |
 | `font_size` | Pixels (also on a terminal) |
 | `line_height` | A multiple of the font size, or `None` for the font's own (`text`; and `text_input` since 0.6.11) |
+| `fill` | The glyph colour, `(r, g, b, a)` or a `Gradient`. (0.6.11) `None` (the default for a node that was never given one) is the scheme's `on_surface`: `#1D1B20` light, `#E6E0E9` dark, resolved at paint time, so a window that switches scheme repaints it. `get("fill")` reads back the colour in force (the scheme's, until set). A fill you set is never changed by the scheme |
 | `text_align` | `"start"`, `"center"`, or `"end"` (`text` only) |
 | `font_style` | `"normal"` or `"italic"` — slanted when the family has no italic face (`text` only) |
 | `letter_spacing` | Extra pixels after each character, default `0` (`text`; and `text_input` since 0.6.11) |
@@ -213,7 +215,11 @@ painted.
 | `syntax_spans` | A list of `(start, end, color)` byte ranges |
 | `folded_ranges` | A list of `(start, end)` byte ranges drawn as an ellipsis |
 
-Plus the colors on [Paint, Paths, and Animation](paint.md#text-inputs-scroll-views-and-terminals).
+Plus the colors on [Paint, Paths, and Animation](paint.md#text-inputs-scroll-views-and-terminals). (0.6.11) A
+text input's `fill` is its text colour, and until it is set the window's
+[colour scheme](../guide/painting.md#colour-scheme-0611) decides it, with the placeholder, caret and selection:
+`on_surface`, `on_surface_variant`, `primary` and `secondary_container`. `set(fill=None)` gives a set fill back to the
+scheme.
 
 ## Image
 
@@ -362,7 +368,9 @@ viewport) are the spec's.
 | `text` | Read-only: the visible grid, one line per row, trailing blanks trimmed |
 
 Plus `font_size` and the `palette` on
-[Paint, Paths, and Animation](paint.md#text-inputs-scroll-views-and-terminals).
+[Paint, Paths, and Animation](paint.md#text-inputs-scroll-views-and-terminals). (0.6.11) The palette's `foreground`,
+`cursor` and `selection` read `None` until set, which is the window's
+[colour scheme](../guide/painting.md#colour-scheme-0611): `on_surface`, `primary` at 50% alpha and `secondary_container`.
 
 ## Read-only
 

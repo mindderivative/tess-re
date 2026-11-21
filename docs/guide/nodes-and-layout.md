@@ -323,7 +323,8 @@ view.on("scroll", lambda e: print(e.x, e.y))                   # the offsets aft
   overlap, and the 12 × 12 corner is left empty. Thumb length is `max(32, lane × viewport ÷ content)`.
 - **Defaults** are the spec's: thumb 8 px thick and pill-shaped, a 12 px hit strip centred on it, 2 px margin,
   at 0.70 opacity at rest, 0.80 with the pointer in the hit strip, 1.0 while dragged (fading over 100 ms), in the
-  colour `#CAC4D0` (the role `on_surface_variant`); each is a property (`scrollbar_fill`, `scrollbar_width`,
+  colour of the role `on_surface_variant` (`#49454F` in the light scheme, `#CAC4D0` in the dark one: the
+  [colour scheme](painting.md#colour-scheme-0611)); each is a property (`scrollbar_fill`, `scrollbar_width`,
   `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`, `scrollbar_opacity`,
   `scrollbar_opacity_hover`, `scrollbar_opacity_drag`, `scrollbar_gutter`, `scrollbar_corner`; see
   [Scrollbar](../reference/properties.md#scrollbar-and-scroll-feel-0611)), so a project can theme it.

@@ -5,12 +5,18 @@ The top-level entry point — opens and drives one or more
 
 ## `App`
 
-**`App()`**
+**`App(scheme="auto")`**
 
-Constructs an empty `App` with no registered windows.
+Constructs an empty `App` with no registered windows. (0.6.11) `scheme` is the
+[colour scheme](../guide/painting.md#colour-scheme-0611) every window follows that sets none of its own:
+`"light"`, `"dark"` or `"auto"` (the default: the OS appearance, light while it is unknown). `app.set(scheme=...)`
+changes it live (every following window repaints) and `app.get("scheme")` reads it; a bad value or an unknown key
+raises `ValueError` and changes nothing.
 
 ```python
 app = App()
+app = App(scheme="dark")
+app.set(scheme="light")
 ```
 
 ## `add_window`

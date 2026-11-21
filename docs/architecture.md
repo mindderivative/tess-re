@@ -91,6 +91,9 @@ spec. Properties added under this rule so far (0.6.11):
 | --- | --- | --- |
 | `hit_testable` (every node; `True`, `False` or `None`) | `None`: every kind takes hits, a plain `text` label included | [Node](reference/node.md), [Events](reference/events.md) |
 | `vertical_align` (`text`, `text_input`; `"start"`, `"center"`, `"end"`) | `text`: `"start"`; `text_input`: `None`, which is `"center"` single-line and `"start"` multiline | [Text](reference/properties.md#text) |
+| `scheme` (`Window`, `LayerWindow`, `PopupWindow`, `App`; `"light"`, `"dark"`, `"auto"`) | `"auto"`: the OS flag, light while unknown. Selects the baseline colour of every engine default (text, text input text/placeholder/caret/selection, scroll thumb, terminal foreground/cursor/selection) | [Colour scheme](guide/painting.md#colour-scheme-0611) |
+| `scheme_colors` (window; `{role: (r, g, b, a)}`), `tess_re.scheme_colors(scheme)` | the 49 Material 3 baseline roles of the UX spec "Colour Roles" | [Colour scheme](guide/painting.md#colour-scheme-0611) |
+| `fill=None` (`text`, `text_input`), `palette` `foreground`/`cursor`/`selection` `None` | the scheme's colour | [Properties](reference/properties.md#text) |
 | `letter_spacing`, `line_height` (now on `text_input` too) | `0`, `None` (the font's own) | [Text](reference/properties.md#text) |
 
 **Scrollbar and scroll feel (0.6.11, P1).** A `scroll_view` and a `virtual_list` share one scrollbar: one table of

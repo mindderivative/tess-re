@@ -51,6 +51,7 @@ __all__ = [
     "ShaderError",
     "UnsupportedPlatform",
     "register_font",
+    "scheme_colors",
     "set_system_fonts",
     "supports",
     "system_fonts",
@@ -1201,7 +1202,7 @@ class App:
     one blocking call.
     """
 
-    def __init__(self, scheme: Literal["light", "dark", "auto"] = "auto") -> None:
+    def __new__(cls, scheme: Literal["light", "dark", "auto"] | None = None) -> App:
         """(0.6.11) `scheme` is the colour scheme every window follows that sets none of
         its own (`Window(scheme=...)`, `window.set(scheme=...)`): `"light"`, `"dark"`, or
         `"auto"` (the default: the OS appearance, light while it is unknown)."""
