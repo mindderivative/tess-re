@@ -248,9 +248,10 @@ Nothing you have written breaks. New calls and fixes, listed by request:
   [A surface the size of its content](reference/layer-window.md#a-surface-the-size-of-its-content).
 
 - **A click-away and keyboard-leave recipe for a panel that holds the keyboard (TRE-REQ-024, documentation and tests, no
-  new API).** A `LayerWindow`'s `active` event is the compositor's keyboard enter and leave, and a transparent 1x1
-  `PopupWindow(grab=True)` hung off the panel reports a click on another application as its `closed` (reason
-  `"dismissed"`), with the panel keeping the keyboard. See
+  new API).** A `LayerWindow`'s `active` event is the compositor's keyboard enter and leave. *Correction (0.6.11):* this
+  note first said a transparent 1x1 `PopupWindow(grab=True)` hung off the panel reports a click on another application
+  as its `closed`, with the panel keeping the keyboard. That held on sway only: on KWin the grab takes the keyboard from
+  the panel. Use a transparent output-sized `LayerWindow` with `keyboard="none"` under the panel instead. See
   [Knowing the keyboard left, or the user clicked elsewhere](reference/layer-window.md#knowing-the-keyboard-left-or-the-user-clicked-elsewhere).
 
 - **`Window.announce` keeps call order (TRE-REQ-027, a fix).** Several `announce` calls made in one loop turn reached a
