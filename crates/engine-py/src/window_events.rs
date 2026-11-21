@@ -9,14 +9,10 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use engine_core::{
-    AccessNodeData, Action, CanvasState, ImageState, InputEvent, ItemExtent, Key, Modifiers,
-    NodeId, NodeKind, PaintProperties, PathData, PathState, PointerButton, Role, ScrollDelta,
-    ScrollViewState, TerminalState, TextAlign, TextFieldState, TextOptions, TextState, Tree,
-    VirtualListState,
+    AccessNodeData, Action, InputEvent, Key, Modifiers, NodeId, NodeKind, PaintProperties,
+    PointerButton, Role, ScrollDelta, TextOptions, Tree,
 };
-use engine_render::{FontSpec, MONOSPACE_FONT_FAMILY};
-use peniko::Color;
-use peniko::kurbo::BezPath;
+use engine_render::FontSpec;
 use peniko::kurbo::Point;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -266,10 +262,13 @@ impl PyWindow {
     ) -> PyResult<PreparedNode> {
         const KINDS: &str =
             "box, text, text_input, image, path, svg, canvas, scroll_view, virtual_list, terminal";
-        let props = match props {
-            Some(props) => props.copy()?,
-            None => PyDict::new(py),
-        };
+        if !crate::defaults::KINDS.contains(&kind) {
+            return Err(PyValueError::new_err(format!(
+                "unknown node kind {kind:?} -- create builds: {KINDS}"
+            )));
+        }
+        // 0.6.11 (P12): the props over the window's and the app's defaults for the kind.
+        let props = self.props_with_defaults(kind, props, py)?;
         let require = |names: &[&str]| -> PyResult<()> {
             for name in names {
                 if !props.contains(*name)? {
@@ -280,53 +279,14 @@ impl PyWindow {
             }
             Ok(())
         };
-        let transparent = PaintProperties::new(Color::from_rgba8(0, 0, 0, 0), 0.0, 1.0);
-        let mut paint = transparent;
         let mut session = None;
-        let node_kind = match kind {
-            "box" => NodeKind::Rect,
-            "path" => {
-                require(&["data"])?;
-                NodeKind::Path(PathState::new(PathData(
-                    BezPath::new(),
-                    engine_core::MorphMode::Resample,
-                )))
-            }
-            "svg" => {
-                require(&["svg"])?;
-                NodeKind::Svg(engine_core::SvgState::empty())
-            }
-            "text" => {
-                require(&["text"])?;
-                // A text's fill is its glyph color. Until it is set, that is the window
-                // scheme's `on_surface`, resolved at paint time (`scheme_fill`).
-                paint = PaintProperties::new(Color::from_rgba8(0, 0, 0, 255), 0.0, 1.0);
-                paint.scheme_fill = true;
-                NodeKind::Text(TextState {
-                    content: String::new(),
-                    font_family: "Roboto".to_string(),
-                    font_weight: 400.0,
-                    font_size: 16.0,
-                    align: TextAlign::Start,
-                    line_height: None,
-                    options: Default::default(),
-                })
-            }
-            "text_input" => {
-                // A text input's colours are the window scheme's until `fill` sets them.
-                let mut state = TextFieldState::new("", "Roboto", 400.0, 16.0);
-                state.tint_scheme = true;
-                NodeKind::TextField(Box::new(state))
-            }
-            "image" => {
-                require(&["rgba", "pixel_width", "pixel_height"])?;
-                NodeKind::Image(ImageState::blank())
-            }
-            "scroll_view" => NodeKind::ScrollView(ScrollViewState::new(false)),
-            "canvas" => {
-                require(&["draw"])?;
-                NodeKind::Canvas(CanvasState::new())
-            }
+        let (mut cols, mut rows) = (1_u16, 1_u16);
+        match kind {
+            "path" => require(&["data"])?,
+            "svg" => require(&["svg"])?,
+            "text" => require(&["text"])?,
+            "image" => require(&["rgba", "pixel_width", "pixel_height"])?,
+            "canvas" => require(&["draw"])?,
             "virtual_list" => {
                 require(&["item_count", "materialize"])?;
                 if props.contains("item_extent")? == props.contains("size_hint")? {
@@ -334,7 +294,6 @@ impl PyWindow {
                         "create(\"virtual_list\") needs exactly one of `item_extent` or `size_hint`",
                     ));
                 }
-                NodeKind::VirtualList(VirtualListState::new(0, ItemExtent::Fixed(1.0)))
             }
             "terminal" => {
                 require(&["shell", "cols", "rows"])?;
@@ -355,28 +314,20 @@ impl PyWindow {
                 if props.contains("scrollback_lines")? {
                     props.del_item("scrollback_lines")?;
                 }
-                let cols: u16 = props
+                cols = props
                     .get_item("cols")?
                     .and_then(|v| v.extract().ok())
                     .unwrap_or(1);
-                let rows: u16 = props
+                rows = props
                     .get_item("rows")?
                     .and_then(|v| v.extract().ok())
                     .unwrap_or(1);
                 session = Some((shell, cols, rows, scrollback));
-                NodeKind::Terminal(Box::new(TerminalState::new(
-                    cols.max(1),
-                    rows.max(1),
-                    MONOSPACE_FONT_FAMILY,
-                    14.0,
-                )))
             }
-            _ => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown node kind {kind:?} -- create builds: {KINDS}"
-                )));
-            }
-        };
+            _ => {}
+        }
+        let (node_kind, paint) =
+            crate::defaults::blank_kind(kind, cols, rows).expect("a known kind");
         let changes = parse_all(Some(&props), &node_kind, &self.handles.tree)?;
         // 0.5.7 (#179): `placement` and `offset` need an `anchor` in this call.
         crate::node_props::check_anchor_changes(

@@ -28,7 +28,7 @@ take what their own docs say.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, final, overload
 
 from typing_extensions import disjoint_base
@@ -495,6 +495,28 @@ class Window:
         unknown kind or a bad property, creating nothing. See the
         Properties reference for every property.
         """
+        ...
+    def set_defaults(self, kind: str | Mapping[str, Mapping[str, Any]], **props: Any) -> None:
+        """(0.6.11) Declares the baseline look of the nodes this window creates afterwards, once,
+        so `create` and `build` need not repeat it. `kind` is a node kind (`"box"`, `"text"`,
+        `"text_input"`, `"image"`, `"path"`, `"svg"`, `"canvas"`, `"scroll_view"`,
+        `"virtual_list"`, `"terminal"`) with its properties as keywords, or `"*"` for every kind
+        (a `"*"` property a kind does not have is skipped for that kind), or a dict of kind to
+        properties dict for a whole theme in one call: `set_defaults({"text": {...}, "*": {...}})`.
+        Any property `create` takes works, layout ones included, and a terminal's
+        `scrollback_lines`. A property a kind-specific default names must exist for that kind with
+        a good value, or `ValueError` is raised and nothing is stored; `None` removes a default.
+        A default is read when a node is created (`create`, and each node of `build`): nodes
+        that already exist keep their properties. Strongest first: what `create` gets, this
+        window's defaults for the kind, this window's `"*"`, the app's for the kind (`App.set_defaults`),
+        the app's `"*"`, the engine's own."""
+        ...
+    def get_defaults(self, kind: str | None = None) -> dict[str, Any]:
+        """(0.6.11) This window's own defaults (not its app's): `{property: value}` for `kind`
+        (empty when none), or `{kind: {property: value}}` for all. A copy."""
+        ...
+    def clear_defaults(self, kind: str | None = None) -> None:
+        """(0.6.11) Removes this window's defaults for `kind`, or all of them."""
         ...
     @property
     def root(self) -> Node:
@@ -1220,6 +1242,21 @@ class App:
         `LoopHandle.call_soon`): the window opens on the loop's next turn.
         Raises `ValueError` for a window that is already open.
         """
+        ...
+    def set_defaults(self, kind: str | Mapping[str, Mapping[str, Any]], **props: Any) -> None:
+        """(0.6.11) `Window.set_defaults` for every window of this app: the baseline look of the
+        nodes its windows create afterwards, unless the window sets its own default for the
+        property (the window's wins) or `create` is given it (that wins over both). A window
+        gets the app's defaults from `add_window` on: add a window before it creates nodes.
+        Node-valued properties (`anchor`, a `shader` with input nodes) belong to one window and
+        raise `ValueError` here."""
+        ...
+    def get_defaults(self, kind: str | None = None) -> dict[str, Any]:
+        """(0.6.11) The app's defaults: `{property: value}` for `kind`, or
+        `{kind: {property: value}}` for all. A copy."""
+        ...
+    def clear_defaults(self, kind: str | None = None) -> None:
+        """(0.6.11) Removes the app's defaults for `kind`, or all of them."""
         ...
     def thread_handle(self) -> LoopHandle:
         """M87: a thread-safe handle to this `App`'s event loop. `App`

@@ -80,6 +80,8 @@ pub struct AppState {
     connection_lost: RefCell<Option<Py<PyAny>>>,
     /// 0.6.11: the colour scheme a window follows when it sets none (`App(scheme=...)`).
     scheme: Cell<crate::scheme::Setting>,
+    /// 0.6.11 (P12): `App.set_defaults`, shared with every window added to the app.
+    defaults: crate::defaults::SharedDefaults,
 }
 
 /// One registered window's data, extracted once (up front, while the
@@ -894,6 +896,7 @@ impl App {
             output_listeners: Default::default(),
             connection_lost: RefCell::new(None),
             scheme: Cell::new(scheme),
+            defaults: Default::default(),
         })))
     }
 
@@ -1043,6 +1046,9 @@ impl App {
         if let Some(handler) = self.connection_lost.borrow().as_ref() {
             visit.call(handler)?;
         }
+        for dict in self.defaults.borrow().dicts() {
+            visit.call(dict)?;
+        }
         for window in self.windows.borrow().iter() {
             visit.call(window)?;
         }
@@ -1055,6 +1061,40 @@ impl App {
         }
         self.output_listeners.borrow_mut().clear();
         *self.connection_lost.borrow_mut() = None;
+        // Clearing cannot fail for `None`.
+        let _ = self.defaults.borrow_mut().clear(None);
+    }
+
+    /// 0.6.11 (P12): `Window.set_defaults` for every window of this app: the baseline look of the
+    /// nodes its windows create afterwards, unless the window sets its own default for the same
+    /// property (the window's wins) or `create` is given it (that wins over both). Same
+    /// arguments: a kind (or `"*"`) with keyword properties, or a dict of kind to properties.
+    /// A window gets the app's defaults from `add_window` on, so add a window before it creates
+    /// nodes. Node-valued properties (`anchor`, `shader` inputs) belong to one window: set those
+    /// with `Window.set_defaults`.
+    #[pyo3(signature = (kind, **props))]
+    fn set_defaults(
+        &self,
+        kind: &Bound<'_, PyAny>,
+        props: Option<&Bound<'_, pyo3::types::PyDict>>,
+    ) -> PyResult<()> {
+        // Parsed against a scratch tree: nothing in it is kept, and no Node of a real one may be
+        // in an app's defaults.
+        let scratch = Rc::new(RefCell::new(engine_core::Tree::new()));
+        self.defaults.borrow_mut().set(&scratch, true, kind, props)
+    }
+
+    /// 0.6.11 (P12): the app's defaults as `{property: value}` for `kind`, or
+    /// `{kind: {property: value}}` for all. Copies.
+    #[pyo3(signature = (kind=None))]
+    fn get_defaults(&self, kind: Option<&str>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        self.defaults.borrow().get(py, kind)
+    }
+
+    /// 0.6.11 (P12): removes the app's defaults for `kind`, or all of them.
+    #[pyo3(signature = (kind=None))]
+    fn clear_defaults(&self, kind: Option<&str>) -> PyResult<()> {
+        self.defaults.borrow_mut().clear(kind)
     }
 
     /// Registers `window` to be opened the next time `run()` is called
@@ -1075,6 +1115,7 @@ impl App {
             borrowed.handles.scheme.set_inherited(self.scheme.get());
             borrowed.handles.sync_scheme();
         }
+        *window.borrow(py).handles.app_defaults.borrow_mut() = Some(self.defaults.clone());
         let live = self.live.borrow();
         let Some(live) = live.as_ref() else {
             self.windows.borrow_mut().push(window);

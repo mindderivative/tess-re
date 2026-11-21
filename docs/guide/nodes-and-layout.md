@@ -59,6 +59,10 @@ window.root.add_child(panel)
 
 Every property is on [Nodes and Properties](../reference/properties.md).
 
+To give every node of a kind the same baseline look, declare it once with `window.set_defaults("text", font_size=14)` (or
+`app.set_defaults(...)` for every window): nodes created afterwards start from it, and what `create` gets wins. See
+[Defaults per kind](../reference/properties.md#defaults-per-kind-0611).
+
 ## Flex layout
 
 A node lays out its children along `flex_direction` — `"horizontal"` (the

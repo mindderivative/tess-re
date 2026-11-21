@@ -68,6 +68,47 @@ against 0.33 ms (`tools/bench_tree_build.py`; llvmpipe, medians). The reason to 
 Appending a child no longer gets slower with every sibling already there: 0.12 µs a call at 20,000
 siblings, 0.13 at 1,000 (it was 10.9 and 0.63).
 
+### Defaults per kind (0.6.11)
+
+A framework sets the baseline look once instead of passing the same properties to every `create`:
+
+```python
+app = App()
+window = Window(...)
+app.add_window(window)
+app.set_defaults({"text": {"font_size": 14, "fill": ON_SURFACE}})      # every window of the app
+window.set_defaults({
+    "text_input": {"font_size": 14, "caret_color": PRIMARY},
+    "scroll_view": {"scrollbar_fill": OUTLINE, "scrollbar_width": 6},
+    "*": {"opacity": 1.0},                                               # every kind that has the property
+})
+label = window.create("text", text="Inbox")             # font_size 14 and the fill, from the defaults
+big = window.create("text", text="Title", font_size=22)  # what create gets wins
+```
+
+| Call | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `Window.set_defaults(kind, **props)` / `App.set_defaults(kind, **props)` | `kind`: a node kind name, or `"*"`; props: any property `create` takes (layout ones too, and a terminal's `shell` and `scrollback_lines`) | none set: the engine's own defaults | Stores the defaults of `kind`; `None` removes one |
+| `set_defaults({kind: {prop: value}})` | dict of kind to properties dict | | The same for a whole theme in one call |
+| `get_defaults(kind=None)` | `{prop: value}` for a kind, `{kind: {...}}` for all | `{}` | A copy of this scope's own defaults (a window's does not include the app's) |
+| `clear_defaults(kind=None)` | | | Removes one kind's defaults, or all |
+
+- **Precedence, strongest first:** the props given to `create` (or a `build` node's `props`), the window's defaults for the
+  kind, the window's `"*"`, the app's for the kind, the app's `"*"`, the engine's own default. Within one scope a kind's
+  default beats `"*"`; a window's `"*"` beats the app's kind default.
+- **At creation only.** A default is merged into the props before they are parsed, when `create` or `build` makes a node.
+  A node that exists is never changed: `window.set_defaults` affects the nodes created after it. `build` applies the same
+  defaults to every node it makes; every `create` check (required properties, value checks) applies to the merged props, so a
+  default may supply a required one (`set_defaults("text", text="...")`).
+- **`"*"` and validity.** A `"*"` property that a kind does not have is skipped for that kind (a `font_size` default
+  leaves a `box` alone). A `"*"` property that no kind has, a kind-specific property the kind lacks, a bad value and an
+  unknown kind all raise `ValueError` at `set_defaults` time (the message names the kind and lists the valid properties),
+  and the whole call stores nothing.
+- **An app's defaults reach a window from `App.add_window` on**, so add a window before it creates nodes. A window of
+  several apps takes the last it was added to. Node values (`anchor`, `shader` inputs) belong to one window: set them
+  with `Window.set_defaults`; `App.set_defaults` refuses a `Node`.
+- Defaults are plain data, read at creation: nothing runs per frame.
+
 ## Size and position
 
 Every node.

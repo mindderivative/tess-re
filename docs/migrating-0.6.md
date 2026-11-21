@@ -298,6 +298,14 @@ Nothing you have written breaks. New calls and fixes, listed by request:
   these keys itself on a list or focused a row it expected to stay put: such an app now sees the list scroll as well.
   See [Keyboard scrolling](guide/nodes-and-layout.md#keyboard-scrolling).
 
+- **`Window.set_defaults` and `App.set_defaults` (new; P12 of the visual-hooks audit).** A toolkit declares the baseline look
+  of each node kind once (`window.set_defaults("text", font_size=14)`, `"*"` for every kind, or a dict of kind to
+  properties for a whole theme) instead of passing it to every `create`. A default is merged into the props of `create`
+  and of each `build` node before they are parsed and read at creation only: nodes that exist are not changed, and what
+  `create` gets, then the window's defaults, then the app's, win in that order. `get_defaults`, `clear_defaults`. Nothing
+  to migrate: with no defaults set, `create` is as before. See
+  [Defaults per kind](reference/properties.md#defaults-per-kind-0611).
+
 
 One behaviour changes for every scroll view and virtual list: the wheel notch. The rest is new and opt-in.
 
