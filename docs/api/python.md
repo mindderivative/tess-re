@@ -38,12 +38,15 @@ Opens and drives one or more windows together in one blocking `run()`.
 | Method | Description |
 | --- | --- |
 | `add_window(window: Window) -> None` | Adds a window to open when `run()` is called. |
+| `clear_defaults(kind: str \| None=None) -> None` | Removes the app's defaults for `kind`, or all of them. |
 | `get(name: Literal['scheme']) -> Literal['light', 'dark', 'auto']` | Reads `scheme`. |
+| `get_defaults(kind: str \| None=None) -> dict[str, Any]` | The app's defaults: `{property: value}` for `kind`, or `{kind: {property: value}}` for all. |
 | `off(event: Literal['output_added', 'output_removed', 'output_updated', 'connection_lost']) -> None` | Removes the handler for an output event or for `"connection_lost"`. |
 | `on(event, handler) -> None` | Registers `handler(output)` for a screen being plugged in, removed, or moved, resized, rescaled or rotated. |
 | `outputs() -> list[Output]` | The screens the compositor has, top to bottom and left to right, read now (so it works before `run()`). |
 | `run(max_frames: int \| None=None, keep_alive: bool=False) -> None` | Opens every added window and runs the event loop until they all close, or `max_frames`. |
 | `set(*, scheme: Literal['light', 'dark', 'auto']=...) -> None` | Sets `scheme`, live: every window that sets none of its own repaints in it. |
+| `set_defaults(kind: str \| Mapping[str, Mapping[str, Any]], **props: Any) -> None` | `Window.set_defaults` for every window of this app: the baseline look of the nodes its windows create afterwards, unless the… |
 | `simulate(event: Literal['output_added', 'output_removed', 'output_updated'], **fields: Any) -> None` | Delivers an output event as the compositor would, for tests with no display: `app.simulate("output_added", name="DP-2"… |
 | `thread_handle() -> LoopHandle` | A thread-safe handle to this `App`'s event loop. |
 
@@ -150,11 +153,13 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 | `apply(changes: Sequence[tuple[Node, dict[str, Any]]]) -> None` | Changes properties on many nodes in one call: a sequence of `(node, props)` pairs, each `props` what `node.set(**props)` takes. |
 | `build(spec: dict[str, Any]) -> tuple[Node, dict[str, Node]]` | Makes a whole detached subtree from one nested description and returns `(root, nodes)`: the root and a dict of every node that… |
 | `center() -> bool` | Centres the open window on its monitor. |
+| `clear_defaults(kind: str \| None=None) -> None` | Removes this window's defaults for `kind`, or all of them. |
 | `close() -> None` | Closes the window as if the user had: `close_requested` fires first, and a listener that cancels it keeps the window open. |
 | `create(kind: str, **props: Any) -> Node` | Makes a detached node of a kind; attach it with `add_child`. |
 | `dock_panel(side: str, panel: Node) -> None` | Docks `panel` into `side`'s zone and shows it. |
 | `every(ms: float, fn: Callable[[], object]) -> TimerHandle` | Calls `fn` every `ms` milliseconds (at least 1) until the handle is cancelled. |
 | `frame_stats(reset: bool=False) -> dict[str, Any]` | What this window's frames cost, as a dict: `frames` (drawn since the window opened), `skipped` (passes that found nothing to… |
+| `get_defaults(kind: str \| None=None) -> dict[str, Any]` | This window's own defaults (not its app's): `{property: value}` for `kind` (empty when none), or `{kind: {property: value}}` for… |
 | `hide_layer(node: Node) -> None` | Hides a layer, detaching it, and returns focus to where it was. |
 | `maximize() -> None` | Maximizes the window — or opens it maximized. |
 | `measure_text(text, font_family, font_size, font_weight, font_style, letter_spacing, line_height, max_width, wrap, max_lines, overflow) -> tuple[float, float]` | Returns the `(width, height)` a text node with these properties would take. |
@@ -167,6 +172,7 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 | `restore() -> None` | Restores a minimized or maximized window to its normal size; before `App.run()`, undoes `minimize()`/`maximize()`. |
 | `set(*, title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors) -> None` | Sets window properties by name, all at once; a bad value raises and changes nothing. |
 | `set_active_panel(side: str, index: int) -> None` | Shows the `index`th panel docked in `side`'s zone (was `set_active_tab`). |
+| `set_defaults(kind: str \| Mapping[str, Mapping[str, Any]], **props: Any) -> None` | Declares the baseline look of the nodes this window creates afterwards, once, so `create` and `build` need not repeat it. |
 | `show_layer(node, anchor, placement, modal, dismissible, offset, flip) -> None` | Shows `node` over the window's content, above every layer already open. |
 | `simulate(event: str, node: Node \| None=None, **fields: Any) -> None` | Delivers a synthetic event as real input would, for tests with no display. |
 | `snapshot(width, height, scale, time) -> tuple[bytes, int, int]` | What the window draws, as `(rgba, width, height)`: straight-alpha RGBA8 bytes, `width * height * 4` of them, top row first. |

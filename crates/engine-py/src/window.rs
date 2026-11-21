@@ -215,6 +215,12 @@ pub(crate) struct WindowHandles {
     pub(crate) layer: Option<Rc<crate::layer_window::LayerState>>,
     /// 0.6.11: the colour scheme this window's engine defaults paint in.
     pub(crate) scheme: Rc<crate::scheme::SchemeState>,
+    /// 0.6.11 (P12): `Window.set_defaults` -- the baseline look of the nodes `create` and `build`
+    /// make. Holds Python values, so `__traverse__` visits it.
+    pub(crate) defaults: crate::defaults::SharedDefaults,
+    /// 0.6.11 (P12): the defaults of the `App` this window was added to, weaker than the window's
+    /// own; `None` until `App.add_window`.
+    pub(crate) app_defaults: Rc<RefCell<Option<crate::defaults::SharedDefaults>>>,
 }
 
 pub struct WindowState {
@@ -412,6 +418,8 @@ impl PyWindow {
                 waker: Rc::new(RefCell::new(None)),
                 layer: None,
                 scheme: Rc::new(crate::scheme::SchemeState::new()),
+                defaults: Default::default(),
+                app_defaults: Rc::new(RefCell::new(None)),
             },
         })))
     }
@@ -465,6 +473,10 @@ impl PyWindow {
         for callback in self.handles.activation.borrow().callbacks() {
             visit.call(callback)?;
         }
+        // 0.6.11 (P12): and so are the defaults' values.
+        for dict in self.handles.defaults.borrow().dicts() {
+            visit.call(dict)?;
+        }
         Ok(())
     }
 
@@ -477,5 +489,7 @@ impl PyWindow {
         self.handles.timers.borrow_mut().clear();
         self.handles.activation.borrow_mut().clear();
         self.handles.window_listeners.borrow_mut().clear();
+        // Clearing cannot fail for `None`.
+        let _ = self.handles.defaults.borrow_mut().clear(None);
     }
 }
