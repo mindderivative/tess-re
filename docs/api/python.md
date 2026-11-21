@@ -107,7 +107,7 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 
 **Inherits:** [`object`](https://docs.python.org/3/library/functions.html#object)  ·  **Details:** [Window reference](../reference/window.md)
 
-**Constructor:** `Window(width: int=480, height: int=200, title: str='tess_re v2', decorations: bool=True, scheme: Literal['light', 'dark', 'auto'] | None=None)`
+**Constructor:** `Window(width: int=480, height: int=200, title: str='tess_re v2', decorations: bool=True, scheme: Literal['light', 'dark', 'auto'] | None=None, first_present: Literal['immediate', 'on_ready'] | int | None=None, background: tuple[int, int, int, int] | None=None)`
 
 **Properties:**
 
@@ -167,10 +167,11 @@ Owns a node tree and its size and title; creates nodes, shows layers, docks pane
 | `off(event: str) -> None` | Removes the window's listener for `event`, if any. |
 | `on(event: str, handler: Callable[..., object]) -> None` | Registers `handler` for a window event. |
 | `read_clipboard() -> str \| None` | Returns the OS clipboard's text, or `None` when there is none or it can't be reached. |
+| `ready() -> None` | Tells a window made with `first_present="on_ready"` (or a deadline) that its first frame is complete: it is presented, and the… |
 | `request_activation_token(callback: Callable[[str \| None], object], app_id: str \| None=None) -> None` | Asks the system for an activation token (`xdg_activation_v1` on Wayland, a startup-notification id on X11) and calls… |
 | `resize(width: int, height: int) -> None` | Sets the window's size from code; the root's layout box follows. |
 | `restore() -> None` | Restores a minimized or maximized window to its normal size; before `App.run()`, undoes `minimize()`/`maximize()`. |
-| `set(*, title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors) -> None` | Sets window properties by name, all at once; a bad value raises and changes nothing. |
+| `set(*, title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors, background) -> None` | Sets window properties by name, all at once; a bad value raises and changes nothing. |
 | `set_active_panel(side: str, index: int) -> None` | Shows the `index`th panel docked in `side`'s zone (was `set_active_tab`). |
 | `set_defaults(kind: str \| Mapping[str, Mapping[str, Any]], **props: Any) -> None` | Declares the baseline look of the nodes this window creates afterwards, once, so `create` and `build` need not repeat it. |
 | `show_layer(node, anchor, placement, modal, dismissible, offset, flip) -> None` | Shows `node` over the window's content, above every layer already open. |
@@ -210,7 +211,7 @@ A window the compositor places: a bar, panel, dock or OSD (a Wayland layer surfa
 
 **Inherits:** [`Window`](#window) → [`object`](https://docs.python.org/3/library/functions.html#object)  ·  **Details:** [LayerWindow reference](../reference/layer-window.md)
 
-**Constructor:** `LayerWindow(namespace: str, *, layer: Literal['background', 'bottom', 'top', 'overlay']=..., anchor: str | Sequence[str] | None=..., size: tuple[int | Literal['content'], int | Literal['content']] | None=..., min_size: tuple[int | None, int | None] | None=..., max_size: tuple[int | None, int | None] | None=..., exclusive_zone: int | None=..., exclusive_edge: Literal['top', 'bottom', 'left', 'right'] | None=..., margin: int | tuple[int, int, int, int] | None=..., keyboard: Literal['none', 'on_demand', 'exclusive']=..., output: str | Output | None=..., input_region: Literal['auto'] | Sequence[tuple[float, float, float, float]] | None=..., click_through: bool | None=..., scheme: Literal['light', 'dark', 'auto'] | None=...)`
+**Constructor:** `LayerWindow(namespace: str, *, layer: Literal['background', 'bottom', 'top', 'overlay']=..., anchor: str | Sequence[str] | None=..., size: tuple[int | Literal['content'], int | Literal['content']] | None=..., min_size: tuple[int | None, int | None] | None=..., max_size: tuple[int | None, int | None] | None=..., exclusive_zone: int | None=..., exclusive_edge: Literal['top', 'bottom', 'left', 'right'] | None=..., margin: int | tuple[int, int, int, int] | None=..., keyboard: Literal['none', 'on_demand', 'exclusive']=..., output: str | Output | None=..., input_region: Literal['auto'] | Sequence[tuple[float, float, float, float]] | None=..., click_through: bool | None=..., scheme: Literal['light', 'dark', 'auto'] | None=..., first_present: Literal['immediate'] | None=...)`
 
 **Methods:**
 
@@ -229,7 +230,7 @@ A menu or flyout the compositor places beside a rectangle of its parent (a Wayla
 
 **Inherits:** [`Window`](#window) → [`object`](https://docs.python.org/3/library/functions.html#object)  ·  **Details:** [PopupWindow reference](../reference/layer-window.md#popupwindow)
 
-**Constructor:** `PopupWindow(parent: LayerWindow | PopupWindow, *, size: tuple[int, int], anchor_rect: tuple[int, int, int, int], anchor: Literal['none', 'top', 'bottom', 'left', 'right', 'top_left', 'bottom_left', 'top_right', 'bottom_right']=..., gravity: Literal['none', 'top', 'bottom', 'left', 'right', 'top_left', 'bottom_left', 'top_right', 'bottom_right']=..., constraint_adjustment: str | Sequence[str] | None=..., offset: tuple[int, int] | None=..., grab: bool=..., geometry: tuple[int, int, int, int] | None=..., input_region: Sequence[Sequence[float]] | Literal['geometry'] | None=..., scheme: Literal['light', 'dark', 'auto'] | None=...)`
+**Constructor:** `PopupWindow(parent: LayerWindow | PopupWindow, *, size: tuple[int, int], anchor_rect: tuple[int, int, int, int], anchor: Literal['none', 'top', 'bottom', 'left', 'right', 'top_left', 'bottom_left', 'top_right', 'bottom_right']=..., gravity: Literal['none', 'top', 'bottom', 'left', 'right', 'top_left', 'bottom_left', 'top_right', 'bottom_right']=..., constraint_adjustment: str | Sequence[str] | None=..., offset: tuple[int, int] | None=..., grab: bool=..., geometry: tuple[int, int, int, int] | None=..., input_region: Sequence[Sequence[float]] | Literal['geometry'] | None=..., scheme: Literal['light', 'dark', 'auto'] | None=..., first_present: Literal['immediate'] | None=...)`
 
 **Methods:**
 

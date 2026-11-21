@@ -474,11 +474,29 @@ class Window:
         title: str = "tess_re v2",
         decorations: bool = True,
         scheme: Literal["light", "dark", "auto"] | None = None,
+        first_present: Literal["immediate", "on_ready"] | int | None = None,
+        background: tuple[int, int, int, int] | None = None,
     ) -> Window:
         """Raises `ValueError` for a zero width or height. (0.5.0)
         `decorations=False` opens the window without the OS's title bar and
         borders, for the framework to draw its own. (0.6.11) `scheme` is the
-        window's colour scheme (see `set`); `None` follows the `App`'s."""
+        window's colour scheme (see `set`); `None` follows the `App`'s.
+        (0.6.11) `first_present` is when the first frame is presented:
+        `"immediate"` (the default, `None`) as soon as it is drawn; `"on_ready"` not
+        until `ready()` is called; an `int` of milliseconds (1 to 600000) is
+        `"on_ready"` with a deadline, that long after the OS window was made.
+        While it is held nothing is drawn or committed (so no unfinished frame, and no
+        OS default background on macOS and Windows). Fixed at construction.
+        `background` is the `(r, g, b, a)` every frame is cleared to before the scene
+        paints; `None` is the scheme's `surface` role (nothing, for a `transparent` window).
+        A bad `first_present` or `background` raises `ValueError`."""
+        ...
+    def ready(self) -> None:
+        """(0.6.11) Tells a window made with `first_present="on_ready"` (or a deadline) that
+        its first frame is complete: it is presented, and the window shown, now. Callable from
+        a listener, a timer or `LoopHandle.call_soon`, before or after the window opens. A
+        no-op on a window that presents immediately, on one already presented, and on
+        every call after the first."""
         ...
     def build(self, spec: dict[str, Any]) -> tuple[Node, dict[str, Node]]:
         """(0.5.10) Makes a whole detached subtree from one nested description and returns
@@ -653,6 +671,7 @@ class Window:
         reduced_motion: bool | None = ...,
         scheme: Literal["light", "dark", "auto"] | None = ...,
         scheme_colors: dict[str, tuple[int, int, int, int]] | None = ...,
+        background: tuple[int, int, int, int] | None = ...,
     ) -> None:
         """M94: sets window properties -- `title`, and (0.4.0 M5)
         `partial_redraw`: `True` (the default) redraws only what changed
@@ -736,8 +755,19 @@ class Window:
         flag. `scheme_colors`: `{role: (r, g, b, a)}` overrides of individual roles of
         the baseline (`tess_re.scheme_colors("light")` lists them), replacing the window's
         earlier overrides; `None` or `{}` clears them. An unknown role raises `ValueError`
-        listing the valid ones; `get("scheme_colors")` is the whole resolved table."""
+        listing the valid ones; `get("scheme_colors")` is the whole resolved table.
+
+        (0.6.11) `background`: the `(r, g, b, a)` every frame is cleared to before the scene
+        paints over it, or `None` for the scheme's `surface` role (nothing, for a
+        `transparent` window); live. `first_present` cannot be set (`ValueError`): it is
+        given to the constructor."""
         ...
+    @overload
+    def get(self, name: Literal["first_present"]) -> Literal["immediate", "on_ready"] | int: ...
+    @overload
+    def get(self, name: Literal["first_presented"]) -> bool: ...
+    @overload
+    def get(self, name: Literal["background"]) -> tuple[int, int, int, int] | None: ...
     @overload
     def get(self, name: Literal["scheme"]) -> Literal["light", "dark", "auto"]: ...
     @overload
@@ -1070,6 +1100,7 @@ class LayerWindow(Window):
         input_region: Literal["auto"] | Sequence[tuple[float, float, float, float]] | None = ...,
         click_through: bool | None = ...,
         scheme: Literal["light", "dark", "auto"] | None = ...,
+        first_present: Literal["immediate"] | None = ...,
     ) -> LayerWindow: ...
     def set(self, **props: Any) -> None:
         """Sets properties; the layer ones (`layer`, `anchor`, `size`, `exclusive_zone`,
@@ -1169,6 +1200,7 @@ class PopupWindow(Window):
         geometry: tuple[int, int, int, int] | None = ...,
         input_region: Sequence[Sequence[float]] | Literal["geometry"] | None = ...,
         scheme: Literal["light", "dark", "auto"] | None = ...,
+        first_present: Literal["immediate"] | None = ...,
     ) -> PopupWindow: ...
     def set(self, **props: Any) -> None:
         """Sets `input_region` and the window keys a popup shares (`touch_slop`, `partial_redraw`,
