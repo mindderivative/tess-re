@@ -266,3 +266,15 @@ def test_a_default_that_refers_to_its_window_is_collected() -> None:
     del w, probe
     gc.collect()
     assert ref() is None
+
+
+def test_a_text_made_under_defaults_still_follows_the_window_scheme() -> None:
+    # The kind constructors moved into defaults::blank_kind: the scheme flags must come with them.
+    w = tess_re.Window(100, 60, "scheme", scheme="dark")
+    w.set_defaults("text", font_size=20)
+    label = w.create("text", text="x")
+    field = w.create("text_input")
+    assert label.get("fill") == tess_re.scheme_colors("dark")["on_surface"]
+    w.set(scheme="light")
+    assert label.get("fill") == tess_re.scheme_colors("light")["on_surface"], "unset = scheme"
+    assert field.get("font_size") == 16
