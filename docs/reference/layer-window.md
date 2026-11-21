@@ -175,30 +175,45 @@ second opened and closed. A click elsewhere does **not** fire it while the surfa
 exclusively, because the compositor does not take the keyboard away for a click; with `keyboard="on_demand"` a
 click on another window does move focus away, and `active` is `False`.
 
-**A press lands outside: a grabbing popup, no new event.** Hang a transparent 1x1 `PopupWindow` with
-`grab=True` off the panel and listen for its `closed`:
+**A press lands outside: a transparent catcher surface, no new event.** Put a fully transparent
+`LayerWindow` the size of the output **under** the panel (layer `"top"` when the panel is on `"overlay"`)
+with `keyboard="none"`, open it together with the panel, and hide the panel when it is pressed:
 
 ```python
-catcher = PopupWindow(launcher, size=(1, 1), anchor_rect=(0, 0, 1, 1), grab=True)
+catcher = LayerWindow("click-away", anchor=("top", "bottom", "left", "right"), size=(0, 0),
+                      exclusive_zone=-1, layer="top", keyboard="none", output=panel_output)
 catcher.root.set(fill=(0, 0, 0, 0))
-catcher.on("closed", lambda e: hide_launcher() if e.reason == "dismissed" else None)
-app.add_window(catcher)        # from a handler, with the launcher open
+catcher.root.on("click", lambda e: hide_launcher())     # a press anywhere not on the panel
+app.add_window(catcher)        # from a handler, with the launcher open; close it with the launcher
 ```
 
-A press on another application's surface or on the empty desktop dismisses it: `closed` arrives with
-reason `"dismissed"`. The panel keeps its keyboard throughout (checked: a key typed after the click still reaches
-its text input). What to know before relying on it:
+The catcher never takes the keyboard (`keyboard="none"`), so the panel keeps it on every compositor.
+It costs a full-output surface for as long as the panel is open (about 210 MB of VRAM fixed per window
+plus the output's buffer, measured in #207): open it on demand and close it with the panel.
 
-- **The press is the popup's, not the application's below.** Wayland gives a client no way to see a press on
-  another client's surface without taking it, so the click that dismisses is not delivered to what is under
-  it. The user clicks again. This holds for any such mechanism (a full-output transparent surface under the
-  panel would take the press too), which is why tre has no `outside_press` option: it could only wrap this.
-- **It is one-shot.** After a dismissal the grab is gone; make a new popup to listen again.
-- **A click on another surface of the same application** is delivered normally and does not dismiss it: the
-  grab belongs to the client.
-- **It needs a recent input serial** from the panel for a compositor to accept the grab. sway accepted it with
-  no prior input to the panel in the test; KWin is not verified, so test a launcher opened by a global shortcut
-  there before relying on it.
+!!! warning "Do not use a grabbing `PopupWindow` for this"
+    A `PopupWindow(parent, ..., grab=True)` hung off the panel was documented here in 0.6.10 as the
+    recipe. It is **not portable**: an `xdg_popup` grab gives the popup the keyboard by protocol, and on
+    **KWin** the panel loses it as soon as the popup is shown (`active` `False` on the panel, `True` on the
+    popup, the `wl_keyboard` focus moves to the popup's surface), so the panel's text field stops receiving
+    keys. It only appeared to work on sway/wlroots, which keep focus on an exclusive-keyboard layer surface
+    (checked in a private sway only). A popup with `grab=False` does not take the keyboard but is not
+    dismissed by an outside click either, so it cannot be a catcher. Checked in a private `kwin_wayland
+    --virtual`, 2026-11-21.
+
+What to know before relying on the catcher:
+
+- **The press is the catcher's, not the application's below.** Wayland gives a client no way to see a press on
+  another client's surface without taking it, so the click that hides the panel is not delivered to what is
+  under it. The user clicks again. This holds for any such mechanism, which is why tre has no `outside_press`
+  option: it could only wrap this.
+- **It lives as long as you keep it.** Close the catcher when the panel hides, and open a new one with the
+  next panel; do not leave a full-output surface open.
+- **A click on the panel** goes to the panel: the catcher is stacked below it (a lower layer, or earlier on the
+  same layer), so only a press elsewhere reaches the catcher.
+- **Status:** tess-shell uses this on KWin (its tests on a private KWin with a fake pointer) and it holds the
+  keyboard there. tre's own tests of this recipe do not exist yet; the sway test of the 0.6.10 grab popup was
+  removed from the claims here (see the warning above).
 
 ## Dragging a surface by its margin
 
