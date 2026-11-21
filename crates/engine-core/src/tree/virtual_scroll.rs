@@ -79,6 +79,8 @@ impl Tree {
             .materialized
             .iter()
             .find_map(|(&idx, &id)| (id == row).then_some(idx))
+            // A row past the end (the list shrank) is not kept: it has no offset.
+            .filter(|&idx| idx < state.item_count)
     }
 
     /// `scroll_by_key` for a virtual list: `None` when `list` is not one.
@@ -463,6 +465,21 @@ mod tests {
         assert_eq!(
             tree.virtual_list_release_outside(list, 10..15),
             vec![focused]
+        );
+    }
+
+    #[test]
+    fn a_focused_row_past_the_end_of_a_shrunk_list_is_not_kept() {
+        let (mut tree, list) = fixed();
+        let focused = row(&mut tree, list, 15);
+        tree.set_focus_to(focused);
+        if let NodeKind::VirtualList(state) = &mut tree.get_mut(list).unwrap().kind {
+            state.item_count = 10;
+        }
+        assert_eq!(
+            tree.virtual_list_release_outside(list, 0..5),
+            vec![focused],
+            "row 15 no longer exists"
         );
     }
 
