@@ -276,7 +276,8 @@ fn the_two_thumbs_are_drawn_at_rest_opacity_and_no_wider_than_8() {
     let bare = bare_world();
     let under = fresh(&gpu, &bare.tree, bare.root);
     let (vx, vy, vw, vh) = VIEW;
-    let role = Color::from_rgba8(0xCA, 0xC4, 0xD0, 0xFF);
+    // The light baseline's `on_surface_variant`: a fresh tree is light.
+    let role = Color::from_rgba8(0x49, 0x45, 0x4F, 0xFF);
     // Vertical thumb: x 190..198, y 2..34 in the view; its centre.
     let (cx, cy) = ((vx + vw - 6.0) as u32, (vy + 18.0) as u32);
     near(

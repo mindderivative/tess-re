@@ -171,8 +171,24 @@ pub enum CellColor {
 /// M95: every color a terminal paints -- the 16 ANSI colors (the rest of
 /// the 256 are the standard cube and grey ramp), the default foreground
 /// and background, the cursor, and the selection highlight.
+///
+/// 0.6.11: the foreground, cursor and selection are `None` until set, and
+/// `None` means the window's scheme: the roles `on_surface`, `primary` (at
+/// half alpha, so the glyph under the cursor shows) and `secondary_container`
+/// ([`TerminalPalette::resolve`]). The ANSI colors and the background (clear,
+/// so the box's own fill shows) are the same in every scheme.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TerminalPalette {
+    pub ansi: [Color; 16],
+    pub foreground: Option<Color>,
+    pub background: Color,
+    pub cursor: Option<Color>,
+    pub selection: Option<Color>,
+}
+
+/// A [`TerminalPalette`] with the scheme's colors filled in: what a terminal paints with.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ResolvedPalette {
     pub ansi: [Color; 16],
     pub foreground: Color,
     pub background: Color,
@@ -202,15 +218,30 @@ impl Default for TerminalPalette {
         ];
         Self {
             ansi: ANSI_16.map(|(r, g, b)| Color::from_rgba8(r, g, b, 0xFF)),
-            foreground: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF),
+            foreground: None,
             background: Color::TRANSPARENT,
-            cursor: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0x80),
-            selection: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0x4D),
+            cursor: None,
+            selection: None,
         }
     }
 }
 
 impl TerminalPalette {
+    /// The palette with `scheme`'s colors where this one has none.
+    pub fn resolve(&self, scheme: &crate::SchemeColors) -> ResolvedPalette {
+        ResolvedPalette {
+            ansi: self.ansi,
+            foreground: self.foreground.unwrap_or_else(|| scheme.text()),
+            background: self.background,
+            cursor: self
+                .cursor
+                .unwrap_or_else(|| scheme.caret().multiply_alpha(0.5)),
+            selection: self.selection.unwrap_or_else(|| scheme.selection()),
+        }
+    }
+}
+
+impl ResolvedPalette {
     /// One of the 256 indexed colors: the palette's 16, then the 6x6x6
     /// color cube, then the 24-step grey ramp.
     pub fn indexed(&self, index: u8) -> Color {
@@ -574,10 +605,18 @@ pub struct TextFieldState {
     /// "a preedit underline" needs; a real, stated simplification.
     pub preedit: Option<String>,
     /// M20 Phase 2 (§7.1, §7.3): the field's own real text/caret/
-    /// selection-highlight color. Defaults to real, byte-for-byte
-    /// the historical hardcoded `0x1C1B1F` `engine-render`'s own
-    /// `TextField` paint used before this phase.
+    /// selection-highlight color, while `tint_scheme` is `false`.
     pub text_tint: Animated<Color>,
+    /// 0.6.11: `true` while the field has no colour of its own: the
+    /// window's scheme then decides it at paint time, and `text_tint` is not
+    /// read. `false` from [`TextFieldState::new`] (a field made with a colour has
+    /// one, so writing `text_tint` is explicit); `Window.create` makes a field with
+    /// `true`, and `fill` clears it. The text is the role `on_surface`; with no `placeholder_fill`,
+    /// `caret_color` or `selection_fill` of its own, the placeholder is
+    /// `on_surface_variant`, the caret `primary` and the selection
+    /// `secondary_container`. Once `false`, those three default as they
+    /// always did: from `text_tint` (60% alpha, itself, 30% alpha).
+    pub tint_scheme: bool,
     /// M30 Phase 9 Step 3 (§8, §10): `false` (the default, every
     /// existing construction site's own byte-for-byte unchanged
     /// behavior) is the original real, stated single-line scope --
@@ -687,9 +726,11 @@ pub struct TextFieldState {
     pub horizontal_scroll_offset: Animated<f64>,
     /// M95: the hint shown while `content` is empty; empty shows none.
     pub placeholder: String,
-    /// M95: the placeholder's color; `None` is `text_tint` at 60% alpha.
+    /// M95: the placeholder's color; `None` is the scheme's `on_surface_variant`
+    /// while `tint_scheme`, else `text_tint` at 60% alpha.
     pub placeholder_fill: Option<Color>,
-    /// M95: the caret's color; `None` is `text_tint`. 0.5.6 (#165): animatable.
+    /// M95: the caret's color; `None` is the scheme's `primary` while
+    /// `tint_scheme`, else `text_tint`. 0.5.6 (#165): animatable.
     pub caret_color: Option<Animated<Color>>,
     /// 0.5.6 (#162): the most characters the field holds; typing, paste and
     /// IME commits that would pass it are cut short. `None` is no limit.
@@ -715,7 +756,8 @@ pub struct TextFieldState {
     pub preedit_cursor: Option<(usize, usize)>,
     /// 0.5.6 (#165): the bytes the last edit inserted, for `caret_move`.
     pub last_inserted: Option<std::ops::Range<usize>>,
-    /// M95: the selection highlight's color; `None` is `text_tint` at 30%
+    /// M95: the selection highlight's color; `None` is the scheme's
+    /// `secondary_container` while `tint_scheme`, else `text_tint` at 30%
     /// alpha.
     pub selection_fill: Option<Color>,
     /// M95: a password field -- every character paints as a bullet, and
@@ -930,6 +972,7 @@ impl TextFieldState {
             selection_anchor: None,
             preedit: None,
             text_tint: Animated::new(Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF)),
+            tint_scheme: false,
             multiline: false,
             show_whitespace: false,
             syntax_spans: Vec::new(),
@@ -1510,6 +1553,11 @@ pub struct PaintProperties {
     /// 0.5.6 (#164): the shape the node and its subtree are clipped to.
     /// Boxed, so a node without one pays a pointer.
     pub mask: Option<Box<Mask>>,
+    /// 0.6.11: a text node's glyph colour is the window's scheme (`on_surface`),
+    /// resolved at paint time, while this is `true`; `background` is then not
+    /// read. Cleared when the node is given a `fill`. `false` from
+    /// [`PaintProperties::new`]: a node made with a colour has one.
+    pub scheme_fill: bool,
     pub background: Animated<Color>,
     pub corner_radius: Animated<f64>,
     pub opacity: Animated<f64>,
@@ -1668,6 +1716,7 @@ impl PaintProperties {
             blend: Blend::Normal,
             backdrop_blur: Animated::new(0.0),
             mask: None,
+            scheme_fill: false,
         }
     }
 

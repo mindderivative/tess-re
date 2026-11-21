@@ -11,6 +11,9 @@ from helpers import add
 def field(**props):
     window = Window(width=300, height=120)
     props.setdefault("height", 28)
+    # A black text, so the tests can see the caret (the text colour) as dark pixels: with no fill the
+    # caret is the scheme's `primary` (tests/test_scheme.py).
+    props.setdefault("fill", (0, 0, 0, 255))
     node = add(window, "text_input", width=240, font_size=16, **props)
     node.focus()
     return window, node

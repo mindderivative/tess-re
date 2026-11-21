@@ -717,7 +717,8 @@ impl PyLayerWindow {
         keyboard = "none",
         output = None,
         input_region = None,
-        click_through = None
+        click_through = None,
+        scheme = None
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -734,6 +735,7 @@ impl PyLayerWindow {
         output: Option<&Bound<'_, PyAny>>,
         input_region: Option<&Bound<'_, PyAny>>,
         click_through: Option<bool>,
+        scheme: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         match availability() {
             Availability::Unsupported(why) => return Err(UnsupportedPlatform::new_err(why)),
@@ -781,6 +783,7 @@ impl PyLayerWindow {
         let warnings = warnings_of(&config)?;
         let (width, height) = headless_size(&config);
         let mut base = PyWindow::construct(width, height, namespace, false, 0.0, 0.0)?;
+        base.take_scheme(scheme, "LayerWindow")?;
         let handles = &mut base.handles;
         // Layout is in logical pixels, drawn at the surface's scale; transparent, so
         // a rounded or floating bar needs no background rectangle.

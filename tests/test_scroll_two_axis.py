@@ -360,7 +360,8 @@ def pixel(window, x, y):
 
 
 def test_two_thumbs_are_drawn_where_the_axes_overflow_and_leave_the_corner_empty():
-    window = Window(width=300, height=200)
+    # The dark scheme: `on_surface_variant` is #CAC4D0 there (the light scheme's is #49454F).
+    window = Window(width=300, height=200, scheme="dark")
     window.root.set(padding=0)
     view, _, _ = both_view(window)
     view.set(fill=BACKGROUND)

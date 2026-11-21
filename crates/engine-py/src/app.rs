@@ -21,7 +21,7 @@
 //! the platform layer calls in `about_to_wait` and before any other handler:
 //! every Python callback still runs on the loop thread with the GIL held.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -37,6 +37,7 @@ use engine_platform::{
 use engine_render::{GpuReport, GpuWatch, PresentChoice, WindowRenderer};
 use peniko::kurbo::Point;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use taffy::prelude::{AvailableSpace, Size};
 use winit::window::{Window, WindowId};
 
@@ -77,6 +78,8 @@ pub struct AppState {
     output_listeners: crate::outputs::OutputListeners,
     /// TRE-REQ-026: `on("connection_lost", fn)`, called once when the compositor goes away mid-run.
     connection_lost: RefCell<Option<Py<PyAny>>>,
+    /// 0.6.11: the colour scheme a window follows when it sets none (`App(scheme=...)`).
+    scheme: Cell<crate::scheme::Setting>,
 }
 
 /// One registered window's data, extracted once (up front, while the
@@ -875,15 +878,70 @@ struct WindowRuntime {
 
 #[pymethods]
 impl App {
+    /// `scheme` is the colour scheme every window follows that sets none of its own: `"light"`,
+    /// `"dark"` or `"auto"` (the default: the OS appearance, light while it is unknown).
     #[new]
-    fn new() -> Self {
-        Self(ThreadBound::new(AppState {
+    #[pyo3(signature = (scheme=None))]
+    fn new(scheme: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let scheme = match scheme.filter(|v| !v.is_none()) {
+            Some(value) => crate::scheme::Setting::parse(value, "App")?,
+            None => crate::scheme::Setting::Auto,
+        };
+        Ok(Self(ThreadBound::new(AppState {
             windows: RefCell::new(Vec::new()),
             live: Rc::new(RefCell::new(None)),
             calls: CallQueue::default(),
             output_listeners: Default::default(),
             connection_lost: RefCell::new(None),
-        }))
+            scheme: Cell::new(scheme),
+        })))
+    }
+
+    /// 0.6.11: sets app properties: `scheme` (`"light"`, `"dark"` or `"auto"`), which every
+    /// window that sets none of its own follows, live. A bad value raises and changes nothing.
+    #[pyo3(signature = (**props))]
+    fn set(&self, py: Python<'_>, props: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
+        let mut scheme = None;
+        if let Some(props) = props {
+            for (name, value) in props.iter() {
+                let name: String = name.extract()?;
+                match name.as_str() {
+                    "scheme" => {
+                        scheme = Some(crate::scheme::Setting::parse(&value, "App")?);
+                    }
+                    _ => {
+                        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                            "unknown app property {name:?} -- settable: scheme"
+                        )));
+                    }
+                }
+            }
+        }
+        if let Some(setting) = scheme {
+            self.scheme.set(setting);
+            for window in self.windows.borrow().iter() {
+                let window = window.borrow(py);
+                window.handles.scheme.set_inherited(setting);
+                window.handles.sync_scheme();
+            }
+        }
+        Ok(())
+    }
+
+    /// 0.6.11: reads an app property: `scheme`.
+    fn get(&self, name: &str, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        match name {
+            "scheme" => Ok(self
+                .scheme
+                .get()
+                .name()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown app property {name:?} -- valid: scheme"
+            ))),
+        }
     }
 
     /// M87 (tess_re issue #6): a `Send + Sync` handle a background thread can
@@ -1011,6 +1069,12 @@ impl App {
     /// new window's GPU can't be set up it closes by itself and the error is
     /// logged, since the call has returned by then.
     fn add_window(&self, py: Python<'_>, window: Py<PyWindow>) -> PyResult<()> {
+        {
+            // 0.6.11: the window follows this app's scheme unless it sets its own.
+            let borrowed = window.borrow(py);
+            borrowed.handles.scheme.set_inherited(self.scheme.get());
+            borrowed.handles.sync_scheme();
+        }
         let live = self.live.borrow();
         let Some(live) = live.as_ref() else {
             self.windows.borrow_mut().push(window);
@@ -1230,6 +1294,13 @@ impl App {
                             handles.height.set(info.height);
                             layer.scale.set(info.scale);
                             layer.id.set(Some(info.id));
+                            // 0.6.11: the OS appearance, for a window on `scheme="auto"`.
+                            if handles.scheme.follows_os() {
+                                handles
+                                    .scheme
+                                    .set_os_dark(engine_platform::appearance::current_dark(None));
+                                handles.sync_scheme();
+                            }
                             *layer.controller.borrow_mut() = Some(info.controller.clone());
                             // A `set()` made before this point (TRE-REQ-020) was only stored: tell the
                             // surface now, in the order it was made, before anything later.
@@ -1490,6 +1561,16 @@ impl App {
                     engine_platform::appearance::current_reduced_motion(Some(&window))
                         .unwrap_or(false),
                 );
+                // 0.6.11: the OS appearance, for a window on `scheme="auto"`.
+                if setup.handles.scheme.follows_os() {
+                    setup
+                        .handles
+                        .scheme
+                        .set_os_dark(engine_platform::appearance::current_dark(Some(
+                            window.as_ref(),
+                        )));
+                    setup.handles.sync_scheme();
+                }
                 // 0.5.0 M2: `winit` can open a window maximized, but not
                 // minimized -- a `minimize()` before `App.run()` lands here.
                 if setup.handles.minimized.get() {
@@ -2337,6 +2418,9 @@ impl App {
                     // A real OS appearance change: tess_re themes nothing
                     // itself (M99), so it only tells the framework.
                     InputEvent::ThemeChanged { dark } => {
+                        // 0.6.11: a window on `scheme="auto"` follows it.
+                        runtime.handles.scheme.set_os_dark(Some(dark));
+                        runtime.handles.sync_scheme();
                         listeners::deliver_window(
                             &runtime.handles.window_listeners,
                             py,

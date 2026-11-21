@@ -34,6 +34,7 @@ mod node_props;
 mod outputs;
 mod popup_window;
 mod scale;
+mod scheme;
 mod scrollbar_props;
 mod shader;
 mod shaper;
@@ -81,6 +82,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.py().get_type::<layer_window::UnsupportedPlatform>(),
     )?;
     m.add_function(wrap_pyfunction!(layer_window::supports, m)?)?;
+    m.add_function(wrap_pyfunction!(scheme::baseline_colors, m)?)?;
     m.add_class::<Node>()?;
     m.add_class::<Painter>()?;
     m.add_class::<gradient::PyGradient>()?;

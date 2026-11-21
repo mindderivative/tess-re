@@ -29,10 +29,11 @@ def test_create_lists_its_kinds_and_required_props() -> None:
         w.create("terminal", cols=10, rows=2)
 
 
-def test_text_props_read_back_and_default_to_black() -> None:
+def test_text_props_read_back_and_default_to_the_schemes_on_surface() -> None:
     w = window()
     text = w.create("text", text="Hello")
-    assert text.get("fill") == (0, 0, 0, 255)
+    # 0.6.11: no fill is the scheme's `on_surface` (light here), not black.
+    assert text.get("fill") == (0x1D, 0x1B, 0x20, 255)
     values: dict[str, Any] = {
         "text": "Bonjour",
         "font_family": "Roboto",
@@ -86,6 +87,8 @@ def test_a_text_inputs_fill_is_its_text_color_and_animates() -> None:
     w = window()
     w.advance(0)
     field = w.create("text_input")
+    assert field.get("fill") == (0x1D, 0x1B, 0x20, 255), "the scheme's on_surface until it is set"
+    field.set(fill=(0, 0, 0, 255))
     assert field.get("fill") == (0, 0, 0, 255)
     field.animate("fill", (200, 0, 0, 255), 100)
     w.advance(50)

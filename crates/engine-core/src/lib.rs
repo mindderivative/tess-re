@@ -31,6 +31,7 @@ mod node;
 mod overlay;
 mod path;
 mod path_template;
+mod scheme;
 mod scrollbar;
 mod scrollbar_props;
 mod shader;
@@ -63,14 +64,15 @@ pub use layout_anim::{LayoutAnim, LayoutProp};
 pub use node::{
     Anchored, Blend, CalcLen, CalcSize, CaretShape, CellColor, ContentFit, CornerRadii, Cursor,
     FieldOverflow, FitContent, ImageState, InputMode, ItemExtent, Mask, Node, NodeId, NodeKind,
-    NodeTransform, PaintProperties, SCROLLBAR_GRAB_SLOP, SCROLLBAR_MARGIN, SCROLLBAR_MIN_LENGTH,
-    SCROLLBAR_THICKNESS, ScrollViewState, Shadow, Shadows, SnapAlign, TerminalCell,
-    TerminalPalette, TerminalState, TextAlign, TextFieldState, TextOptions, TextSpan, TextState,
-    VerticalAlign, VirtualListState, WindowRegion,
+    NodeTransform, PaintProperties, ResolvedPalette, SCROLLBAR_GRAB_SLOP, SCROLLBAR_MARGIN,
+    SCROLLBAR_MIN_LENGTH, SCROLLBAR_THICKNESS, ScrollViewState, Shadow, Shadows, SnapAlign,
+    TerminalCell, TerminalPalette, TerminalState, TextAlign, TextFieldState, TextOptions, TextSpan,
+    TextState, VerticalAlign, VirtualListState, WindowRegion,
 };
 pub use overlay::{AnchorBox, OverlayMeta, Placement};
 pub use path::{HitShape, MorphMode, PathData, PathState, fit_transform, trim};
 pub use path_template::PathTemplate;
+pub use scheme::{Role as SchemeRole, Scheme, SchemeColors};
 pub use scrollbar::{
     Arrow, Defaults as ScrollDefaults, FADE as SCROLLBAR_FADE, KEY_LINE, PAGE_DELAY, PAGE_FRACTION,
     PAGE_REPEAT, ScrollAxis, ScrollOrientation, ScrollbarMetrics, ScrollbarState, Scroller, Thumb,

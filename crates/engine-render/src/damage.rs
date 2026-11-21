@@ -1724,6 +1724,18 @@ fn node_fingerprint_with(
         }
     }
     let focused = tree.focused() == Some(id);
+    // 0.6.11: these kinds paint colours of the window's scheme where they have none of their
+    // own, so a new scheme is a change to them.
+    if matches!(
+        kind,
+        NodeKind::Text(_)
+            | NodeKind::TextField(_)
+            | NodeKind::ScrollView(_)
+            | NodeKind::VirtualList(_)
+            | NodeKind::Terminal(_)
+    ) {
+        tree.scheme_revision().hash(h);
+    }
     match kind {
         NodeKind::Rect | NodeKind::Container => {}
         NodeKind::Text(state) => text_fingerprint(h, state),
@@ -1774,7 +1786,9 @@ fn paint_fingerprint(h: &mut impl Hasher, paint: &PaintProperties) {
         blend,
         backdrop_blur,
         mask,
+        scheme_fill,
     } = paint;
+    scheme_fill.hash(h);
     color(h, background.current);
     num(h, corner_radius.current);
     num(h, opacity.current);
@@ -1957,6 +1971,7 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
         selection_anchor,
         preedit,
         text_tint,
+        tint_scheme,
         multiline,
         show_whitespace,
         syntax_spans,
@@ -2005,6 +2020,7 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
     selection_anchor.hash(h);
     preedit.hash(h);
     color(h, text_tint.current);
+    tint_scheme.hash(h);
     multiline.hash(h);
     show_whitespace.hash(h);
     for (range, span_color) in syntax_spans {
@@ -2281,8 +2297,12 @@ fn terminal_fingerprint(h: &mut impl Hasher, state: &TerminalState) {
         selection,
     } = palette;
     ansi.iter().for_each(|c| color(h, *c));
-    for c in [foreground, background, cursor, selection] {
-        color(h, *c);
+    color(h, *background);
+    for c in [foreground, cursor, selection] {
+        c.is_some().hash(h);
+        if let Some(c) = c {
+            color(h, *c);
+        }
     }
 }
 

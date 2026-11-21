@@ -131,7 +131,8 @@ impl PyPopupWindow {
         offset = None,
         grab = true,
         geometry = None,
-        input_region = None
+        input_region = None,
+        scheme = None
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -145,6 +146,7 @@ impl PyPopupWindow {
         grab: bool,
         geometry: Option<&Bound<'_, PyAny>>,
         input_region: Option<&Bound<'_, PyAny>>,
+        scheme: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
         match availability() {
             Availability::Unsupported(why) => return Err(UnsupportedPlatform::new_err(why)),
@@ -226,6 +228,7 @@ impl PyPopupWindow {
             .validate()
             .map_err(|e| PyValueError::new_err(format!("PopupWindow {e}")))?;
         let mut base = PyWindow::construct(width, height, "popup", false, 0.0, 0.0)?;
+        base.take_scheme(scheme, "PopupWindow")?;
         let handles = &mut base.handles;
         // Layout in logical pixels, drawn at the surface's scale; transparent so a rounded menu
         // needs no backdrop.

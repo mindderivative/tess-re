@@ -246,6 +246,8 @@ pub(crate) enum Change {
     TrimStart(f64),
     TrimEnd(f64),
     Fill(Color),
+    /// 0.6.11: `fill` set to `None`: a text or text input goes back to its window scheme's colour.
+    FillUnset,
     /// 0.5.4 (#110).
     Blur(f64),
     BackdropBlur(f64),
@@ -275,14 +277,15 @@ pub(crate) enum Change {
 }
 
 /// M95: the palette keys a `set(palette={...})` gives -- the rest keep
-/// their current colors.
+/// their current colors. 0.6.11: `foreground`, `cursor` and `selection` also take `None`,
+/// which gives back the window's scheme (the outer `Option` is "given", the inner "a colour").
 #[derive(Default)]
 pub(crate) struct PalettePatch {
     ansi: Option<[Color; 16]>,
-    foreground: Option<Color>,
+    foreground: Option<Option<Color>>,
     background: Option<Color>,
-    cursor: Option<Color>,
-    selection: Option<Color>,
+    cursor: Option<Option<Color>>,
+    selection: Option<Option<Color>>,
 }
 
 impl PalettePatch {
@@ -290,9 +293,11 @@ impl PalettePatch {
         if let Some(ansi) = self.ansi {
             palette.ansi = ansi;
         }
+        if let Some(background) = self.background {
+            palette.background = background;
+        }
         let fields = [
             (self.foreground, &mut palette.foreground),
-            (self.background, &mut palette.background),
             (self.cursor, &mut palette.cursor),
             (self.selection, &mut palette.selection),
         ];
@@ -305,8 +310,8 @@ impl PalettePatch {
 }
 
 fn parse_palette(value: &Bound<'_, PyAny>, name: &str) -> PyResult<PalettePatch> {
-    let expected =
-        "a dict with any of: ansi (16 colors), foreground, background, cursor, selection";
+    let expected = "a dict with any of: ansi (16 colors), foreground, background, cursor, \
+                    selection (foreground, cursor and selection also take None)";
     let dict = value
         .cast::<PyDict>()
         .map_err(|_| invalid(name, expected))?;
@@ -325,10 +330,10 @@ fn parse_palette(value: &Bound<'_, PyAny>, name: &str) -> PyResult<PalettePatch>
                 }
                 patch.ansi = Some(ansi);
             }
-            "foreground" => patch.foreground = Some(parse_color(&color, name)?),
+            "foreground" => patch.foreground = Some(optional_color(&color, name)?),
             "background" => patch.background = Some(parse_color(&color, name)?),
-            "cursor" => patch.cursor = Some(parse_color(&color, name)?),
-            "selection" => patch.selection = Some(parse_color(&color, name)?),
+            "cursor" => patch.cursor = Some(optional_color(&color, name)?),
+            "selection" => patch.selection = Some(optional_color(&color, name)?),
             _ => return Err(invalid(name, expected)),
         }
     }
@@ -343,10 +348,11 @@ fn palette_to_py(palette: &TerminalPalette, py: Python<'_>) -> PyResult<Py<PyAny
         .map(|c| color_to_py(*c, py))
         .collect::<PyResult<Vec<_>>>()?;
     dict.set_item("ansi", ansi)?;
-    dict.set_item("foreground", color_to_py(palette.foreground, py)?)?;
+    let optional = |c: Option<Color>| c.map_or_else(|| Ok(py.None()), |c| color_to_py(c, py));
+    dict.set_item("foreground", optional(palette.foreground)?)?;
     dict.set_item("background", color_to_py(palette.background, py)?)?;
-    dict.set_item("cursor", color_to_py(palette.cursor, py)?)?;
-    dict.set_item("selection", color_to_py(palette.selection, py)?)?;
+    dict.set_item("cursor", optional(palette.cursor)?)?;
+    dict.set_item("selection", optional(palette.selection)?)?;
     Ok(dict.into_any().unbind())
 }
 
@@ -530,6 +536,7 @@ pub(crate) fn parse_shadows(value: &Bound<'_, PyAny>, name: &str) -> PyResult<Ve
 /// other name.
 pub(crate) fn animatable_to_py(
     node: &engine_core::Node,
+    scheme_text: Color,
     name: &str,
     target: bool,
     py: Python<'_>,
@@ -551,9 +558,12 @@ pub(crate) fn animatable_to_py(
                 },
             )?
             .into_any(),
+            // A text or text input with no colour of its own reads as its scheme's.
             None => color_to_py(
                 match &node.kind {
+                    NodeKind::TextField(state) if state.tint_scheme => scheme_text,
                     NodeKind::TextField(state) => *pick(&state.text_tint, target),
+                    NodeKind::Text(_) if node.paint.scheme_fill => scheme_text,
                     _ => *pick(&node.paint.background, target),
                 },
                 py,
@@ -782,6 +792,9 @@ impl Change {
                 NodeKind::Rect | NodeKind::Container | NodeKind::Path(_) | NodeKind::Text(_)
             )
         }
+        fn text_or_input(kind: &NodeKind) -> bool {
+            matches!(kind, NodeKind::Text(_) | NodeKind::TextField(_))
+        }
         Some(match self {
             Change::Data(_) => ("data", "path", path),
             Change::ViewBox(_) => ("view_box", "path", path),
@@ -805,6 +818,7 @@ impl Change {
             Change::Obscured(_) => ("obscured", "text_input", text_input),
             Change::Palette(_) => ("palette", "terminal", terminal),
             Change::FillGradient(_) => ("fill", "box, path or text", box_node),
+            Change::FillUnset => ("fill", "text or text_input", text_or_input),
             _ => return None,
         })
     }
@@ -1257,10 +1271,14 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
         }
         "trim_start" => Change::TrimStart(fraction(value, name)?),
         "trim_end" => Change::TrimEnd(fraction(value, name)?),
+        "fill" if value.is_none() => Change::FillUnset,
         "fill" => match value.extract::<crate::gradient::PyGradient>() {
             Ok(gradient) => Change::FillGradient(gradient.inner),
             Err(_) => Change::Fill(parse_color(value, name).map_err(|_| {
-                invalid(name, "an (r, g, b, a) tuple of 0-255 ints, or a Gradient")
+                invalid(
+                    name,
+                    "an (r, g, b, a) tuple of 0-255 ints, or a Gradient (None for the scheme's colour, on a text or text_input)",
+                )
             })?),
         },
         "stroke_color" => match value.extract::<crate::gradient::PyGradient>() {
@@ -1754,7 +1772,9 @@ impl Node {
             let node = tree.get(self.id).ok_or_else(|| {
                 PyValueError::new_err("this node has been removed from its window")
             })?;
-            if let Some(value) = animatable_to_py(node, name, false, py)? {
+            if let Some(value) =
+                animatable_to_py(node, tree.scheme_colors().text(), name, false, py)?
+            {
                 return Ok(value);
             }
             match name {
@@ -2195,7 +2215,7 @@ impl Node {
         let node = tree
             .get(self.id)
             .ok_or_else(|| PyValueError::new_err("this node has been removed from its window"))?;
-        animatable_to_py(node, name, true, py)?.ok_or_else(|| {
+        animatable_to_py(node, tree.scheme_colors().text(), name, true, py)?.ok_or_else(|| {
             PyValueError::new_err(format!("node property {name:?} isn't animatable"))
         })
     }
@@ -2543,14 +2563,28 @@ impl Node {
                 }
                 Change::Fill(color) => {
                     match &mut node.kind {
-                        NodeKind::TextField(state) => state.text_tint.set_now(color),
-                        _ => node.paint.background.set_now(color),
+                        NodeKind::TextField(state) => {
+                            state.text_tint.set_now(color);
+                            state.tint_scheme = false;
+                        }
+                        _ => {
+                            node.paint.background.set_now(color);
+                            node.paint.scheme_fill = false;
+                        }
                     }
                     // A colour replaces any gradient.
                     node.paint.gradient = None;
                 }
+                Change::FillUnset => {
+                    match &mut node.kind {
+                        NodeKind::TextField(state) => state.tint_scheme = true,
+                        _ => node.paint.scheme_fill = true,
+                    }
+                    node.paint.gradient = None;
+                }
                 Change::FillGradient(gradient) => {
                     node.paint.gradient = Some(Box::new(Animated::new(gradient)));
+                    node.paint.scheme_fill = false;
                 }
                 Change::StrokeColor(color) => {
                     node.paint.border_color.set_now(color);
