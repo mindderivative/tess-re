@@ -211,6 +211,8 @@ no colour of its own, so say the colour and its alpha, which *is* the layer's op
 | `focus_layer_any_modality` | `bool` | `False`: `focus_layer` shows only for keyboard (or assistive-technology) focus | | `field.set(focus_layer_any_modality=True)` |
 | `state_layer_ms` | number `0`..one hour, or `None` | `100` (`None` resets): fade in and out, `0` is at once | milliseconds | `button.set(state_layer_ms=150)` |
 | `state_layer_easing` | preset name or cubic bezier `(x1, y1, x2, y2)`, or `None` | `"standard"` (`None` resets) | see [Easings](#scrollbar-and-scroll-feel-0611) | `button.set(state_layer_easing="linear")` |
+| `hover_layer_ms`, `pressed_layer_ms`, `focus_layer_ms` (0.6.12) | number `0`..one hour, or `None` | `None`: that state uses `state_layer_ms`; `0` is at once | milliseconds | `button.set(hover_layer_ms=15, pressed_layer_ms=105)` |
+| `hover_layer_easing`, `pressed_layer_easing`, `focus_layer_easing` (0.6.12) | preset name or cubic bezier, or `None` | `None`: that state uses `state_layer_easing` | see [Easings](#scrollbar-and-scroll-feel-0611) | `button.set(hover_layer_easing="linear")` |
 
 ```python
 # A button that follows the UX spec: on_surface layers, no code per frame.
@@ -222,8 +224,21 @@ button = window.create("box", fill=(231, 224, 236, 255), corner_radius=20, focus
 
 - **Which layer shows.** One at a time, by the spec's precedence: pressed, then focus, then hover (a state with no colour
   set passes to the next). The layer changes by fading the drawn colour (alpha, and the colour if two layers differ)
-  from what shows now to the new target over `state_layer_ms`, on `state_layer_easing`; a change in mid-fade starts from
+  from what shows now to the new target over `state_layer_ms`, on `state_layer_easing` (or the entered state's own, below); a change in mid-fade starts from
   where it is. The result colour of a pixel is `fill * (1 - a) + layer * a`.
+- **Per-state timings (0.6.12).** The UX spec's fades differ by state (State Layers: hover layer fade 15 ms linear;
+  press fade-in 105 ms; release fade-out 375 ms linear; the Motion note's `short3`, 150 ms `standard`, for a colour
+  change of a control state), so each state may override the shared pair with `hover_layer_ms`, `pressed_layer_ms`,
+  `focus_layer_ms` and `hover_layer_easing`, `pressed_layer_easing`, `focus_layer_easing`; `None` (the default) means
+  `state_layer_ms` / `state_layer_easing`, so nothing changes unless one is set. **Which state's timing a fade uses:**
+  the state being *entered* decides the duration and easing of a fade in, and of a change from one layer to another
+  (hover to pressed takes `pressed_layer_ms`; pressed back to hover takes `hover_layer_ms`); the state being *left*
+  decides a fade out to nothing (the pointer leaving a hovered node fades out over `hover_layer_ms`; releasing a
+  press that is no longer hovered fades out over `pressed_layer_ms`). A change in mid-fade starts from where the
+  colour is, with the timing of the state it heads for. Reduced motion stays instant whatever is set. Values are
+  checked as `state_layer_ms` is (`ValueError` for a negative, non-finite, boolean or over-an-hour number, or a bad
+  easing). The spec's values, as a recipe: `hover_layer_ms=15, hover_layer_easing="linear", pressed_layer_ms=105,
+  focus_layer_ms=150`.
 - **Hover** applies to the node under the pointer and every ancestor of it (what `pointer_enter` is told about is the
   hit node; the layers follow the whole chain, as CSS `:hover` does), so a label inside a button hovers the button, and
   a panel and the button in it can both have a hover layer. The pointer leaving the window clears it.
