@@ -443,3 +443,13 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   is on. `escape_chord_reverse` (default `None`) moves backward. Chords are `ctrl`/`shift`/`alt`/`meta` plus one key, matched
   exactly; a bad one raises `ValueError`. Behaviour change: Ctrl+Shift+Escape no longer reaches a shell (set
   `escape_chord=None` to keep it). See [Text](guide/text.md#terminal).
+
+- **`hover_layer`, `pressed_layer`, `focus_layer`, `focus_layer_any_modality`, `state_layer_ms`, `state_layer_easing`
+  (new, P13, UX ADR-0009; opt-in).** The engine draws and fades state layers: a colour whose alpha is the opacity
+  (`hover_layer=(29, 27, 32, 20)` is 8 %), over the node's fill and border, under its children, clipped to its shape,
+  for the hovered node and its ancestors (hover), a held primary press (pressed) and keyboard focus (focus; pointer
+  focus too with `focus_layer_any_modality=True`). One layer at a time: pressed, then focus, then hover. The fade is
+  `state_layer_ms` (default 100) on `state_layer_easing` (default `"standard"`), instant under reduced motion, and a
+  disabled node draws none. All are `None` or off by default, so nothing changes for an app that sets none: no
+  migration. An app that drew these states itself from `pointer_enter`/`pointer_leave`/`focus` can drop that code.
+  See [State layers](reference/properties.md#state-layers-0611).

@@ -1642,6 +1642,10 @@ pub struct PaintProperties {
     /// in the node's own pixels, of everything painted behind the node,
     /// shown inside its box. `0.0` is none.
     pub backdrop_blur: Animated<f64>,
+    /// 0.6.11 (P13): the hover, pressed and focus overlays the engine draws and fades over the
+    /// node's fill and border, under its children (`hover_layer`, `pressed_layer`,
+    /// `focus_layer`). Boxed and `None` for a node that never had one.
+    pub state_layer: Option<Box<crate::state_layer::StateLayer>>,
 }
 
 /// How a node mixes with what is behind it (CSS `mix-blend-mode`).
@@ -1724,6 +1728,7 @@ impl PaintProperties {
             backdrop_blur: Animated::new(0.0),
             mask: None,
             scheme_fill: false,
+            state_layer: None,
         }
     }
 
@@ -1761,7 +1766,13 @@ impl PaintProperties {
             .is_some_and(|gradient| gradient.tick(now, completed));
         let blur = self.blur.tick(now, completed);
         let backdrop_blur = self.backdrop_blur.tick(now, completed);
-        blur || backdrop_blur
+        let state_layer = self
+            .state_layer
+            .as_mut()
+            .is_some_and(|layer| layer.tick(now, completed));
+        state_layer
+            || blur
+            || backdrop_blur
             || gradient
             || radii
             || shadows

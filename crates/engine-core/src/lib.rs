@@ -35,6 +35,7 @@ mod scheme;
 mod scrollbar;
 mod scrollbar_props;
 mod shader;
+mod state_layer;
 mod svg;
 mod svg_smil;
 mod tree;
@@ -87,6 +88,7 @@ pub use shader::{
     FRAME_BLOCK_SIZE, Shader, ShaderError, ShaderMode, UniformKind, UniformValue, frame_block,
     shader_animations_pending,
 };
+pub use state_layer::{DEFAULT_MS as STATE_LAYER_MS, StateHolds, StateLayer};
 pub use svg::{
     SvgBitmap, SvgClip, SvgDocument, SvgFill, SvgFonts, SvgGroup, SvgImage, SvgImages, SvgMask,
     SvgNode, SvgPaint, SvgPath, SvgPattern, SvgShadow, SvgState, SvgStroke,

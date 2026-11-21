@@ -179,7 +179,12 @@ impl Tree {
         if hit == self.hovered {
             return hit;
         }
+        let old = self.hovered;
         self.hovered = hit;
+        // 0.6.11 (P13): the nodes the pointer left and entered (and their ancestors) take
+        // or lose their hover layers.
+        self.note_state_chain(old);
+        self.note_state_chain(hit);
         hit
     }
 
@@ -192,6 +197,9 @@ impl Tree {
             return;
         }
         self.pressed = new;
+        // 0.6.11 (P13): the pressed node and its ancestors take or lose their pressed layers.
+        self.note_state_chain(old.map(|(_, id)| id));
+        self.note_state_chain(new.map(|(_, id)| id));
     }
 
     /// §10's own minimal keyboard focus model: Tab/Shift-Tab moves
@@ -295,6 +303,9 @@ impl Tree {
         if old == new {
             return None;
         }
+        // 0.6.11 (P13): the nodes that lost and gained focus look at their focus layers again.
+        self.note_state_node(old);
+        self.note_state_node(new);
         // 0.4.2 M12 (issue #24): a newly focused node is scrolled into
         // view, however focus got there -- Tab, a click, `focus()`, or
         // assistive technology.

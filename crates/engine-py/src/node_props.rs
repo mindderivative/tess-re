@@ -26,7 +26,7 @@ use crate::node_layout::{LAYOUT_PROPS, StyleEdit, parse_layout, read_layout};
 
 /// Every property `set` accepts besides the layout ones
 /// (`node_layout::LAYOUT_PROPS`), in the order its error lists them.
-const SETTABLE: [&str; 78] = [
+const SETTABLE: [&str; 84] = [
     // 0.5.7 (#179): placed against another node.
     "anchor",
     "placement",
@@ -106,6 +106,13 @@ const SETTABLE: [&str; 78] = [
     "hit_testable",
     "window_region",
     "shader",
+    // 0.6.11 (P13): the state layers (`state_layer_props`).
+    "hover_layer",
+    "pressed_layer",
+    "focus_layer",
+    "focus_layer_any_modality",
+    "state_layer_ms",
+    "state_layer_easing",
 ];
 
 /// The M93 role vocabulary.
@@ -234,6 +241,8 @@ pub(crate) enum Change {
     /// 0.5.0 M3: `window_region`.
     WindowRegion(WindowRegion),
     HitTestable(Option<bool>),
+    /// 0.6.11 (P13): one of the state-layer properties (`state_layer_props`).
+    StateLayer(crate::state_layer_props::Edit),
     /// 0.5.1 (#66): the node's `shader`; `None` clears it.
     Shader(Option<std::sync::Arc<engine_core::Shader>>),
     Style(StyleEdit),
@@ -1261,6 +1270,9 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
             })
         }
         "hit_testable" => Change::HitTestable(optional_bool(value, name)?),
+        name if crate::state_layer_props::NAMES.contains(&name) => {
+            Change::StateLayer(crate::state_layer_props::parse(name, value)?)
+        }
         // 0.5.0 M3 (issue #28): `"drag"` makes the node a title bar -- a
         // primary press on it, or on a non-interactive node inside, moves
         // the window -- `"none"` rules that out, `None` leaves it to the
@@ -1905,6 +1917,9 @@ impl Node {
             if let Some(value) = read_kind_prop(name, node, py) {
                 return value;
             }
+            if crate::state_layer_props::NAMES.contains(&name) {
+                return crate::state_layer_props::read(name, node.paint.state_layer.as_deref(), py);
+            }
             if let Some((_, key, _)) = CALLBACKS.iter().find(|(n, _, _)| *n == name) {
                 return Ok(
                     crate::node_callbacks::callback(&self.handlers, self.id, *key, py)
@@ -2448,6 +2463,7 @@ impl Node {
         let mut anchored = node.anchored.as_deref().copied();
         let mut anchor_changed = false;
         let mut kind_changed = false;
+        let mut state_layer_changed = false;
         let mut resize_terminal = false;
         let mut reset_rows = false;
         let mut callbacks = Vec::new();
@@ -2463,7 +2479,10 @@ impl Node {
                 Change::Checked(checked) => access.checked = checked,
                 Change::Selected(selected) => access.selected = selected,
                 Change::Expanded(expanded) => access.expanded = expanded,
-                Change::Disabled(disabled) => access.states.disabled = disabled,
+                Change::Disabled(disabled) => {
+                    access.states.disabled = disabled;
+                    state_layer_changed = true;
+                }
                 Change::Level(level) => access.level = level,
                 Change::Live(live) => access.live = live,
                 Change::A11yHidden(hidden) => access.hidden = hidden,
@@ -2491,6 +2510,10 @@ impl Node {
                 Change::Cursor(cursor) => node.cursor = cursor,
                 Change::WindowRegion(region) => node.window_region = region,
                 Change::HitTestable(hit_testable) => node.hit_testable = hit_testable,
+                Change::StateLayer(edit) => {
+                    edit(node.paint.state_layer.get_or_insert_with(Default::default));
+                    state_layer_changed = true;
+                }
                 Change::Shader(shader) => node.shader = shader,
                 Change::Style(edit) => edit(style.get_or_insert_with(|| node.layout_style.clone())),
                 Change::Size { height, mode, edit } => {
@@ -2788,6 +2811,9 @@ impl Node {
         tree.set_calc_size(self.id, true, calc.height);
         if anchor_changed {
             tree.set_anchor(self.id, anchored);
+        }
+        if state_layer_changed {
+            tree.mark_state_layer(self.id);
         }
         if kind_changed && fit.any() {
             tree.relayout(self.id);

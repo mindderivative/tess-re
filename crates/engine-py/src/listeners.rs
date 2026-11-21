@@ -581,9 +581,13 @@ pub(crate) fn route_focus(
         });
     }
     if let Some(new) = new {
+        let visible = KEYBOARD_MODALITY.with(Cell::get);
+        // 0.6.11 (P13): the engine draws `focus_layer` only for focus the `focus` event calls
+        // visible (unless the node asks for it on pointer focus too).
+        ctx.tree.borrow_mut().set_focus_visible(visible);
         deliver(ctx, py, EventType::Focus, new, None, |e| {
             e.related_target = related(old);
-            e.focus_visible = Some(KEYBOARD_MODALITY.with(Cell::get));
+            e.focus_visible = Some(visible);
         });
     }
 }

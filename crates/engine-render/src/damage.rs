@@ -1787,8 +1787,20 @@ fn paint_fingerprint(h: &mut impl Hasher, paint: &PaintProperties) {
         backdrop_blur,
         mask,
         scheme_fill,
+        state_layer,
     } = paint;
     scheme_fill.hash(h);
+    // 0.6.11 (P13): what the state layer shows now, fading included.
+    match state_layer
+        .as_deref()
+        .and_then(engine_core::StateLayer::visible)
+    {
+        None => 0u8.hash(h),
+        Some(shown) => {
+            1u8.hash(h);
+            color(h, shown);
+        }
+    }
     color(h, background.current);
     num(h, corner_radius.current);
     num(h, opacity.current);
