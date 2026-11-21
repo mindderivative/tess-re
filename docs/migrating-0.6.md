@@ -297,3 +297,26 @@ Nothing you have written breaks. New calls and fixes, listed by request:
   built. A virtual list now fires `scroll` (it did not for the wheel either). Nothing to migrate unless an app handled
   these keys itself on a list or focused a row it expected to stay put: such an app now sees the list scroll as well.
   See [Keyboard scrolling](guide/nodes-and-layout.md#keyboard-scrolling).
+
+
+One behaviour changes for every scroll view and virtual list: the wheel notch. The rest is new and opt-in.
+
+- **A wheel notch scrolls 40 px, not 20 (changed, UXREQ-001).** The Tesserae UX note "Scrollbar and Scroll Container"
+  sets `scroll.wheel.notch` to 40. It applies to every `"scroll_view"` and `"virtual_list"`, and to the pixels a
+  `wheel` event reports for a wheel that sends lines. Deltas that arrive in pixels (a trackpad, a touch pan) are taken
+  as they come. Code that tuned a count of notches for 20 px (an app that wrote `scroll_offset` from a wheel
+  listener, a test that scrolls by one line and expects 20) takes half as many notches now.
+- **`orientation="both"` (UXREQ-001, new, opt-in).** A `"scroll_view"` scrolls on both axes, with `scroll_offset` the
+  vertical offset and the new `scroll_offset_x` the horizontal one (settable, readable, animatable). `"vertical"` and
+  `"horizontal"` views are unchanged: the same offsets, thumb, hit area, keys (a Page Up is still a whole viewport)
+  and `scroll` event, apart from the notch above. A `scroll` event now carries `x` and `y`, the offsets after the
+  change, on every scroll view; `old_value` and `new_value` stay the main axis' offset. See
+  [Two axes](guide/nodes-and-layout.md#two-axes-0611).
+- **Scrollbar properties (UXREQ-001, new).** `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`,
+  `scrollbar_gutter`, `scrollbar_corner`, `scrollbar_opacity`, `scrollbar_opacity_hover` and `scrollbar_opacity_drag`,
+  next to `scrollbar_fill` and `scrollbar_width`. A `"both"` view defaults them to the spec (8 px thumb, 12 px hit strip,
+  12 px gutter and corner, opacity 0.70 / 0.80 / 1.0); a one-axis view keeps its old look. `scrollbar_width` and the
+  new ones take `None` for the default. See [Scrollbar](reference/properties.md#scrollbar-0611).
+- **Internal (Rust):** `ScrollViewState::scrollbar_width` is `scrollbar.thickness: Option<f64>`;
+  `Tree::take_scroll_changes` returns `ScrollChange` values, not tuples; `grabs_scroll_view_thumb` returns the
+  `ScrollAxis` it grabbed. The Python API has no such change.

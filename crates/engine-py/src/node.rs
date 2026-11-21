@@ -194,6 +194,11 @@ impl Node {
         let scroll_max = if property == "scroll_offset" {
             self.layout_box(py);
             self.tree.borrow().max_scroll(self.id)
+        } else if property == "scroll_offset_x" {
+            self.layout_box(py);
+            self.tree
+                .borrow()
+                .max_scroll_axis(self.id, engine_core::ScrollAxis::Horizontal)
         } else {
             None
         };
@@ -411,6 +416,27 @@ impl Node {
                         self.completions.borrow_mut().entries.remove(&registered);
                         return Err(pyo3::exceptions::PyValueError::new_err(
                             "node property `scroll_offset` applies only to a scroll_view or virtual_list node",
+                        ));
+                    }
+                }
+            }
+            // 0.6.11: a `both` view's horizontal offset, eased the same way.
+            "scroll_offset_x" => {
+                let value = crate::node_props::parse_non_negative(&to, property)?;
+                let value = scroll_max.map_or(value, |max| value.min(max));
+                let registered =
+                    self.completions
+                        .borrow_mut()
+                        .register(on_complete, self.id, property);
+                let handle = Some(registered);
+                match &mut node.kind {
+                    NodeKind::ScrollView(state) => {
+                        animate_field(&mut state.scroll_x, value, duration, curve, now, handle);
+                    }
+                    _ => {
+                        self.completions.borrow_mut().entries.remove(&registered);
+                        return Err(pyo3::exceptions::PyValueError::new_err(
+                            "node property `scroll_offset_x` applies only to a scroll_view node",
                         ));
                     }
                 }

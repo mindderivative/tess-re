@@ -138,8 +138,9 @@ struct Snap {
     /// The node's `z_index`: a change moves its whole subtree among its
     /// siblings, not just the node.
     z_index: i32,
-    /// How far a scroller was scrolled (0 for anything else).
-    offset: f64,
+    /// How far a scroller was scrolled (0 for anything else): `(main, x)` -- the
+    /// offset of a scroll view's main axis (a list's) and a `both` view's other.
+    offset: (f64, f64),
     composed: Affine,
     content: u64,
     parent: Option<NodeId>,
@@ -164,8 +165,8 @@ struct Record {
     /// may stay wider than the exact union until the node is walked again.
     extent: Rect,
     z_index: i32,
-    /// How far a scroller was scrolled (0 for anything else).
-    offset: f64,
+    /// How far a scroller was scrolled (0 for anything else): `(main, x)`.
+    offset: (f64, f64),
     /// The node's box in window pixels, before margins and clipping.
     bounds: Rect,
     /// 0.5.4 (#126): what the node is, apart from where it is and how far its
@@ -818,11 +819,11 @@ impl DamageTracker {
             _ => return None,
         };
         let moved_by = peniko::kurbo::Vec2::new(dx, dy);
-        // (The old thumb's pixels are in the copy, `moved_by` along.)
-        if let Some(thumb) = thumb_rect(tree, scroller, before, record.composed) {
+        // (The old thumbs' pixels are in the copy, `moved_by` along.)
+        for thumb in thumb_rects(tree, scroller, before, record.composed) {
             rects.push((thumb + moved_by).inflate(2.0, 2.0).intersect(view));
         }
-        if let Some(thumb) = thumb_rect(tree, scroller, after, record.composed) {
+        for thumb in thumb_rects(tree, scroller, after, record.composed) {
             rects.push(thumb.inflate(2.0, 2.0).intersect(view));
         }
         Some((
@@ -1225,58 +1226,47 @@ fn change_rects(change: &Change, rects: &mut Vec<Rect>) {
     }
 }
 
-/// Where a scroller's scrollbar thumb is, in window pixels, with its offset
-/// at `offset`; `None` when it has nothing to scroll and shows none. The
-/// geometry is the paint's own (`thumb_geometry_at`).
-fn thumb_rect(tree: &Tree, scroller: NodeId, offset: f64, composed: Affine) -> Option<Rect> {
-    let node = tree.get(scroller)?;
+/// Where a scroller's scrollbar thumbs are, in window pixels, with its offsets
+/// at `offset` (`(main, x)`, see `Snap::offset`): none when it has nothing to
+/// scroll and shows none, one for a scroll view of one axis or a list, up to
+/// two for a `both` view. The geometry is the paint's own (`ScrollViewState::
+/// thumbs`, `thumb_geometry_at`).
+fn thumb_rects(tree: &Tree, scroller: NodeId, offset: (f64, f64), composed: Affine) -> Vec<Rect> {
+    let Some(node) = tree.get(scroller) else {
+        return Vec::new();
+    };
     let size = tree.layout(scroller).size;
     let (width, height) = (f64::from(size.width), f64::from(size.height));
-    let (horizontal, thickness, (track, thumb, along), content, viewport) = match &node.kind {
+    match &node.kind {
         NodeKind::ScrollView(state) => {
-            let child = *node.children.first()?;
-            let child_size = tree.layout(child).size;
-            let (viewport, content) = if state.horizontal {
-                (width, f64::from(child_size.width))
-            } else {
-                (height, f64::from(child_size.height))
+            let Some(&child) = node.children.first() else {
+                return Vec::new();
             };
-            (
-                state.horizontal,
-                state.scrollbar_width,
-                state.thumb_geometry_at(viewport, content, offset),
-                content,
-                viewport,
-            )
+            let child_size = tree.layout(child).size;
+            let content = (f64::from(child_size.width), f64::from(child_size.height));
+            let offsets = state.offsets_at(offset.0, offset.1);
+            state
+                .thumbs((width, height), content, offsets)
+                .iter()
+                .flatten()
+                .map(|thumb| composed.transform_rect_bbox(thumb.thumb))
+                .collect()
         }
-        NodeKind::VirtualList(state) => (
-            false,
-            SCROLLBAR_THICKNESS,
-            state.thumb_geometry_at(height, offset),
-            state.total_extent(),
-            height,
-        ),
-        _ => return None,
-    };
-    if content <= viewport || track <= 0.0 {
-        return None;
+        NodeKind::VirtualList(state) => {
+            let (track, thumb, along) = state.thumb_geometry_at(height, offset.0);
+            if state.total_extent() <= height || track <= 0.0 {
+                return Vec::new();
+            }
+            let local = Rect::new(
+                width - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN,
+                along,
+                width - SCROLLBAR_MARGIN,
+                along + thumb,
+            );
+            vec![composed.transform_rect_bbox(local)]
+        }
+        _ => Vec::new(),
     }
-    let local = if horizontal {
-        Rect::new(
-            along,
-            height - thickness - SCROLLBAR_MARGIN,
-            along + thumb,
-            height - SCROLLBAR_MARGIN,
-        )
-    } else {
-        Rect::new(
-            width - thickness - SCROLLBAR_MARGIN,
-            along,
-            width - SCROLLBAR_MARGIN,
-            along + thumb,
-        )
-    };
-    Some(composed.transform_rect_bbox(local))
 }
 
 /// Whether a scroller's pixels can be carried by a block copy: nothing behind
@@ -1359,7 +1349,7 @@ fn record_hasher(
     tree: &Tree,
     time: f32,
     v: &walk::Visit<'_>,
-) -> (impl Hasher, u64, Option<ScrollInfo>, f64) {
+) -> (impl Hasher, u64, Option<ScrollInfo>, (f64, f64)) {
     // Fast and fixed-seed: a frame's fingerprints compare with the last
     // frame's, and nothing adversarial picks what's hashed.
     let mut content = FINGERPRINT.build_hasher();
@@ -1371,23 +1361,24 @@ fn record_hasher(
     let content = content.finish();
     let (offset, scroll) = match &v.node.kind {
         NodeKind::ScrollView(state) => (
-            state.scroll.current,
+            (state.scroll.current, state.scroll_x.current),
             Some(ScrollInfo {
                 horizontal: state.horizontal,
             }),
         ),
         NodeKind::VirtualList(state) => (
-            state.scroll_offset.current,
+            (state.scroll_offset.current, 0.0),
             Some(ScrollInfo { horizontal: false }),
         ),
-        _ => (0.0, None),
+        _ => ((0.0, 0.0), None),
     };
     let mut hasher = FINGERPRINT.build_hasher();
     v.parent.hash(&mut hasher);
     v.order.hash(&mut hasher);
     affine(&mut hasher, v.composed);
     content.hash(&mut hasher);
-    num(&mut hasher, offset);
+    num(&mut hasher, offset.0);
+    num(&mut hasher, offset.1);
     (hasher, content, scroll, offset)
 }
 
@@ -2151,17 +2142,26 @@ fn scroll_fingerprint(h: &mut impl Hasher, state: &ScrollViewState, with_offset:
         // Where it settles when the user stops; paints nothing itself.
         snap: _,
         scroll,
+        scroll_x,
         horizontal,
+        both,
         thumb_drag_anchor,
+        // Which thumb a drag holds shows only as its `level`, hashed below.
+        thumb_drag_axis: _,
         scrollbar_fill,
-        scrollbar_width,
+        // Hashed resolved, below: what is painted is what the defaults make of it.
+        scrollbar: _,
+        level,
         // Bookkeeping for the `scroll` event; paints nothing.
         reported: _,
+        reported_x: _,
     } = state;
     if with_offset {
         num(h, scroll.current);
+        num(h, scroll_x.current);
     }
     horizontal.hash(h);
+    both.hash(h);
     thumb_drag_anchor
         .map(|(a, b)| (a.to_bits(), b.to_bits()))
         .hash(h);
@@ -2169,7 +2169,24 @@ fn scroll_fingerprint(h: &mut impl Hasher, state: &ScrollViewState, with_offset:
     if let Some(c) = scrollbar_fill {
         color(h, *c);
     }
-    num(h, *scrollbar_width);
+    let m = state.metrics();
+    for value in [
+        m.thickness,
+        m.hit,
+        m.margin,
+        m.min_length,
+        m.gutter,
+        m.corner,
+        m.opacity_rest,
+        m.opacity_hover,
+        m.opacity_drag,
+    ] {
+        num(h, value);
+    }
+    // The thumbs' opacity, by how emphasised each is.
+    for emphasis in level {
+        num(h, emphasis.current);
+    }
 }
 
 fn list_fingerprint(h: &mut impl Hasher, state: &VirtualListState, with_offset: bool) {

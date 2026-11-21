@@ -380,7 +380,7 @@ the value arrives; an animation replaced by another, or stopped, never calls it.
 Animatable: `fill`, `stroke_color`, `stroke_width`, `opacity`, `blur`, `backdrop_blur`, `corner_radius`
 (a number or a 4-tuple), `shadows` (lists of different lengths fade the extra
 shadows in or out), the transform parts `translate_x`, `translate_y`, `scale`,
-and `rotation_deg`, a scroll view's `scroll_offset`, and a path's `data`,
+and `rotation_deg`, a scroll view's `scroll_offset` and `scroll_offset_x`, and a path's `data`,
 `trim_start`, and `trim_end`. Colors
 interpolate component-wise in sRGB.
 
@@ -401,7 +401,7 @@ Tesserae Engine paints no color you can't set:
 | text input | `selection_fill` | `None` is the text color at 30% |
 | text input | `obscured` | a password field: every character shows as a bullet, and its text never leaves through copy or cut |
 | scroll view | `scrollbar_fill` | the thumb's color; `None` is the default |
-| scroll view | `scrollbar_width` | the thumb's thickness, painted and grabbed |
+| scroll view | `scrollbar_width`, `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`, `scrollbar_gutter`, `scrollbar_corner`, `scrollbar_opacity`, `scrollbar_opacity_hover`, `scrollbar_opacity_drag` | (0.6.11) the thumb's thickness and the rest of the scrollbar's measures and opacities; `None` is the default. See [Scrollbar](properties.md#scrollbar-0611) |
 | terminal | `palette` | a dict with any of `ansi` (16 colors), `foreground`, `background`, `cursor`, `selection` — keys you leave out keep their colors |
 
 A terminal resolves each cell's color against its palette when it paints, so a

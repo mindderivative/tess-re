@@ -83,7 +83,7 @@ pub(crate) fn set_modifiers(modifiers: Modifiers) {
 
 /// The engine counts a wheel "line" as this many pixels (`Tree::dispatch`'s
 /// own `ScrollDelta::Lines` handling); `wheel` events report pixels.
-const WHEEL_LINE_PX: f64 = 20.0;
+const WHEEL_LINE_PX: f64 = engine_core::WHEEL_NOTCH;
 
 /// Every event a node listener can register for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -633,13 +633,17 @@ pub(crate) fn deliver_a11y_action(
 /// 0.4.2 M12 (issue #24): a `scroll` event, with `old_value`/`new_value`,
 /// for every scroll view whose offset changed since the last call
 /// (`Tree::take_scroll_changes`) -- called after input, each tick, and
-/// each Python call that can move one.
+/// each Python call that can move one. 0.6.11: `old_value`/`new_value` are the
+/// offset of the view's main axis (its own, or the vertical of a `both` view) and
+/// `x`/`y` the offsets after the change, right and down, of either axis.
 pub(crate) fn fire_scroll_changes(ctx: &NodeContext<'_>, py: Python<'_>) {
     let changes = ctx.tree.borrow_mut().take_scroll_changes();
-    for (view, old, new) in changes {
-        deliver(ctx, py, EventType::Scroll, view, None, |e| {
-            e.old_value = pyo3::IntoPyObjectExt::into_py_any(old, py).ok();
-            e.new_value = pyo3::IntoPyObjectExt::into_py_any(new, py).ok();
+    for change in changes {
+        deliver(ctx, py, EventType::Scroll, change.view, None, |e| {
+            e.old_value = pyo3::IntoPyObjectExt::into_py_any(change.old, py).ok();
+            e.new_value = pyo3::IntoPyObjectExt::into_py_any(change.new, py).ok();
+            e.x = Some(change.x);
+            e.y = Some(change.y);
         });
     }
 }

@@ -103,7 +103,7 @@ node.animate("opacity", 0.0, 300, easing=(0.3, 0.0, 0.8, 0.15),
 
 The animatable properties are `fill`, `stroke_color`, `stroke_width`,
 `opacity`, `corner_radius`, `shadows`, `translate_x`, `translate_y`,
-`scale`, `rotation_deg`, a scroll view's `scroll_offset`, and a path's
+`scale`, `rotation_deg`, a scroll view's `scroll_offset` and `scroll_offset_x` (0.6.11), and a path's
 `data`, `trim_start`, and `trim_end`, and an svg's `svg_time` (0.5.10). Any other name raises `ValueError`;
 a `to` of the wrong shape raises `ValueError`, or `TypeError` for a
 non-number `to` on a numeric property. `easing` is `"linear"` or a cubic bezier

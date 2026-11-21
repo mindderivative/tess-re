@@ -287,7 +287,7 @@ reordering. `clip_children=True` clips a node's children to its rounded box.
 ## Scrolling
 
 A `"scroll_view"` clips its content and scrolls it along its `orientation`,
-`"vertical"` or `"horizontal"`. Give it one content child that holds the rest:
+`"vertical"`, `"horizontal"` or (0.6.11) `"both"`. Give it one content child that holds the rest:
 
 ```python
 view = window.create("scroll_view", width=300, height=200)
@@ -296,6 +296,64 @@ for name in names:
     content.add_child(window.create("text", text=name, width=280, height=20))
 view.add_child(content)
 ```
+
+### Two axes (0.6.11)
+
+`orientation="both"` scrolls the content on both axes, with the scrollbar of the Tesserae UX note
+"Scrollbar and Scroll Container":
+
+```python
+view = window.create("scroll_view", orientation="both", width=400, height=300)
+canvas = window.create("box", width=1600, height=1200)        # or no size: see below
+view.add_child(canvas)
+view.set(scroll_offset=120, scroll_offset_x=300)               # down and right; both animate
+view.on("scroll", lambda e: print(e.x, e.y))                   # the offsets after the change
+```
+
+- **Offsets.** `scroll_offset` is the vertical offset, as on a `"vertical"` view; `scroll_offset_x` is the
+  horizontal one. Both can be set, read and animated (`view.animate("scroll_offset_x", ...)`), and both are
+  clamped to the range layout measures. A `"vertical"` or `"horizontal"` view behaves exactly as before:
+  its `scroll_offset_x` stays `0`, and a horizontal view's offset is still `scroll_offset`.
+- **The content is measured on both axes.** A content box with no size of its own is as large as what it
+  holds, wide and tall (a row of wide children is as wide as they are together); a size you give it is the
+  size the view scrolls.
+- **One thumb per overflowing axis.** An axis shows its thumb if and only if its content is longer than the
+  view, measured; the two axes are independent. The vertical thumb is at the right edge, the horizontal at
+  the bottom. When both show, each lane stops 12 px short of the end (`scrollbar_corner`), so the thumbs never
+  overlap, and the 12 × 12 corner is left empty. Thumb length is `max(32, lane × viewport ÷ content)`.
+- **Defaults** are the spec's: thumb 8 px thick and pill-shaped, a 12 px hit strip centred on it, 2 px margin,
+  at 0.70 opacity at rest, 0.80 with the pointer in the hit strip, 1.0 while dragged (fading over 100 ms), in the
+  colour `#CAC4D0` (the role `on_surface_variant`); each is a property (`scrollbar_fill`, `scrollbar_width`,
+  `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`, `scrollbar_opacity`,
+  `scrollbar_opacity_hover`, `scrollbar_opacity_drag`, `scrollbar_gutter`, `scrollbar_corner`; see
+  [Scrollbar](../reference/properties.md#scrollbar-0611)), so a project can theme it.
+- **The gutter.** The 12 px at the end edge of an overflowing axis belongs to the thumb, so content does not
+  sit under it. The engine does this where it can: the view's layout reserves the gutter on that side (taffy's
+  scrollbar gutter, switched on for an axis once it overflows and off when it does not), so a content box sized
+  by a percentage or an inset ends before the thumb, as it would with end padding. A content box with a size
+  of its own is yours: if it is as wide as the view, its last 12 px are under the vertical thumb, so give it
+  `width="100%"`, no width, or 12 px less. The gutter is read from the previous layout, so content that wraps
+  differently once the gutter takes its width can take a layout or two to settle.
+- **Wheel.** A notch is 40 px (0.6.11; it was 20, for every scroll view and virtual list; pixel deltas from a
+  trackpad are taken as they come). The wheel moves the vertical axis; Shift+wheel, or a sideways wheel or
+  trackpad, moves the horizontal; a diagonal one moves both. What the view cannot use (an axis at its end, or
+  with nothing to scroll) goes on to the view around it.
+- **Keys.** Up and Down move 40 px vertically, Left and Right 40 px horizontally; Page Up and Page Down move
+  the viewport less 10% vertically, and with Shift horizontally; Home and End go to the start and end of the
+  vertical axis. Everything else about keys is as in [Keyboard scrolling](#keyboard-scrolling): a key a
+  `key_down` listener or a text input uses is not scrolled, Ctrl, Alt and Meta never scroll, and a key at the end
+  of an inner view goes to the view around it. A `"vertical"` or `"horizontal"` view still pages by a whole
+  viewport.
+- **Pointer.** Pressing the thumb's hit strip grabs it, and the offset follows the pointer linearly,
+  `start + Δ × (content − viewport) ÷ (lane − thumb)`, also once the pointer is outside the strip. Pressing the
+  lane beside the thumb scrolls one page (the viewport less 10%) toward the press, and again after 400 ms and
+  every 100 ms while it is held (the engine's own timer, so it needs a frame loop, or `Window.advance`), until the
+  thumb reaches the press or the button is released.
+- **`scroll_into_view`** (and focus) move each axis by the least that shows the node.
+- **`scroll_snap`** settles the vertical (main) axis only.
+- **Accessibility.** The thumbs are paint, not nodes: they are not in the accessibility tree and not a
+  Tab stop. The scroll view is as before.
+- A `virtual_list` is still vertical only.
 
 ### Snapping (0.5.6)
 
@@ -324,7 +382,7 @@ cards[0].set(snap_align="center")                  # this one lines up different
 - Over a horizontal view a plain vertical wheel turn still scrolls the page around it (0.4.4);
   Shift+wheel, or a sideways wheel or trackpad, scrolls the strip.
 
-The mouse wheel scrolls it — the nearest scroll view under the pointer that
+The mouse wheel scrolls it, 40 px a notch (0.6.11; it was 20) — the nearest scroll view under the pointer that
 can move the wheel's way. A view the wheel can't move passes it on to the one
 outside it (scroll chaining, 0.4.4): a plain wheel over a horizontal carousel
 scrolls the page around it, and so does a wheel over an inner list that's

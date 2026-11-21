@@ -1,6 +1,7 @@
 //! Input dispatch: an `InputEvent` through hover, press, focus, keys, and scrolling to its outcome.
 
 use super::*;
+use crate::scrollbar::WHEEL_NOTCH;
 
 /// 0.5.6 (#165): what places a text field's caret: cursor, selection anchor,
 /// and the text's length.
@@ -113,6 +114,8 @@ impl Tree {
                 if self.dragging.is_some() {
                     self.update_drag(position, now);
                 }
+                // 0.6.11: the thumb under the pointer takes its hover opacity.
+                self.update_scrollbar_hover(new_hovered, position, now);
                 if old_hovered != new_hovered {
                     DispatchOutcome::HoverChanged {
                         old: old_hovered,
@@ -171,21 +174,25 @@ impl Tree {
                 if button == PointerButton::Primary {
                     let mut current = hit;
                     while let Some(id) = current {
-                        if matches!(self.nodes[id].kind, NodeKind::ScrollView(_))
-                            && self.grabs_scroll_view_thumb(id, position)
-                        {
-                            let (horizontal, ..) = self
-                                .scroll_view_extents(id)
-                                .expect("checked by grabs_scroll_view_thumb above");
-                            let coord = if horizontal { position.x } else { position.y };
-                            let NodeKind::ScrollView(state) = &mut self.nodes[id].kind else {
-                                unreachable!("checked above")
-                            };
-                            let scroll = state.scroll.current;
-                            state.thumb_drag_anchor = Some((coord, scroll));
-                            self.dragging = Some(id);
-                            self.set_pressed(None);
-                            return DispatchOutcome::None;
+                        if matches!(self.nodes[id].kind, NodeKind::ScrollView(_)) {
+                            if let Some(axis) = self.grabs_scroll_view_thumb(id, position) {
+                                let coord = axis.pick((position.x, position.y));
+                                let NodeKind::ScrollView(state) = &mut self.nodes[id].kind else {
+                                    unreachable!("checked above")
+                                };
+                                let scroll = state.offset(axis);
+                                state.thumb_drag_anchor = Some((coord, scroll));
+                                state.thumb_drag_axis = axis;
+                                self.dragging = Some(id);
+                                self.fade_thumb(id, axis, now);
+                                self.set_pressed(None);
+                                return DispatchOutcome::None;
+                            }
+                            // 0.6.11: a press on the lane beside the thumb pages.
+                            if self.press_scroll_lane(id, position, now) {
+                                self.set_pressed(None);
+                                return DispatchOutcome::None;
+                            }
                         }
                         // M47 (§5, §7, §11.7): the identical real grab-
                         // takes-priority-over-content technique above,
@@ -302,21 +309,28 @@ impl Tree {
                 };
                 self.set_pressed(None);
 
-                // M4 Phase 3 (§11.5): a real mouse-up always ends a
-                // drag, wherever it happens -- not conditioned on still
-                // hitting the thumb, matching real OS drag semantics.
                 if button == PointerButton::Primary {
                     // M38 Phase 6 (§5, §7, §11.7): a real scrollbar
                     // thumb's own drag bookkeeping is genuinely per-
                     // gesture -- mirrors pyCopper's own real `on_
                     // pointer_up`, which pops the identical `drag_from`/
                     // `drag_scroll` state.
-                    if let Some(dragging) = self.dragging
-                        && let NodeKind::ScrollView(state) = &mut self.nodes[dragging].kind
-                    {
-                        state.thumb_drag_anchor = None;
-                    }
+                    let dragged = self.dragging.and_then(|id| match &mut self.nodes[id].kind {
+                        NodeKind::ScrollView(state) => {
+                            state.thumb_drag_anchor = None;
+                            Some((id, state.thumb_drag_axis))
+                        }
+                        _ => None,
+                    });
                     self.dragging = None;
+                    // 0.6.11: a held lane press stops, and a dragged thumb eases
+                    // back to hover or rest, by where the pointer is now.
+                    self.page_repeat = None;
+                    if let Some((view, axis)) = dragged {
+                        let hit = self.hit_test_input(root, position);
+                        self.update_scrollbar_hover(hit, position, now);
+                        self.fade_thumb(view, axis, now);
+                    }
                 }
                 outcome
             }
@@ -521,7 +535,7 @@ impl Tree {
                         // browser. One that can move takes the whole wheel.
                         if matches!(node.kind, NodeKind::VirtualList(_)) {
                             let delta_y = match delta {
-                                ScrollDelta::Lines(_, y) => y * 20.0,
+                                ScrollDelta::Lines(_, y) => y * WHEEL_NOTCH,
                                 ScrollDelta::Pixels(_, y) => y,
                             };
                             if self.can_scroll(id, delta_y) {
@@ -537,24 +551,23 @@ impl Tree {
                         // exactly the way one over a `VirtualList` row
                         // already does above.
                         if let NodeKind::ScrollView(state) = &node.kind {
-                            let delta_along = match delta {
-                                ScrollDelta::Lines(x, y) => {
-                                    if state.horizontal {
-                                        x * 20.0
-                                    } else {
-                                        y * 20.0
-                                    }
-                                }
-                                ScrollDelta::Pixels(x, y) => {
-                                    if state.horizontal {
-                                        x
-                                    } else {
-                                        y
-                                    }
-                                }
+                            // 0.6.11: a `both` view takes the wheel's two parts, each on
+                            // its axis (a sideways wheel, or Shift made one, moves it
+                            // sideways); whatever it can move takes the wheel, and a
+                            // view that can move neither passes it on.
+                            let wheel = match delta {
+                                ScrollDelta::Lines(x, y) => (x * WHEEL_NOTCH, y * WHEEL_NOTCH),
+                                ScrollDelta::Pixels(x, y) => (x, y),
                             };
-                            if self.can_scroll(id, delta_along) {
-                                self.scroll_scroll_view_by(id, delta_along);
+                            let mut moved = false;
+                            for &axis in state.axes() {
+                                let along = axis.pick(wheel);
+                                if self.can_scroll_axis(id, axis, along) {
+                                    self.scroll_axis_by(id, axis, along);
+                                    moved = true;
+                                }
+                            }
+                            if moved {
                                 break;
                             }
                         }
@@ -682,6 +695,10 @@ impl Tree {
             InputEvent::PointerLeft => {
                 let old_hovered = self.hovered;
                 self.set_hovered(None);
+                // 0.6.11: a thumb the pointer was over goes back to rest.
+                if let Some((view, axis)) = self.scrollbar_hover.take() {
+                    self.fade_thumb(view, axis, now);
+                }
                 if old_hovered.is_some() {
                     DispatchOutcome::HoverChanged {
                         old: old_hovered,

@@ -2249,8 +2249,8 @@ fn dispatch_scroll_over_a_virtual_lists_child_updates_its_real_scroll_offset() {
         panic!("expected a VirtualList");
     };
     assert_eq!(
-        state.scroll_offset.current, 40.0,
-        "2.0 lines * this crate's own 20px-per-line convention == 40.0px"
+        state.scroll_offset.current, 80.0,
+        "2.0 lines * the engine's 40px wheel notch == 80.0px"
     );
 }
 
@@ -5640,15 +5640,18 @@ fn grabs_scroll_view_thumb_is_true_only_within_the_real_thumb_plus_slop() {
     // values`'s own proof above).
     let (tree, view, _content) = scrollable_view(false);
     assert!(
-        tree.grabs_scroll_view_thumb(view, Point::new(96.0, 18.0)),
+        tree.grabs_scroll_view_thumb(view, Point::new(96.0, 18.0))
+            .is_some(),
         "a point squarely inside the real thumb rect must grab it"
     );
     assert!(
-        tree.grabs_scroll_view_thumb(view, Point::new(94.0 - 5.0, 18.0)),
+        tree.grabs_scroll_view_thumb(view, Point::new(94.0 - 5.0, 18.0))
+            .is_some(),
         "a point just within the real SCROLLBAR_GRAB_SLOP tolerance must still grab it"
     );
     assert!(
-        !tree.grabs_scroll_view_thumb(view, Point::new(10.0, 10.0)),
+        tree.grabs_scroll_view_thumb(view, Point::new(10.0, 10.0))
+            .is_none(),
         "a point nowhere near the real thumb (e.g. over the scrolled content) must not grab it"
     );
 }
@@ -5736,8 +5739,8 @@ fn dispatch_scroll_over_a_scroll_views_child_updates_its_real_scroll_offset() {
         panic!("expected a ScrollView");
     };
     assert_eq!(
-        state.scroll.current, 40.0,
-        "2.0 lines * this crate's own 20px-per-line convention == 40.0px"
+        state.scroll.current, 80.0,
+        "2.0 lines * the engine's 40px wheel notch == 80.0px"
     );
 }
 
@@ -6132,8 +6135,11 @@ fn take_scroll_changes_reports_each_move_once() {
     assert!(tree.take_scroll_changes().is_empty(), "nothing moved yet");
     tree.scroll_by_key(view, Key::ArrowDown);
     tree.scroll_by_key(view, Key::ArrowDown);
+    let moves = |changes: Vec<ScrollChange>| -> Vec<(NodeId, f64, f64)> {
+        changes.iter().map(|c| (c.view, c.old, c.new)).collect()
+    };
     assert_eq!(
-        tree.take_scroll_changes(),
+        moves(tree.take_scroll_changes()),
         vec![(view, 0.0, 2.0 * KEY_SCROLL_LINE)]
     );
     assert!(
@@ -6142,7 +6148,7 @@ fn take_scroll_changes_reports_each_move_once() {
     );
     tree.scroll_by_key(view, Key::Home);
     assert_eq!(
-        tree.take_scroll_changes(),
+        moves(tree.take_scroll_changes()),
         vec![(view, 2.0 * KEY_SCROLL_LINE, 0.0)]
     );
 
@@ -6186,13 +6192,13 @@ fn a_wheel_over_a_carousel_it_cannot_move_scrolls_the_page_around_it() {
         delta: ScrollDelta::Lines(x, y),
         position: Point::new(50.0, at_y),
     };
-    tree.dispatch(page, wheel_at(0.0, -2.0, 25.0), Instant::now());
+    tree.dispatch(page, wheel_at(0.0, -1.0, 25.0), Instant::now());
     assert_eq!(
         (offset_of(&tree, page), offset_of(&tree, carousel)),
         (40.0, 0.0)
     );
     // The page scrolled 40, so the carousel now spans y -40..10.
-    tree.dispatch(page, wheel_at(-2.0, 0.0, 5.0), Instant::now());
+    tree.dispatch(page, wheel_at(-1.0, 0.0, 5.0), Instant::now());
     assert_eq!(
         (offset_of(&tree, page), offset_of(&tree, carousel)),
         (40.0, 40.0)
@@ -6231,7 +6237,7 @@ fn page_with_inner_view(content: f32) -> (Tree, NodeId, NodeId) {
 #[test]
 fn a_wheel_chains_past_a_view_that_cannot_move_its_way() {
     // 0.4.4 M21: over the inner view, whose 200 of content gives 150 of
-    // travel. A wheel line down is 20px; `Lines(0, -1)` is one line down.
+    // travel. A wheel line down is a 40px notch; `Lines(0, -1)` is one line down.
     let down = InputEvent::Scroll {
         delta: ScrollDelta::Lines(0.0, -1.0),
         position: Point::new(50.0, 25.0),
@@ -6246,7 +6252,7 @@ fn a_wheel_chains_past_a_view_that_cannot_move_its_way() {
     tree.dispatch(page, down.clone(), Instant::now());
     assert_eq!(
         (offset_of(&tree, page), offset_of(&tree, inner)),
-        (0.0, 20.0),
+        (0.0, 40.0),
         "mid-way, the inner view takes it"
     );
     tree.dispatch(page, up.clone(), Instant::now());
@@ -6262,7 +6268,7 @@ fn a_wheel_chains_past_a_view_that_cannot_move_its_way() {
     tree.dispatch(page, down.clone(), Instant::now());
     assert_eq!(
         (offset_of(&tree, page), offset_of(&tree, inner)),
-        (20.0, 150.0),
+        (40.0, 150.0),
         "at its end, the wheel goes to the page"
     );
 
@@ -6271,7 +6277,7 @@ fn a_wheel_chains_past_a_view_that_cannot_move_its_way() {
     tree.dispatch(page, down, Instant::now());
     assert_eq!(
         offset_of(&tree, page),
-        20.0,
+        40.0,
         "content that fits has nothing to scroll: the page takes it"
     );
 }
@@ -8950,4 +8956,667 @@ fn an_unlabelled_root_is_named_after_the_surface_and_a_labelled_one_keeps_its_la
     tree.get_mut(root).unwrap().access.label = Some("Launcher".into());
     let update = tree.build_access_update_titled(root, 1.0, "click-away");
     assert_eq!(label_of(&update).as_deref(), Some("Launcher"));
+}
+
+/// 0.6.11 (UXREQ-001): a scroll view of `orientation="both"` with the scrollbar of the
+/// Tesserae UX note "Scrollbar and Scroll Container".
+mod two_axis_scroll {
+    use super::*;
+    use crate::input::Modifiers;
+    use crate::scrollbar::{ScrollAxis, ScrollOrientation, Thumb};
+    use peniko::kurbo::Rect;
+
+    fn paint() -> PaintProperties {
+        PaintProperties::new(Color::from_rgba8(0, 0, 0, 0), 0.0, 1.0)
+    }
+
+    /// A `both` view of `view` (width, height) over a box of `content`, laid out.
+    fn both_view(view: (f32, f32), content: (f32, f32)) -> (Tree, NodeId, NodeId) {
+        let mut state = ScrollViewState::new(false);
+        state.set_orientation(ScrollOrientation::Both);
+        let mut tree = Tree::new();
+        let view_id = tree.insert(
+            NodeKind::ScrollView(state),
+            Style {
+                size: Size {
+                    width: length(view.0),
+                    height: length(view.1),
+                },
+                ..Default::default()
+            },
+            paint(),
+        );
+        let (k, s, p) = leaf(content.0, content.1);
+        let content_id = tree.insert(k, s, p);
+        tree.add_child(view_id, content_id);
+        layout(&mut tree, view_id, view);
+        (tree, view_id, content_id)
+    }
+
+    fn layout(tree: &mut Tree, root: NodeId, size: (f32, f32)) {
+        tree.compute_layout(
+            root,
+            Size {
+                width: AvailableSpace::Definite(size.0),
+                height: AvailableSpace::Definite(size.1),
+            },
+        );
+    }
+
+    fn state(tree: &Tree, view: NodeId) -> &ScrollViewState {
+        let NodeKind::ScrollView(state) = &tree.get(view).unwrap().kind else {
+            panic!("expected a ScrollView");
+        };
+        state
+    }
+
+    /// `(x, y)`: how far the view is scrolled right and down.
+    fn at(tree: &Tree, view: NodeId) -> (f64, f64) {
+        state(tree, view).offsets()
+    }
+
+    fn thumbs(tree: &Tree, view: NodeId) -> (Option<Thumb>, Option<Thumb>) {
+        let [v, h] = tree
+            .scroll_thumbs(view)
+            .expect("a scroll view with content");
+        (v, h)
+    }
+
+    fn press(tree: &mut Tree, root: NodeId, x: f64, y: f64, now: Instant) {
+        tree.dispatch(
+            root,
+            InputEvent::PointerPressed {
+                position: Point::new(x, y),
+                button: PointerButton::Primary,
+            },
+            now,
+        );
+    }
+
+    fn release(tree: &mut Tree, root: NodeId, x: f64, y: f64, now: Instant) {
+        tree.dispatch(
+            root,
+            InputEvent::PointerReleased {
+                position: Point::new(x, y),
+                button: PointerButton::Primary,
+            },
+            now,
+        );
+    }
+
+    fn move_to(tree: &mut Tree, root: NodeId, x: f64, y: f64, now: Instant) {
+        tree.dispatch(
+            root,
+            InputEvent::PointerMoved {
+                position: Point::new(x, y),
+            },
+            now,
+        );
+    }
+
+    fn wheel(tree: &mut Tree, root: NodeId, delta: ScrollDelta, at: (f64, f64)) {
+        tree.dispatch(
+            root,
+            InputEvent::Scroll {
+                delta,
+                position: Point::new(at.0, at.1),
+            },
+            Instant::now(),
+        );
+    }
+
+    fn area(r: Rect) -> f64 {
+        r.width().max(0.0) * r.height().max(0.0)
+    }
+
+    #[test]
+    fn the_spec_numbers_are_the_defaults_of_a_both_view() {
+        let (tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        let m = state(&tree, view).metrics();
+        assert_eq!(
+            (
+                m.thickness,
+                m.hit,
+                m.margin,
+                m.min_length,
+                m.gutter,
+                m.corner
+            ),
+            (8.0, 12.0, 2.0, 32.0, 12.0, 12.0)
+        );
+        assert_eq!(
+            (m.opacity_rest, m.opacity_hover, m.opacity_drag),
+            (0.70, 0.80, 1.0)
+        );
+        assert_eq!(KEY_SCROLL_LINE, 40.0);
+        // A one-axis view keeps the scrollbar it always had.
+        let one = ScrollViewState::new(false).metrics();
+        assert_eq!(
+            (one.thickness, one.hit, one.margin, one.along_slop),
+            (4.0, 16.0, 2.0, 6.0)
+        );
+        assert_eq!(
+            (one.opacity_rest, one.opacity_hover, one.opacity_drag),
+            (1.0, 1.0, 1.0)
+        );
+    }
+
+    #[test]
+    fn two_overflowing_axes_get_two_thumbs_whose_lanes_stop_short_of_the_corner() {
+        let (tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        let (v, h) = thumbs(&tree, view);
+        let (v, h) = (v.expect("vertical"), h.expect("horizontal"));
+        // Vertical lane: 100 - 2*2 - 12 (corner) = 84; the thumb is the 32 minimum.
+        assert_eq!(v.thumb, Rect::new(190.0, 2.0, 198.0, 34.0));
+        assert_eq!(v.lane, Rect::new(188.0, 2.0, 200.0, 86.0));
+        // Horizontal lane: 200 - 2*2 - 12 = 184; 184 * 200 / 800 = 46.
+        assert_eq!(h.thumb, Rect::new(2.0, 90.0, 48.0, 98.0));
+        assert_eq!(h.lane, Rect::new(2.0, 88.0, 186.0, 100.0));
+        assert_eq!(area(v.thumb.intersect(h.thumb)), 0.0);
+        assert_eq!(area(v.hit.intersect(h.hit)), 0.0);
+        // The 12 x 12 corner is nobody's.
+        let corner = Rect::new(188.0, 88.0, 200.0, 100.0);
+        for rect in [v.thumb, v.lane, h.thumb, h.lane] {
+            assert_eq!(area(rect.intersect(corner)), 0.0, "{rect:?}");
+        }
+        // At the far end of both axes the thumbs still stop at the lane ends.
+        let (mut tree, view, _) = (tree, view, ());
+        tree.scroll_axis_by(view, ScrollAxis::Vertical, 10_000.0);
+        tree.scroll_axis_by(view, ScrollAxis::Horizontal, 10_000.0);
+        let (v, h) = thumbs(&tree, view);
+        assert_eq!(v.unwrap().thumb.y1, 86.0 - 0.0);
+        assert_eq!(h.unwrap().thumb.x1, 186.0);
+    }
+
+    #[test]
+    fn a_lane_is_the_full_length_when_only_one_axis_overflows() {
+        let (tree, view, _) = both_view((200.0, 100.0), (200.0, 400.0));
+        let (v, h) = thumbs(&tree, view);
+        assert!(h.is_none(), "the content fits across: no horizontal thumb");
+        let v = v.unwrap();
+        assert_eq!(
+            v.lane,
+            Rect::new(188.0, 2.0, 200.0, 98.0),
+            "no corner to leave"
+        );
+        assert_eq!(v.thumb, Rect::new(190.0, 2.0, 198.0, 34.0));
+
+        let (tree, view, _) = both_view((200.0, 100.0), (800.0, 100.0));
+        let (v, h) = thumbs(&tree, view);
+        assert!(v.is_none());
+        assert_eq!(h.unwrap().lane, Rect::new(2.0, 88.0, 198.0, 100.0));
+    }
+
+    #[test]
+    fn each_axis_shows_a_thumb_exactly_when_its_content_is_longer_than_its_viewport() {
+        // Ten sizes around the boundary, on each axis, independently of the other.
+        for delta in -5..5 {
+            let extent = 100.0 + delta as f32;
+            let (tree, view, _) = both_view((100.0, 100.0), (extent, 100.0));
+            let (v, h) = thumbs(&tree, view);
+            assert_eq!(
+                (v.is_some(), h.is_some()),
+                (false, extent > 100.0),
+                "width {extent}"
+            );
+            let (tree, view, _) = both_view((100.0, 100.0), (100.0, extent));
+            let (v, h) = thumbs(&tree, view);
+            assert_eq!(
+                (v.is_some(), h.is_some()),
+                (extent > 100.0, false),
+                "height {extent}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_thumb_is_the_lane_times_the_viewport_over_the_content_but_not_under_32() {
+        for (content, expect) in [
+            (404.0, 396.0 * 400.0 / 404.0),
+            (800.0, 198.0),
+            (4_000.0, 39.6),
+            (400_000.0, 32.0),
+        ] {
+            let (tree, view, _) = both_view((400.0, 400.0), (400.0, content));
+            let thumb = thumbs(&tree, view).0.unwrap();
+            assert!(
+                (thumb.thumb.height() - expect).abs() < 1.0,
+                "content {content}: {} vs {expect}",
+                thumb.thumb.height()
+            );
+        }
+    }
+
+    #[test]
+    fn a_press_within_six_of_the_thumb_across_grabs_it_and_eight_does_not() {
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        let t0 = Instant::now();
+        // The vertical thumb is centred on x = 194.
+        press(&mut tree, view, 194.0 - 6.0, 18.0, t0);
+        assert_eq!(tree.dragging, Some(view));
+        release(&mut tree, view, 188.0, 18.0, t0);
+        assert_eq!(tree.dragging, None);
+        press(&mut tree, view, 194.0 - 8.0, 18.0, t0);
+        assert_eq!(tree.dragging, None, "8 across is outside the 12 hit strip");
+        release(&mut tree, view, 186.0, 18.0, t0);
+        // Along the lane the hit area is the thumb itself: past its end is the lane.
+        press(&mut tree, view, 194.0, 34.5, t0);
+        assert_eq!(tree.dragging, None);
+        release(&mut tree, view, 194.0, 34.5, t0);
+    }
+
+    #[test]
+    fn dragging_a_thumb_moves_its_offset_linearly_and_on_past_the_gutter() {
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        let t0 = Instant::now();
+        // Vertical: the lane less the thumb is 84 - 32 = 52 for 300 of content.
+        press(&mut tree, view, 194.0, 18.0, t0);
+        move_to(&mut tree, view, 194.0, 18.0 + 42.0, t0);
+        let want = 42.0 * 300.0 / 52.0;
+        assert!(
+            (at(&tree, view).1 - want).abs() < 1e-6,
+            "{:?}",
+            at(&tree, view)
+        );
+        // The pointer leaving the gutter sideways changes nothing about the mapping.
+        move_to(&mut tree, view, -500.0, 18.0 + 20.0, t0);
+        assert!((at(&tree, view).1 - 20.0 * 300.0 / 52.0).abs() < 1e-6);
+        assert_eq!(at(&tree, view).0, 0.0, "the other axis stays");
+        release(&mut tree, view, -500.0, 38.0, t0);
+
+        // Horizontal: 184 - 46 = 138 for 600 of content.
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        press(&mut tree, view, 20.0, 94.0, t0);
+        move_to(&mut tree, view, 20.0 + 46.0, 400.0, t0);
+        assert!((at(&tree, view).0 - 46.0 * 600.0 / 138.0).abs() < 1e-6);
+        assert_eq!(at(&tree, view).1, 0.0);
+    }
+
+    #[test]
+    fn the_wheel_scrolls_vertically_and_sideways_by_40_a_notch() {
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        wheel(&mut tree, view, ScrollDelta::Lines(0.0, -1.0), (50.0, 50.0));
+        assert_eq!(at(&tree, view), (0.0, 40.0));
+        // What Shift+wheel arrives as, a wheel with a horizontal part.
+        wheel(&mut tree, view, ScrollDelta::Lines(-1.0, 0.0), (50.0, 50.0));
+        assert_eq!(at(&tree, view), (40.0, 40.0));
+        // Pixel deltas are taken as they come.
+        wheel(
+            &mut tree,
+            view,
+            ScrollDelta::Pixels(-15.0, -7.0),
+            (50.0, 50.0),
+        );
+        assert_eq!(at(&tree, view), (55.0, 47.0));
+        wheel(&mut tree, view, ScrollDelta::Lines(1.0, 1.0), (50.0, 50.0));
+        assert_eq!(at(&tree, view), (15.0, 7.0));
+    }
+
+    #[test]
+    fn a_wheel_a_both_view_cannot_use_goes_to_the_view_around_it() {
+        // An outer 200x100 view over 400x400, holding an inner 100x50 both view over 200x200.
+        let (mut tree, outer, content) = both_view((200.0, 100.0), (400.0, 400.0));
+        let mut inner_state = ScrollViewState::new(false);
+        inner_state.set_orientation(ScrollOrientation::Both);
+        let inner = tree.insert(
+            NodeKind::ScrollView(inner_state),
+            Style {
+                size: Size {
+                    width: length(100.0),
+                    height: length(50.0),
+                },
+                ..Default::default()
+            },
+            paint(),
+        );
+        let (k, s, p) = leaf(200.0, 200.0);
+        let inner_content = tree.insert(k, s, p);
+        tree.add_child(inner, inner_content);
+        tree.add_child(content, inner);
+        layout(&mut tree, outer, (200.0, 100.0));
+
+        // Over the inner view: it takes a vertical notch; sideways too.
+        wheel(
+            &mut tree,
+            outer,
+            ScrollDelta::Lines(0.0, -1.0),
+            (20.0, 20.0),
+        );
+        assert_eq!(
+            (at(&tree, inner), at(&tree, outer)),
+            ((0.0, 40.0), (0.0, 0.0))
+        );
+        // At its vertical end (150) it passes the vertical wheel out, and keeps the sideways.
+        tree.scroll_axis_by(inner, ScrollAxis::Vertical, 10_000.0);
+        wheel(
+            &mut tree,
+            outer,
+            ScrollDelta::Lines(0.0, -1.0),
+            (20.0, 20.0),
+        );
+        assert_eq!((at(&tree, inner).1, at(&tree, outer).1), (150.0, 40.0));
+        // (The outer view scrolled 40 up, so the inner one now spans y -40..10.)
+        wheel(&mut tree, outer, ScrollDelta::Lines(-1.0, 0.0), (20.0, 5.0));
+        assert_eq!((at(&tree, inner).0, at(&tree, outer).0), (40.0, 0.0));
+        // At the end of both it passes both out.
+        tree.scroll_axis_by(inner, ScrollAxis::Horizontal, 10_000.0);
+        wheel(&mut tree, outer, ScrollDelta::Lines(-1.0, 0.0), (20.0, 5.0));
+        assert_eq!(at(&tree, outer).0, 40.0);
+    }
+
+    #[test]
+    fn keys_scroll_each_axis_by_the_spec_table() {
+        let (mut tree, view, content) = both_view((200.0, 100.0), (800.0, 1000.0));
+        tree.get_mut(content).unwrap().access.focusable = Some(true);
+        tree.set_focus_to(content);
+        let key = |tree: &mut Tree, key: Key| {
+            let target = tree.scroll_view_for_key(content, key);
+            if let Some(target) = target {
+                assert_eq!(target, view);
+                tree.scroll_by_key(target, key);
+            }
+            target.is_some()
+        };
+        assert!(key(&mut tree, Key::ArrowDown));
+        assert_eq!(at(&tree, view), (0.0, 40.0));
+        assert!(key(&mut tree, Key::ArrowRight));
+        assert_eq!(at(&tree, view), (40.0, 40.0));
+        // A page is the viewport less 10 percent: 90 down...
+        assert!(key(&mut tree, Key::PageDown));
+        assert_eq!(at(&tree, view), (40.0, 130.0));
+        assert!(key(&mut tree, Key::ArrowLeft));
+        assert!(key(&mut tree, Key::ArrowUp));
+        assert_eq!(at(&tree, view), (0.0, 90.0));
+        // ...and with Shift, 180 (90% of 200) along.
+        tree.set_held_modifiers(Modifiers {
+            shift: true,
+            ..Default::default()
+        });
+        assert!(key(&mut tree, Key::PageDown));
+        assert_eq!(at(&tree, view), (180.0, 90.0));
+        assert!(key(&mut tree, Key::PageUp));
+        assert_eq!(at(&tree, view), (0.0, 90.0));
+        tree.set_held_modifiers(Modifiers::default());
+        // Home and End are the main (vertical) axis'.
+        assert!(key(&mut tree, Key::End));
+        assert_eq!(at(&tree, view), (0.0, 900.0));
+        assert!(!key(&mut tree, Key::PageDown), "at the end");
+        assert!(key(&mut tree, Key::Home));
+        assert_eq!(at(&tree, view), (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_key_across_the_only_axis_of_a_vertical_view_scrolls_nothing() {
+        let (tree, view, _) = scrollable_view(false);
+        assert_eq!(tree.scroll_view_for_key(view, Key::ArrowRight), None);
+        // And a plain view's Page Down is still the whole viewport.
+        let (mut tree, view, _) = scrollable_view(false);
+        tree.scroll_by_key(view, Key::PageDown);
+        assert_eq!(offset_of(&tree, view), 100.0);
+    }
+
+    #[test]
+    fn a_press_on_the_lane_pages_toward_it_and_keeps_paging_while_held() {
+        // 100x100 over 200x1000: only the vertical axis overflows; the thumb is 32 long.
+        let (mut tree, view, _) = both_view((100.0, 100.0), (100.0, 1000.0));
+        let x = 100.0 - 2.0 - 4.0;
+        let t0 = Instant::now();
+        let ms = Duration::from_millis;
+        // Below the thumb (y 2..34): one page, the viewport less a tenth, at once.
+        press(&mut tree, view, x, 60.0, t0);
+        assert_eq!(at(&tree, view).1, 90.0);
+        assert_eq!(tree.dragging, None, "a lane press is not a thumb drag");
+        tree.tick_all(t0 + ms(399));
+        assert_eq!(at(&tree, view).1, 90.0, "400 ms before it repeats");
+        tree.tick_all(t0 + ms(400));
+        assert_eq!(at(&tree, view).1, 180.0);
+        tree.tick_all(t0 + ms(500));
+        assert_eq!(at(&tree, view).1, 270.0, "then every 100 ms");
+        tree.tick_all(t0 + ms(600));
+        tree.tick_all(t0 + ms(700));
+        // The thumb is at 2 + 64 * 450 / 900 = 34 .. 66, holding the press at y = 60.
+        assert_eq!(at(&tree, view).1, 450.0);
+        let (_, thumb) = (0, thumbs(&tree, view).0.unwrap().thumb);
+        assert!(thumb.y0 <= 60.0 && 60.0 <= thumb.y1, "{thumb:?}");
+        tree.tick_all(t0 + ms(800));
+        tree.tick_all(t0 + ms(900));
+        assert_eq!(
+            at(&tree, view).1,
+            450.0,
+            "it stopped where the thumb reached the press"
+        );
+        assert!(tree.page_repeat.is_none());
+    }
+
+    #[test]
+    fn a_page_press_goes_back_toward_the_start_and_stops_on_release() {
+        let (mut tree, view, _) = both_view((100.0, 100.0), (100.0, 1000.0));
+        let x = 100.0 - 2.0 - 4.0;
+        let t0 = Instant::now();
+        let ms = Duration::from_millis;
+        tree.scroll_axis_by(view, ScrollAxis::Vertical, 900.0);
+        // The thumb is at the bottom (66..98); a press above it pages up.
+        press(&mut tree, view, x, 10.0, t0);
+        assert_eq!(at(&tree, view).1, 810.0);
+        release(&mut tree, view, x, 10.0, t0 + ms(100));
+        tree.tick_all(t0 + ms(2_000));
+        assert_eq!(at(&tree, view).1, 810.0, "released: no more pages");
+    }
+
+    #[test]
+    fn a_horizontal_lane_pages_sideways() {
+        let (mut tree, view, _) = both_view((100.0, 100.0), (1000.0, 100.0));
+        let t0 = Instant::now();
+        press(&mut tree, view, 80.0, 100.0 - 2.0 - 4.0, t0);
+        assert_eq!(at(&tree, view), (90.0, 0.0));
+    }
+
+    #[test]
+    fn scroll_into_view_moves_each_axis_by_the_least_that_shows_the_node() {
+        let (mut tree, view, content) = both_view((200.0, 100.0), (800.0, 400.0));
+        let (k, mut s, p) = leaf(50.0, 20.0);
+        s.position = taffy::prelude::Position::Absolute;
+        s.inset = taffy::prelude::Rect {
+            left: length(500.0),
+            top: length(250.0),
+            right: taffy::prelude::auto(),
+            bottom: taffy::prelude::auto(),
+        };
+        let target = tree.insert(k, s, p);
+        tree.add_child(content, target);
+        layout(&mut tree, view, (200.0, 100.0));
+        assert!(tree.scroll_into_view(target));
+        // Its far edges (550, 270) end at the viewport's, short of the 12 px gutter the
+        // other axis' thumb holds there (AC-SCB-15).
+        assert_eq!(at(&tree, view), (362.0, 182.0));
+        assert!(!tree.scroll_into_view(target), "already in view");
+        // From past it, the near edges are the viewport's.
+        tree.scroll_axis_by(view, ScrollAxis::Horizontal, 250.0);
+        tree.scroll_axis_by(view, ScrollAxis::Vertical, 130.0);
+        assert_eq!(at(&tree, view), (600.0, 300.0));
+        assert!(tree.scroll_into_view(target));
+        assert_eq!(at(&tree, view), (500.0, 250.0));
+    }
+
+    #[test]
+    fn a_scroll_change_reports_both_offsets() {
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        assert!(tree.take_scroll_changes().is_empty());
+        // Only the horizontal offset moves: still a change.
+        wheel(&mut tree, view, ScrollDelta::Lines(-1.0, 0.0), (50.0, 50.0));
+        let changes = tree.take_scroll_changes();
+        assert_eq!(
+            changes,
+            vec![ScrollChange {
+                view,
+                old: 0.0,
+                new: 0.0,
+                x: 40.0,
+                y: 0.0
+            }]
+        );
+        wheel(&mut tree, view, ScrollDelta::Lines(0.0, -1.0), (50.0, 50.0));
+        assert_eq!(
+            tree.take_scroll_changes(),
+            vec![ScrollChange {
+                view,
+                old: 0.0,
+                new: 40.0,
+                x: 40.0,
+                y: 40.0
+            }]
+        );
+        assert!(tree.take_scroll_changes().is_empty());
+    }
+
+    #[test]
+    fn both_offsets_are_clamped_by_layout_and_a_one_axis_view_has_no_x() {
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        let NodeKind::ScrollView(s) = &mut tree.get_mut(view).unwrap().kind else {
+            unreachable!()
+        };
+        s.scroll.current = 5_000.0;
+        s.scroll_x.current = 5_000.0;
+        layout(&mut tree, view, (200.0, 100.0));
+        assert_eq!(at(&tree, view), (600.0, 300.0));
+
+        let (mut tree, view, _) = scrollable_view(false);
+        let NodeKind::ScrollView(s) = &mut tree.get_mut(view).unwrap().kind else {
+            unreachable!()
+        };
+        s.scroll_x.current = 30.0;
+        layout(&mut tree, view, (100.0, 100.0));
+        assert_eq!(
+            at(&tree, view),
+            (0.0, 0.0),
+            "no horizontal range: layout puts it back"
+        );
+    }
+
+    #[test]
+    fn a_thumb_fades_to_hover_then_drag_opacity_over_100_ms_and_back() {
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        let t0 = Instant::now();
+        let ms = Duration::from_millis;
+        let opacity = |tree: &Tree| state(tree, view).thumb_opacity(ScrollAxis::Vertical);
+        assert!((opacity(&tree) - 0.70).abs() < 1e-9, "rest");
+        // The other thumb has its own state.
+        let other = |tree: &Tree| state(tree, view).thumb_opacity(ScrollAxis::Horizontal);
+
+        move_to(&mut tree, view, 194.0, 18.0, t0);
+        assert_eq!(tree.scrollbar_hover, Some((view, ScrollAxis::Vertical)));
+        tree.tick_all(t0 + ms(50));
+        let mid = opacity(&tree);
+        assert!(mid > 0.70 && mid < 0.80, "mid-fade {mid}");
+        tree.tick_all(t0 + ms(120));
+        assert!((opacity(&tree) - 0.80).abs() < 1e-9, "hover");
+        assert!((other(&tree) - 0.70).abs() < 1e-9);
+
+        press(&mut tree, view, 194.0, 18.0, t0 + ms(200));
+        tree.tick_all(t0 + ms(240));
+        tree.tick_all(t0 + ms(400));
+        assert!((opacity(&tree) - 1.0).abs() < 1e-9, "dragged");
+        // Released with the pointer still over it: back to hover.
+        release(&mut tree, view, 194.0, 18.0, t0 + ms(500));
+        tree.tick_all(t0 + ms(700));
+        assert!((opacity(&tree) - 0.80).abs() < 1e-9);
+        // The pointer leaves its hit area: rest.
+        move_to(&mut tree, view, 50.0, 50.0, t0 + ms(800));
+        tree.tick_all(t0 + ms(1_000));
+        assert!((opacity(&tree) - 0.70).abs() < 1e-9, "rest again");
+        // A drag that ends away from the thumb rests too.
+        press(&mut tree, view, 194.0, 18.0, t0 + ms(1_100));
+        move_to(&mut tree, view, 50.0, 60.0, t0 + ms(1_150));
+        release(&mut tree, view, 50.0, 60.0, t0 + ms(1_200));
+        tree.tick_all(t0 + ms(1_400));
+        assert!((opacity(&tree) - 0.70).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_thumb_with_no_other_to_fade_keeps_the_ticker_busy_only_while_it_moves() {
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        let t0 = Instant::now();
+        move_to(&mut tree, view, 194.0, 18.0, t0);
+        assert!(tree.tick_all(t0 + Duration::from_millis(10)).0, "fading");
+        assert!(!tree.tick_all(t0 + Duration::from_millis(500)).0, "settled");
+    }
+
+    #[test]
+    fn what_is_laid_out_in_the_view_stays_clear_of_the_gutter_of_an_overflowing_axis() {
+        // Content as wide as the view (100%) and 400 tall: the vertical thumb takes 12 at the right.
+        let mut state = ScrollViewState::new(false);
+        state.set_orientation(ScrollOrientation::Both);
+        let mut tree = Tree::new();
+        let view = tree.insert(
+            NodeKind::ScrollView(state),
+            Style {
+                size: Size {
+                    width: length(100.0),
+                    height: length(100.0),
+                },
+                ..Default::default()
+            },
+            paint(),
+        );
+        let content = tree.insert(
+            NodeKind::Rect,
+            Style {
+                size: Size {
+                    width: taffy::prelude::percent(1.0),
+                    height: length(400.0),
+                },
+                ..Default::default()
+            },
+            paint(),
+        );
+        tree.add_child(view, content);
+        layout(&mut tree, view, (100.0, 100.0));
+        assert_eq!(tree.layout(content).size.width, 88.0);
+        assert_eq!(tree.layout(content).size.height, 400.0);
+        // The gutter goes with the overflow: shorter content gives it back.
+        tree.get_mut(content).unwrap().layout_style.size.height = length(80.0);
+        let style = tree.get(content).unwrap().layout_style.clone();
+        tree.set_layout_style(content, style);
+        layout(&mut tree, view, (100.0, 100.0));
+        layout(&mut tree, view, (100.0, 100.0));
+        assert_eq!(tree.layout(content).size.width, 100.0);
+    }
+
+    #[test]
+    fn a_one_axis_view_reserves_no_gutter_and_keeps_its_old_hit_area() {
+        let (tree, view, content) = scrollable_view(false);
+        assert_eq!(tree.layout(content).size.width, 100.0);
+        assert_eq!(tree.get(view).unwrap().layout_style.scrollbar_width, 0.0);
+        let thumb = thumbs(&tree, view).0.unwrap();
+        assert_eq!(thumb.thumb, Rect::new(94.0, 2.0, 98.0, 34.0));
+        // 6 px of slop on every side of the thumb, along it too.
+        assert_eq!(thumb.hit, Rect::new(88.0, -4.0, 104.0, 40.0));
+        assert!(tree.scroll_thumbs(view).unwrap()[1].is_none());
+    }
+
+    #[test]
+    fn a_fling_coasts_on_each_axis_of_a_both_view() {
+        let (mut tree, view, _) = both_view((200.0, 100.0), (800.0, 400.0));
+        let t0 = Instant::now();
+        // A finger moving up and left scrolls toward the end on both axes.
+        assert!(tree.fling_scroll(view, peniko::kurbo::Vec2::new(-1_500.0, -1_500.0), t0));
+        tree.tick_all(t0 + Duration::from_secs(5));
+        let (x, y) = at(&tree, view);
+        assert!(x > 0.0 && y > 0.0, "{x} {y}");
+    }
+
+    #[test]
+    fn the_thumbs_are_paint_and_add_nothing_to_the_accessibility_tree() {
+        let (tree, view, content) = both_view((200.0, 100.0), (800.0, 400.0));
+        assert!(
+            tree.scroll_thumbs(view)
+                .unwrap()
+                .iter()
+                .all(Option::is_some)
+        );
+        let update = tree.build_access_update(view);
+        let ids: Vec<_> = update.nodes.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids.len(), 2, "the view and its content, no thumb node");
+        assert!(ids.contains(&to_access_id(view)) && ids.contains(&to_access_id(content)));
+    }
 }
