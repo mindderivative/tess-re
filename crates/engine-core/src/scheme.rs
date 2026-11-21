@@ -193,7 +193,10 @@ impl SchemeColors {
 
     /// The highlight behind selected text, with no `selection_fill`.
     pub fn selection(&self) -> Color {
-        self.get(Role::SecondaryContainer)
+        // UX vault (OQ, 2026-11-21): `primary` at 30 percent alpha. MD3 sources give primary;
+        // 30 (not Compose's 40) keeps on_surface text at >= 4.5:1 over the highlight on every
+        // surface role in both baselines (40 percent falls to 3.74:1 on dark surface_bright).
+        self.get(Role::Primary).multiply_alpha(0.3)
     }
 
     /// A scroll view's thumb with no `scrollbar_fill`.

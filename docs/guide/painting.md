@@ -209,11 +209,11 @@ to the app. A `PopupWindow` follows the app's scheme like any other window: give
 | a `text_input`'s text (`fill` never set) | `on_surface` | `#1D1B20` | `#E6E0E9` |
 | its placeholder (no `placeholder_fill`) | `on_surface_variant` | `#49454F` | `#CAC4D0` |
 | its caret (no `caret_color`) | `primary` | `#6750A4` | `#D0BCFF` |
-| its selection (no `selection_fill`), and a selected static `text` | `secondary_container` | `#E8DEF8` | `#4A4458` |
+| its selection (no `selection_fill`), and a selected static `text` | `primary` at 30% alpha | `#6750A4` | `#D0BCFF` |
 | a `scroll_view`'s thumb (no `scrollbar_fill`) | `on_surface_variant` | `#49454F` | `#CAC4D0` |
 | a terminal's foreground (no `palette["foreground"]`) | `on_surface` | `#1D1B20` | `#E6E0E9` |
 | its cursor (no `palette["cursor"]`), at 50% alpha so the glyph under it shows | `primary` | `#6750A4` | `#D0BCFF` |
-| its selection (no `palette["selection"]`) | `secondary_container` | `#E8DEF8` | `#4A4458` |
+| its selection (no `palette["selection"]`) | `primary` at 30% alpha | `#6750A4` | `#D0BCFF` |
 
 **What stays explicit:** a colour you set (`fill`, `placeholder_fill`, `caret_color`, `selection_fill`,
 `scrollbar_fill`, `palette`) is never changed by the scheme. A text input that has a `fill` of its own keeps the

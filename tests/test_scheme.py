@@ -325,7 +325,7 @@ def test_a_text_inputs_text_placeholder_and_caret_follow_the_scheme():
         assert roles["primary"] in solid(window), scheme
 
 
-def test_a_text_inputs_selection_is_secondary_container():
+def test_a_text_inputs_selection_is_primary_at_30_percent():
     for scheme in ("light", "dark"):
         roles = tess_re.scheme_colors(scheme)
         window = Window(width=120, height=120, scheme=scheme)
@@ -333,7 +333,13 @@ def test_a_text_inputs_selection_is_secondary_container():
         node = field(window, text="III")
         node.focus()
         window.simulate("key_down", key="a", ctrl=True)  # select all
-        assert roles["secondary_container"] in solid(window), scheme
+        pixels, _, _ = shot(window)
+        want = roles["primary"]
+        # Over a transparent window the highlight is the primary role at alpha 0.3 (77 of 255).
+        assert any(
+            p[3] in range(75, 80) and all(abs(a - b) <= 3 for a, b in zip(p[:3], want[:3]))
+            for p in pixels
+        ), scheme
 
 
 def test_a_text_input_with_a_fill_keeps_the_tint_derived_colours():

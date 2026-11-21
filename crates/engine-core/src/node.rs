@@ -174,7 +174,7 @@ pub enum CellColor {
 ///
 /// 0.6.11: the foreground, cursor and selection are `None` until set, and
 /// `None` means the window's scheme: the roles `on_surface`, `primary` (at
-/// half alpha, so the glyph under the cursor shows) and `secondary_container`
+/// half alpha, so the glyph under the cursor shows) and `primary` at 30%
 /// ([`TerminalPalette::resolve`]). The ANSI colors and the background (clear,
 /// so the box's own fill shows) are the same in every scheme.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -614,7 +614,7 @@ pub struct TextFieldState {
     /// `true`, and `fill` clears it. The text is the role `on_surface`; with no `placeholder_fill`,
     /// `caret_color` or `selection_fill` of its own, the placeholder is
     /// `on_surface_variant`, the caret `primary` and the selection
-    /// `secondary_container`. Once `false`, those three default as they
+    /// `primary` at 30%. Once `false`, those three default as they
     /// always did: from `text_tint` (60% alpha, itself, 30% alpha).
     pub tint_scheme: bool,
     /// M30 Phase 9 Step 3 (§8, §10): `false` (the default, every
@@ -757,7 +757,7 @@ pub struct TextFieldState {
     /// 0.5.6 (#165): the bytes the last edit inserted, for `caret_move`.
     pub last_inserted: Option<std::ops::Range<usize>>,
     /// M95: the selection highlight's color; `None` is the scheme's
-    /// `secondary_container` while `tint_scheme`, else `text_tint` at 30%
+    /// `primary` at 30% while `tint_scheme`, else `text_tint` at 30%
     /// alpha.
     pub selection_fill: Option<Color>,
     /// M95: a password field -- every character paints as a bullet, and

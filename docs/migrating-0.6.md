@@ -368,10 +368,10 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `tess_re.scheme_colors("light" | "dark")` (49 role colours) and `window.set(scheme_colors={...})` overrides.
   **Changed defaults:** a text's and a text input's unset `fill` is `on_surface` (`#1D1B20` light) instead of opaque
   black, so `get("fill")` reads that, and an animation of an unset `fill` starts from it; a text input with no `fill`
-  paints its caret in `primary` and its selection in `secondary_container` (were the text colour, and the text colour
+  paints its caret in `primary` and its selection in `primary` at 30% (were the text colour, and the text colour
   at 30%) and its placeholder in `on_surface_variant`; a scroll view's default thumb is `on_surface_variant`
   (`#49454F` light, `#CAC4D0` dark; it was `#CAC4D0` in both); a terminal's `palette` `foreground`, `cursor` and
-  `selection` read `None` until set (the scheme's `on_surface`, `primary` at 50%, `secondary_container`; were
+  `selection` read `None` until set (the scheme's `on_surface`, `primary` at 50%, `primary` at 30%; were
   `#1C1B1F`-based). A node with a colour of its own is unchanged, and a text input with a `fill` keeps the derived
   placeholder/caret/selection. To keep the old look, set the colours. `fill=None` on a text or text input gives it
   back to the scheme; `palette` takes `None` for those three keys. See

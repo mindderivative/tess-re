@@ -2727,7 +2727,7 @@ impl FieldColors {
     }
 
     /// A field with no colour of its own: each of the three is the field's own setting, or the
-    /// scheme's role -- `on_surface_variant`, `primary`, `secondary_container` -- at `alpha`
+    /// scheme's role -- `on_surface_variant`, `primary`, `primary` at 30% -- at `alpha`
     /// (the node's own opacity).
     pub fn from_scheme(
         state: &TextFieldState,

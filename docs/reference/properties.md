@@ -218,7 +218,7 @@ painted.
 Plus the colors on [Paint, Paths, and Animation](paint.md#text-inputs-scroll-views-and-terminals). (0.6.11) A
 text input's `fill` is its text colour, and until it is set the window's
 [colour scheme](../guide/painting.md#colour-scheme-0611) decides it, with the placeholder, caret and selection:
-`on_surface`, `on_surface_variant`, `primary` and `secondary_container`. `set(fill=None)` gives a set fill back to the
+`on_surface`, `on_surface_variant` and `primary`. `set(fill=None)` gives a set fill back to the
 scheme.
 
 ## Image
@@ -370,7 +370,7 @@ viewport) are the spec's.
 Plus `font_size` and the `palette` on
 [Paint, Paths, and Animation](paint.md#text-inputs-scroll-views-and-terminals). (0.6.11) The palette's `foreground`,
 `cursor` and `selection` read `None` until set, which is the window's
-[colour scheme](../guide/painting.md#colour-scheme-0611): `on_surface`, `primary` at 50% alpha and `secondary_container`.
+[colour scheme](../guide/painting.md#colour-scheme-0611): `on_surface`, `primary` at 50% alpha and `primary` at 30% (the selection).
 
 ## Read-only
 

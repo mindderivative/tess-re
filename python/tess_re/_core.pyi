@@ -1589,6 +1589,6 @@ def scheme_colors(scheme: Literal["light", "dark"]) -> dict[str, tuple[int, int,
     `on_surface`, `surface_container`, ... A toolkit can start from them; a window's
     `set(scheme_colors={...})` overrides single roles. The engine's own defaults use
     `on_surface` (text), `on_surface_variant` (scroll thumb, placeholder), `primary`
-    (caret, terminal cursor) and `secondary_container` (selection). Raises `ValueError`
+    (caret, terminal cursor) and `primary` at 30% alpha (selection). Raises `ValueError`
     for another name."""
     ...

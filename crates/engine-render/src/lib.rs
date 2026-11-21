@@ -1222,7 +1222,7 @@ fn draw_own(
         }
         NodeKind::Text(state) => {
             // 0.6.11: a text with no fill of its own paints in the scheme's `on_surface`, and
-            // its selection in `secondary_container`.
+            // its selection in `primary` at 30%.
             let scheme = tree.scheme_colors();
             let (base, selection_fill) = if node.paint.scheme_fill {
                 (

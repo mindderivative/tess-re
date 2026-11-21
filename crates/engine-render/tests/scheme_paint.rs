@@ -187,7 +187,7 @@ fn a_text_inputs_text_placeholder_and_caret_paint_in_their_roles() {
 }
 
 #[test]
-fn a_text_inputs_selection_paints_secondary_container() {
+fn a_text_inputs_selection_paints_primary_at_30_percent() {
     pollster::block_on(async {
         for scheme in [Scheme::Light, Scheme::Dark] {
             let (mut tree, root) = scene();
@@ -200,9 +200,10 @@ fn a_text_inputs_selection_paints_secondary_container() {
             with_scheme(&mut tree, scheme);
             layout(&mut tree, root);
             let frame = Frame::of(&tree, root).await;
+            let want = over(baseline(scheme).caret(), 0.3, rgba(BACKGROUND));
             assert!(
-                has(&frame, baseline(scheme).selection()),
-                "{scheme:?}: the highlight is secondary_container"
+                frame.any_in(0, 0, 100, 100, |p| support::close(p, want, 2)),
+                "{scheme:?}: the highlight is primary at 30 percent, wanted {want:?}"
             );
         }
     });
@@ -347,9 +348,10 @@ fn a_terminals_foreground_cursor_and_selection_paint_in_their_roles() {
             with_scheme(&mut tree, scheme);
             layout(&mut tree, root);
             let frame = Frame::of(&tree, root).await;
+            let want = over(colors.caret(), 0.3, rgba(BACKGROUND));
             assert!(
-                has(&frame, colors.selection()),
-                "{scheme:?}: selection is secondary_container"
+                frame.any_in(0, 0, 100, 100, |p| support::close(p, want, 2)),
+                "{scheme:?}: selection is primary at 30 percent, wanted {want:?}"
             );
 
             // The cursor is primary at half alpha over what is behind it.
