@@ -170,3 +170,98 @@ def test_a_layer_surface_under_a_fullscreen_window_does_not_freeze_the_app():
     finally:
         proc.kill()
         proc.wait()
+
+
+# 0.6.10 (#247): an app whose only surface is covered still runs what other threads queue.
+ONLY_BAR_CHILD = textwrap.dedent(
+    """
+    import threading, time
+    from tess_re import App, LayerWindow
+
+    app = App()
+    bar = LayerWindow("only-bar", anchor=("top", "left", "right"), size=(0, 30),
+                      exclusive_zone=0, layer="top")
+    spinner = bar.create("box", width=20, height=20, position="absolute", x=5, y=5,
+                         fill=(50, 200, 50, 255))
+    bar.root.add_child(spinner)
+    spinner.animate("rotation_deg", 360000.0, 3_600_000, easing="linear")
+    app.add_window(bar)
+    handle = app.thread_handle()
+    bar.every(100, lambda: print("timer", flush=True))
+
+    def post():
+        for _ in range(1, 600):
+            time.sleep(0.1)
+            sent = time.monotonic()
+            handle.call_soon(lambda sent=sent: print("lag %.2f" % (time.monotonic() - sent), flush=True))
+        handle.stop()
+
+    threading.Thread(target=post, daemon=True).start()
+    app.run()
+    """
+)
+
+COVER_CHILD = textwrap.dedent(
+    """
+    import time
+    from tess_re import App, Window
+
+    app = App()
+    window = Window(width=100, height=100, title="cover-only")
+    window.root.add_child(window.create("box", width=40, height=40, fill=(200, 50, 50, 255)))
+    app.add_window(window)
+    window.after(20000, app.thread_handle().stop)
+    app.run()
+    """
+)
+
+
+def _lines(proc, seconds):
+    os.set_blocking(proc.stdout.fileno(), False)
+    out, end = [], time.monotonic() + seconds
+    while time.monotonic() < end:
+        try:
+            line = proc.stdout.readline()
+        except BlockingIOError:
+            line = None
+        if line:
+            out.append(line.strip())
+        else:
+            time.sleep(0.02)
+    return out
+
+
+def test_call_soon_and_timers_run_while_the_only_surface_is_covered():
+    _sway()
+    proc = subprocess.Popen(
+        [sys.executable, "-c", ONLY_BAR_CHILD],
+        stdout=subprocess.PIPE,
+        text=True,
+        stderr=subprocess.DEVNULL,
+    )
+    cover = None
+    try:
+        before = _lines(proc, 3.0)
+        assert sum(1 for x in before if x.startswith("lag")) > 15, before[:5]
+        cover = subprocess.Popen(
+            [sys.executable, "-c", COVER_CHILD],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(1.5)
+        subprocess.run(
+            ["swaymsg", '[title="cover-only"] fullscreen enable'], capture_output=True
+        )
+        time.sleep(1.0)
+        _lines(proc, 0.0)  # drop what arrived before the cover took effect
+        covered = _lines(proc, 3.0)
+        lags = [float(x.split()[1]) for x in covered if x.startswith("lag")]
+        # 3 s at one post per 0.1 s is 30; a stalled app runs none until it is uncovered.
+        assert len(lags) >= 26, f"call_soon stalled while covered: {covered[:6]}"
+        assert max(lags) < 0.5, f"call_soon ran late while covered: max lag {max(lags)}"
+        assert sum(1 for x in covered if x == "timer") >= 26, "the bar's own timer stalled"
+    finally:
+        for p in (cover, proc):
+            if p:
+                p.kill()
+                p.wait()

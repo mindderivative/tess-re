@@ -343,6 +343,7 @@ where
             };
             // `false`: this loop asked for the frame (input, an animation, a wake), not
             // the compositor; a frame with nothing changed is then skipped, as a window's.
+            self.frame_ran = true;
             let still = (self.on_frame)(wid, frame, false);
             let Some(layer) = self.layers.get_mut(&wid) else {
                 continue;

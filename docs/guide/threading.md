@@ -114,7 +114,7 @@ otherwise. Tell long CPU-bound work to run in a process or release the GIL
 A window the compositor is not showing (another workspace, minimized, a layer surface under a fullscreen
 window) draws no frames from 0.5.10: tess_re draws a Wayland window only after the compositor's frame callback for
 its last frame, so a hidden one costs nothing and no longer stalls the others (before, its blocked present held the
-GIL and every window and Python thread froze; reproduced on sway, not on KWin). The frame is also what runs
-timers, `call_soon` work and `on_complete`, so **while every window of the app is hidden they wait until one is
-shown**; with one window visible they run as usual (#247 tracks running them without drawing). See
+GIL and every window and Python thread froze; reproduced on sway, not on KWin). Timers, `call_soon` work and
+`on_complete` keep running while every window of the app is hidden: from 0.6.10 the loop runs them on each wake
+and timer deadline without drawing (before, they waited until a window was shown, #247). See
 [Hidden windows](../reference/window.md#hidden-windows).

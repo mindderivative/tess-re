@@ -13,7 +13,7 @@ drawn at once). 0.6.1 (2026-11-03): the loop no longer runs a self-queuing `call
 callback once it is exiting (#260; macOS unverified). 0.6.0 (2026-11-03) renamed the package `tre` to `tess_re` and the variables to `TESS_RE_*`, no alias
 (#257; `docs/migrating-0.6.md`). 0.5.10 (2026-11-03) was `Window.build` / `apply` / `Node.set_children` (#253), SMIL
 `svg_time` (#245) and occlusion handling (#246). Open issues: #187 and #188 (Windows and macOS hardware checks), #189 (X11
-drop position), #247 (timers wait while every Wayland window is hidden), #248 (KWin fullscreen frame rate). The other
+drop position), #248 (KWin fullscreen frame rate). The other
 projects (`tess_ui`, `tess_el`, `tess_dl`, `tess_shell`) migrate on their own side. Per `CLAUDE.md`, work starts from a
 scoped `Backlog` entry that the user moves to `Ready`.
 
@@ -62,8 +62,7 @@ Mac). These shipped in 0.5.7.
 Open verification on hardware we do not have here: **#187** (all Windows-only checks) and **#188** (all Mac-only
 checks). They absorbed the earlier per-item issues #47, #48, #91, #118, #132, #133 and #134, which are closed (the
 Linux halves were done and recorded in `LOG.md`; #158 was closed too, not a bug: swapchain frame depth).
-Also open: **#189** (X11 file drop gets the drag's own position), **#247** (timers and `call_soon` wait while every
-Wayland window is hidden) and **#248** (a KWin fullscreen window counts about 480 frames/s under vsync).
+Also open: **#189** (X11 file drop gets the drag's own position), **#248** (a KWin fullscreen window counts about 480 frames/s under vsync).
 
 ## Small follow-ups
 

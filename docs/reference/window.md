@@ -663,8 +663,9 @@ follows only what the OS reports. `Window.snapshot()` is not affected. **Windows
 Nothing but Linux Wayland was run for this (sway and KWin); X11 and macOS are unverified.
 
 **What a hidden Wayland window costs and does not do.** A window or layer surface the compositor is not
-showing asks for nothing, so while *every* window is hidden, timers (`call_later`), thread-posted `call_soon`
-work and `on_complete` callbacks wait until one is shown again, because they run in a window's frame. With one
-window visible they run as usual. `present_mode="low_latency"` no longer draws faster than the compositor
+showing asks for nothing and draws nothing. Timers (`call_later`, `every`), thread-posted `call_soon` work and
+`on_complete` callbacks still run while *every* window is hidden (a lone bar under a fullscreen window): since 0.6.10
+the loop runs them on each wake and timer deadline without drawing, so a shell's bar keeps polling its state. Animations
+tick only then (a timer or a wake), never by polling; their values follow the clock and draw when the window shows. `present_mode="low_latency"` no longer draws faster than the compositor
 asks for frames on Wayland (a resize still presents without waiting, as before).
 

@@ -792,6 +792,35 @@ impl Drop for GpuWake {
     }
 }
 
+/// 0.6.10 (#247): the part of a frame that runs no drawing, for a loop woken while every
+/// window waits for the compositor's frame callback (all on another workspace, a lone bar
+/// under a fullscreen window): each window's due timers, its animations' ticks and the
+/// completions they report. Without it they wait until some window is shown again. A window
+/// that is drawing runs the same on its own frame; both are idempotent for a given instant.
+/// Nothing is borrowed while Python runs.
+fn run_without_drawing(runtimes: &Rc<RefCell<HashMap<WindowId, WindowRuntime>>>, py: Python<'_>) {
+    let handles: Vec<WindowHandles> = runtimes
+        .borrow()
+        .values()
+        .map(|runtime| runtime.handles.clone())
+        .collect();
+    for handles in handles {
+        let now = crate::clock::frame_now(&handles.tree);
+        let (_, completed) = handles.tree.borrow_mut().tick_all(now);
+        crate::timers::run_due(&handles.timers, now, py);
+        crate::timers::arm_for(&handles.timers, &handles.alarm);
+        run_completions(
+            &NodeContext {
+                tree: &handles.tree,
+                handlers: &handles.handlers,
+                completions: &handles.completions,
+            },
+            completed,
+            py,
+        );
+    }
+}
+
 /// #264: at the end of a window's frame, wakes the loop once if that frame left another window's
 /// tree newly changed. A frame runs listeners, timers and queued calls that may set a node in
 /// another window; that window may already have been drawn this turn, or never asked for a
@@ -1113,6 +1142,7 @@ impl App {
         let setups_for_created = setups.clone();
         let runtimes_for_created = runtimes.clone();
         let runtimes_for_frame = runtimes.clone();
+        let runtimes_for_wake = runtimes.clone();
         let runtimes_for_access = runtimes.clone();
         let runtimes_for_input = runtimes.clone();
         let runtimes_for_lifecycle = runtimes.clone();
@@ -2704,6 +2734,7 @@ impl App {
                     Python::attach(|py| {
                         calls_for_wake.drain(py);
                         crate::node_handles::reclaim();
+                        run_without_drawing(&runtimes_for_wake, py);
                     });
                 })),
             },
