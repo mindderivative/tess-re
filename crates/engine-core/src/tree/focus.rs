@@ -115,11 +115,9 @@ impl Tree {
                 },
                 // 0.6.11 (P2): a text label claims a hit like any other node
                 // (a tooltip on a label needs it). Before, a bare `Text` never
-                // did, unless selectable or a link, so a button's centred
-                // label did not take the button's clicks. It still doesn't
-                // take them away: a press lands on the label, and `click`
-                // bubbles from it to the button, which fires once; hover is
-                // per subtree, so the button is hovered too.
+                // did, unless selectable or a link. Hover and enter/leave see it
+                // now; a press still goes to the label's ancestor (`press_target`),
+                // so a button's centred label does not take the button's clicks.
                 NodeKind::Text(_) => rect_contains(layout, local_point),
                 // 0.5.9 (#236): a path that opts in is hit by what it paints.
                 NodeKind::Path(state) if state.hit_shape == HitShape::Painted => {
@@ -129,6 +127,34 @@ impl Tree {
             }
         };
         hit.then_some((id, local_point))
+    }
+
+    /// 0.6.11 (P2): the node a press on `hit` lands on. A bare `text` label is hit (so it is
+    /// hovered and a tooltip on it works) but, as before, is not what a press or a click
+    /// reaches: the press goes to the nearest ancestor that is not one, so a button's label
+    /// is part of the button and a press on the label that ends on the button's padding is
+    /// still one click. A label that is selectable, holds a link, or has `hit_testable` set
+    /// to `True` is its own press target.
+    pub(super) fn press_target(&self, hit: NodeId) -> NodeId {
+        let mut id = hit;
+        while let Some(node) = self.nodes.get(id) {
+            let own = match &node.kind {
+                NodeKind::Text(state) => {
+                    node.hit_testable == Some(true)
+                        || state.options.selectable
+                        || state.options.spans.iter().any(|s| s.link.is_some())
+                }
+                _ => true,
+            };
+            if own {
+                return id;
+            }
+            match node.parent {
+                Some(parent) => id = parent,
+                None => return id,
+            }
+        }
+        hit
     }
 
     /// The concrete fulfillment of §7.3's own text: "hover needs no new

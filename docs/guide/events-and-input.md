@@ -45,7 +45,7 @@ positive right and down; it bubbles. With Shift held, a wheel with no
 horizontal part arrives as `delta_x`, so it scrolls sideways (0.4.3).
 `event.x`/`event.y` are local to `event.current`; `window_x`/`window_y` are
 in the window. A text node is a target like any other (0.6.11), so a label can carry a
-tooltip; a press on a button's label still bubbles to the button, which clicks once.
+tooltip; hover sees it, but a press on a plain label is still its button's (`hit_testable=True` makes the label its own press target).
 `hit_testable=False` makes any node transparent to
 the pointer; `cursor` sets the pointer's shape over it.
 

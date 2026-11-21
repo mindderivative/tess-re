@@ -6931,7 +6931,7 @@ mod static_selection {
     }
 
     #[test]
-    fn a_press_and_release_on_a_label_activates_the_label_and_hover_follows_it() {
+    fn a_label_is_hovered_but_a_press_on_it_is_its_buttons_unless_it_opts_in() {
         // The Python layer bubbles `click` from the label to the button around it, and hover
         // is per subtree; here: the label is the target, and a `hit_testable=False` label
         // hands the same press to the button.
@@ -6967,8 +6967,31 @@ mod static_selection {
                 now,
             )
         };
-        assert!(matches!(click(&mut tree), DispatchOutcome::Activated(n) if n == label));
+        // The label is hovered, but a press on it is the button's (as before 0.6.11).
+        assert!(matches!(click(&mut tree), DispatchOutcome::Activated(n) if n == button));
         assert_eq!(tree.update_hover(button, at), Some(label));
+        // A press on the label that ends elsewhere on the button is still one click.
+        let now = Instant::now();
+        tree.dispatch(
+            button,
+            InputEvent::PointerPressed {
+                position: at,
+                button: PointerButton::Primary,
+            },
+            now,
+        );
+        let out = tree.dispatch(
+            button,
+            InputEvent::PointerReleased {
+                position: Point::new(95.0, 35.0),
+                button: PointerButton::Primary,
+            },
+            now,
+        );
+        assert!(matches!(out, DispatchOutcome::Activated(n) if n == button));
+        // Opted in, the label is its own press target.
+        tree.set_hit_testable(label, Some(true));
+        assert!(matches!(click(&mut tree), DispatchOutcome::Activated(n) if n == label));
         tree.set_hit_testable(label, Some(false));
         assert!(matches!(click(&mut tree), DispatchOutcome::Activated(n) if n == button));
     }

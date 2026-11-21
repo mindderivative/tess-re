@@ -29,14 +29,24 @@ def test_a_plain_text_gets_pointer_enter_and_leave():
     assert seen == ["enter", "leave"]
 
 
-def test_a_click_on_a_label_inside_a_button_fires_the_button_once():
+def test_a_click_on_a_label_inside_a_button_is_the_buttons_as_before():
     window, button, label = button_with_label()
+    clicks, label_clicks = [], []
+    button.on("click", lambda e: clicks.append(e.target == button))
+    label.on("click", lambda e: label_clicks.append(1))
+    window.simulate("click", node=label)
+    assert clicks == [True], "the button's click fires once, its own target"
+    assert label_clicks == [], "a press does not reach a plain label"
+
+
+def test_a_label_that_opts_in_is_its_own_press_target_and_the_click_bubbles():
+    window, button, label = button_with_label(hit_testable=True)
     clicks, label_clicks = [], []
     button.on("click", lambda e: clicks.append(e.target == label))
     label.on("click", lambda e: label_clicks.append(1))
     window.simulate("click", node=label)
-    assert clicks == [True], "the button's click fires once, bubbled from the label"
     assert label_clicks == [1]
+    assert clicks == [True], "bubbled from the label, once"
 
 
 def test_the_button_is_hovered_while_the_pointer_is_over_its_label():

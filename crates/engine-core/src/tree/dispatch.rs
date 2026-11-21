@@ -154,6 +154,9 @@ impl Tree {
                     return DispatchOutcome::None;
                 }
                 let hit = self.hit_test_input(root, position);
+                // 0.6.11 (P2): a bare text label is hovered but is not the press target
+                // (see `press_target`), so a button's label is part of the button.
+                let hit = hit.map(|h| self.press_target(h));
                 // M38 Phase 6 (§5, §7, §11.7): a real scrollbar-thumb
                 // grab takes priority over the ordinary hit -- the
                 // thumb is a paint-only overlay drawn *over* the real
@@ -285,6 +288,7 @@ impl Tree {
             }
             InputEvent::PointerReleased { position, button } => {
                 let hit = self.hit_test_input(root, position);
+                let hit = hit.map(|h| self.press_target(h));
                 let outcome = match self.pressed {
                     // M4 Phase 7 (§11.3): a same-node press/release pair
                     // means something different per button -- Primary
