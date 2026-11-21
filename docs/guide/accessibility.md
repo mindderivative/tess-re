@@ -167,9 +167,18 @@ of the accessibility tree, and one that is destroyed reads back as `None`.
 
 How a platform says it differs. AccessKit expresses the relation by moving the *focused state* from the
 field to the row, so on Linux a screen reader sees AT-SPI `StateChanged(focused)` move to the row and back
-(checked on a private bus); it does not send `ActiveDescendantChanged` for it. Use it with the polite
+(checked on a private bus); it does not send `ActiveDescendantChanged` for it. That is what AccessKit 0.25 with `atspi_common` 0.20 does for `aria-activedescendant`, not a tre choice: a screen-reader author or a test should look for `StateChanged(focused)` on the row, not for the signal. Use it with the polite
 `announce` as a fallback where a platform does not deliver the relation. Not tried with Orca, NVDA or
 VoiceOver.
+
+### Hidden surfaces
+
+A node with `a11y_hidden=True` is left out of what a screen reader reads, but a `LayerWindow` is still one
+window on the accessibility bus, even when its root is hidden (a transparent click catcher). tre cannot
+remove that window node while the surface is open; since 0.6.11 it is **named** after the surface (the
+`LayerWindow` namespace) unless its root has a `label` of its own, so a reader that does stop on it does not meet an
+unnamed window. Close the surface when it is not needed (a catcher lives only as long as the panel it
+serves).
 
 ## Testing
 

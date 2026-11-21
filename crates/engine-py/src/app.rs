@@ -2193,11 +2193,21 @@ impl App {
                         .set_text_access_lines(Default::default());
                 }
                 // 0.5.4 (#102): bounds in physical pixels, like the window.
-                runtime
+                // A layer surface has no title for the adapter to name its window by.
+                #[cfg(target_os = "linux")]
+                let title = runtime
                     .handles
-                    .tree
-                    .borrow()
-                    .build_access_update_scaled(runtime.handles.root, runtime.handles.scale.get())
+                    .layer
+                    .as_ref()
+                    .map(|layer| layer.config.borrow().namespace.clone())
+                    .unwrap_or_default();
+                #[cfg(not(target_os = "linux"))]
+                let title = String::new();
+                runtime.handles.tree.borrow().build_access_update_titled(
+                    runtime.handles.root,
+                    runtime.handles.scale.get(),
+                    &title,
+                )
             },
             // M4 Phase 1 step 3: the real "meaning-dependent" half
             // `Tree::dispatch` leaves for its own caller (§2 Design
