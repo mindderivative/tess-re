@@ -40,9 +40,81 @@ save = window.create("box", width=96, height=40, corner_radius=20,
   `None`: the current item of a node that keeps the keyboard, such as the
   row selected in a list under a search field. See
   [Active descendant](#active-descendant) below.
+- Sets, tri-state, axis, modal (0.6.11) — `set_size` and `pos_in_set`
+  (a node's place in a set: "3 of 12"), `checked="mixed"`, `a11y_orientation`
+  (`"horizontal"` or `"vertical"`), and `modal` on a dialog. See
+  [Sets, mixed, orientation and modal](#sets-mixed-orientation-and-modal-0611).
 
 A text input and a terminal are `"textbox"` from the start, and a text
 input's value is its text.
+
+## Roles
+
+Every `role` name, the AccessKit role it becomes, and what a screen reader on
+Linux (AT-SPI, read from a private bus) is told. Windows (UIA) and macOS map
+the AccessKit role themselves and have not been looked at.
+
+| `role` | AccessKit role | AT-SPI role |
+| --- | --- | --- |
+| `button`, `checkbox`, `radio`, `switch`, `slider`, `link`, `textbox`, `tab`, `tablist`, `tabpanel`, `menu`, `menuitem`, `dialog`, `list`, `listitem`, `tree`, `treeitem`, `heading`, `img`, `group` | the matching one (`Button`, `CheckBox`, ...) | the matching one |
+| `progressbar` | ProgressIndicator | progress bar |
+| `alert` | Alert | notification |
+| `none` | GenericContainer | filler |
+| `separator` | Splitter | separator |
+| `status` (0.6.11) | Status | status bar |
+| `spinbutton` (0.6.11) | SpinButton | spin button |
+| `radiogroup` (0.6.11) | RadioGroup | panel |
+| `option` (0.6.11) | ListBoxOption | list item |
+| `listbox` (0.6.11) | ListBox | list box |
+| `toolbar` (0.6.11) | Toolbar | tool bar |
+| `navigation`, `complementary`, `region` (0.6.11) | Navigation, Complementary, Region | landmark |
+| `grid` (0.6.11) | Grid | table |
+| `row` (0.6.11) | Row | table row |
+| `gridcell` (0.6.11) | GridCell | table cell |
+| `columnheader`, `rowheader` (0.6.11) | ColumnHeader, RowHeader | column header, row header |
+| `searchbox` (0.6.11) | SearchInput | entry |
+| `combobox` (0.6.11) | ComboBox | combo box |
+| `tooltip` (0.6.11) | Tooltip | tool tip |
+| `scrollbar` (0.6.11) | ScrollBar | scroll bar |
+
+An unknown name raises `ValueError` listing the valid ones.
+
+`"status"` is a live region and `"alert"` too: with no `live` set, a status is
+`"polite"` (a reader speaks a change when it is idle) and an alert is
+`"assertive"` (it interrupts). A `live` you set wins. `"option"` is a listbox
+option; a menu's entries stay `"menuitem"`. A role gives no behaviour of its
+own: a `"spinbutton"` offers increment, decrement and set-value like a
+slider; the others offer what their state implies.
+
+## Sets, mixed, orientation and modal (0.6.11)
+
+```python
+item = window.create("box", role="option", label="Mars", pos_in_set=3, set_size=12)
+parent_box.set(role="checkbox", checked="mixed")     # some children checked
+volume.set(role="slider", a11y_orientation="horizontal")
+sheet.set(role="dialog", label="Rename", modal=True)
+```
+
+- `set_size` and `pos_in_set` — positive `int` or `None`, default `None`;
+  `pos_in_set` counts from 1. A screen reader says "3 of 12" for a list
+  item, option, tab or radio. AccessKit keeps the size on the **container**
+  and a reader takes it from the nearest ancestor that has one, so put
+  `set_size` on the list, listbox, tablist or radiogroup and `pos_in_set` on
+  each item (a `set_size` on an item is sent but no platform reads it).
+  **A `virtual_list` needs none of this**: it says its `item_count` as its
+  size, and each built row says its index plus one, so the rows that are not
+  built are still counted. A value you set wins; `get` returns only what you
+  set. Seen over AT-SPI: a built row has the attribute `posinset` and the
+  list's rows `setsize`, read from the list.
+- `checked` — `True`, `False`, `"mixed"` or `None`. `pressed` takes the same
+  values and wins where both are set.
+- `a11y_orientation` — (named so because a `scroll_view` already has an
+  `orientation` of its own: the axes it scrolls) `"horizontal"`, `"vertical"` or `None`: the axis of a
+  slider, scrollbar, separator, toolbar, listbox, radiogroup. Unset leaves
+  the platform's default for the role.
+- `modal` — `bool`, default `False`; `True` on a `"dialog"` tells a reader
+  that what is behind it is out of reach. The engine does not block that
+  content itself.
 
 ## Focus
 

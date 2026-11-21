@@ -401,3 +401,16 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
 - **`letter_spacing` and `line_height` on `text_input` (new, P3).** As on `text`: pixels after each character
   (default `0`) and a multiple of the font size (default `None`, the font's own), shaped with the same layout the
   caret, selection and clicks use.
+
+- **Accessibility: sets, mixed, `a11y_orientation`, `modal` and 18 more roles (UXREQ-003, UXREQ-004, new, opt-in).**
+  `set_size` and `pos_in_set` (positive `int` or `None`, default `None`) say a node's place in a set; AccessKit keeps the
+  size on the container, so set `set_size` on the list and `pos_in_set` on each item. A `virtual_list` needs neither: it
+  says its `item_count` and each built row its index plus one (a value you set wins; `get` returns only what you set).
+  `checked` now also takes `"mixed"` (it was `bool` or `None`; `pressed` still wins where both are set).
+  `a11y_orientation` (`"horizontal"`, `"vertical"` or `None`) is the axis of a slider, scrollbar, separator or toolbar; it is
+  not called `orientation` because a `scroll_view` already has an `orientation` for its scroll axes. `modal` (`bool`,
+  default `False`) marks a dialog. `role` accepts `status`, `spinbutton`, `radiogroup`, `option`, `listbox`, `toolbar`,
+  `navigation`, `complementary`, `region`, `grid`, `row`, `gridcell`, `columnheader`, `rowheader`, `searchbox`, `combobox`,
+  `tooltip` and `scrollbar`. One behaviour change: a node with `role="alert"` and no `live` is now an assertive live
+  region (AccessKit gave it no politeness; a reader may now interrupt for it), and `role="status"` is polite; set `live`
+  to override. Nothing else to migrate. See [Accessibility](guide/accessibility.md#roles).

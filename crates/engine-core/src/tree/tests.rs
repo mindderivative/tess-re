@@ -8033,7 +8033,7 @@ mod access_states_0_5_6 {
     fn pressed_wins_over_checked_and_unset_states_stay_off() {
         let (mut tree, button, ..) = scene();
         let mut access = AccessNodeData::new(Role::Button);
-        access.checked = Some(true);
+        access.checked = Some(Toggled::True);
         access.pressed = Some(Toggled::False);
         tree.set_access(button, access);
         let root = tree.get(button).and_then(|n| n.parent).expect("root");
@@ -10465,5 +10465,192 @@ mod scrollbar_hooks {
             get(Prop::FadeEasing),
             Some(Value::Easing(Easing::from_name("standard").unwrap()))
         );
+    }
+}
+
+/// 0.6.11 (UXREQ-003, UXREQ-004): set size and position, mixed, orientation, modal, live defaults.
+mod access_sets_0_6_11 {
+    use super::*;
+    use crate::access::{AccessNodeData, Orientation, Role, Toggled};
+
+    fn built(tree: &Tree, root: NodeId) -> accesskit::TreeUpdate {
+        tree.build_access_update(root)
+    }
+
+    fn node(update: &accesskit::TreeUpdate, id: NodeId) -> &accesskit::Node {
+        let want = to_access_id(id);
+        &update
+            .nodes
+            .iter()
+            .find(|(c, _)| *c == want)
+            .expect("node in update")
+            .1
+    }
+
+    /// A list of `count` items with rows `first..first + 3` built, and its root.
+    fn list_with_rows(count: usize, first: usize) -> (Tree, NodeId, Vec<NodeId>) {
+        let mut tree = Tree::new();
+        let list = tree.insert(
+            NodeKind::VirtualList(VirtualListState::new(count, ItemExtent::Fixed(10.0))),
+            Style {
+                size: Size {
+                    width: length(50.0),
+                    height: length(30.0),
+                },
+                ..Default::default()
+            },
+            PaintProperties::new(Color::from_rgba8(0, 0, 0, 0), 0.0, 1.0),
+        );
+        let rows = (first..first + 3)
+            .map(|idx| {
+                let (k, s, p) = leaf(1.0, 1.0);
+                let row = tree.insert(k, s, p);
+                assert!(tree.virtual_list_adopt(list, idx, row));
+                row
+            })
+            .collect();
+        tree.compute_layout(
+            list,
+            Size {
+                width: AvailableSpace::Definite(50.0),
+                height: AvailableSpace::Definite(30.0),
+            },
+        );
+        (tree, list, rows)
+    }
+
+    #[test]
+    fn virtual_list_rows_get_their_position_and_the_list_the_item_count() {
+        let (tree, list, rows) = list_with_rows(100_000, 500);
+        let update = built(&tree, list);
+        for (i, row) in rows.iter().enumerate() {
+            let n = node(&update, *row);
+            // AccessKit's position is zero-based: the row's index; a reader says 501.
+            assert_eq!(n.position_in_set(), Some(500 + i));
+            assert_eq!(n.size_of_set(), None, "the size is the container's");
+        }
+        let list_node = node(&update, list);
+        assert_eq!(
+            list_node.size_of_set(),
+            Some(100_000),
+            "unbuilt rows count too"
+        );
+        assert_eq!(
+            list_node.position_in_set(),
+            None,
+            "the list itself is not a row"
+        );
+    }
+
+    #[test]
+    fn an_explicit_value_wins_over_the_derived_one() {
+        let (mut tree, list, rows) = list_with_rows(50, 0);
+        let mut access = AccessNodeData::new(Role::ListItem);
+        access.pos_in_set = Some(7);
+        tree.set_access(rows[1], access);
+        let mut access = AccessNodeData::new(Role::ListBox);
+        access.set_size = Some(9);
+        tree.set_access(list, access);
+        let update = built(&tree, list);
+        assert_eq!(
+            node(&update, rows[1]).position_in_set(),
+            Some(6),
+            "1-based 7"
+        );
+        assert_eq!(node(&update, rows[2]).position_in_set(), Some(2));
+        assert_eq!(node(&update, list).size_of_set(), Some(9));
+    }
+
+    #[test]
+    fn a_plain_node_has_no_set_unless_given_one() {
+        let mut tree = Tree::new();
+        let (k, s, p) = leaf(10.0, 10.0);
+        let root = tree.insert(k, s, p);
+        tree.compute_layout(
+            root,
+            Size {
+                width: AvailableSpace::Definite(10.0),
+                height: AvailableSpace::Definite(10.0),
+            },
+        );
+        let update = built(&tree, root);
+        assert_eq!(node(&update, root).position_in_set(), None);
+        let mut access = AccessNodeData::new(Role::ListBoxOption);
+        access.pos_in_set = Some(2);
+        tree.set_access(root, access);
+        let update = built(&tree, root);
+        let n = node(&update, root);
+        assert_eq!(
+            (n.role(), n.position_in_set(), n.size_of_set()),
+            (Role::ListBoxOption, Some(1), None)
+        );
+    }
+
+    #[test]
+    fn mixed_orientation_and_modal_reach_the_node() {
+        let mut tree = Tree::new();
+        let (k, s, p) = leaf(10.0, 10.0);
+        let root = tree.insert(k, s, p);
+        tree.compute_layout(
+            root,
+            Size {
+                width: AvailableSpace::Definite(10.0),
+                height: AvailableSpace::Definite(10.0),
+            },
+        );
+        let mut access = AccessNodeData::new(Role::CheckBox);
+        access.checked = Some(Toggled::Mixed);
+        access.orientation = Some(Orientation::Horizontal);
+        access.modal = true;
+        tree.set_access(root, access);
+        let update = built(&tree, root);
+        let n = node(&update, root);
+        assert_eq!(n.toggled(), Some(Toggled::Mixed));
+        assert_eq!(n.orientation(), Some(Orientation::Horizontal));
+        assert!(n.is_modal());
+
+        // `pressed` still wins over `checked`.
+        let mut access = AccessNodeData::new(Role::Button);
+        access.checked = Some(Toggled::Mixed);
+        access.pressed = Some(Toggled::True);
+        tree.set_access(root, access);
+        let update = built(&tree, root);
+        let n = node(&update, root);
+        assert_eq!(n.toggled(), Some(Toggled::True));
+        assert_eq!((n.orientation(), n.is_modal()), (None, false));
+    }
+
+    #[test]
+    fn status_is_polite_and_alert_assertive_unless_set() {
+        let mut tree = Tree::new();
+        let (k, s, p) = leaf(10.0, 10.0);
+        let root = tree.insert(k, s, p);
+        tree.compute_layout(
+            root,
+            Size {
+                width: AvailableSpace::Definite(10.0),
+                height: AvailableSpace::Definite(10.0),
+            },
+        );
+        let live_of = |tree: &mut Tree, role: Role, live| {
+            let mut access = AccessNodeData::new(role);
+            access.live = live;
+            tree.set_access(root, access);
+            let update = tree.build_access_update(root);
+            node(&update, root).live()
+        };
+        assert_eq!(
+            live_of(&mut tree, Role::Status, None),
+            Some(accesskit::Live::Polite)
+        );
+        assert_eq!(
+            live_of(&mut tree, Role::Alert, None),
+            Some(accesskit::Live::Assertive)
+        );
+        assert_eq!(
+            live_of(&mut tree, Role::Status, Some(accesskit::Live::Off)),
+            Some(accesskit::Live::Off)
+        );
+        assert_eq!(live_of(&mut tree, Role::Group, None), None);
     }
 }

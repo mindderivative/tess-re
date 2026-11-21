@@ -5,7 +5,7 @@
 //! kinds of its own to derive such states from, so the framework that
 //! draws a checkbox is the one that says it is checked.
 
-pub use accesskit::{Action, ActionData, AriaCurrent, Live, Role, Toggled};
+pub use accesskit::{Action, ActionData, AriaCurrent, Live, Orientation, Role, Toggled};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AccessStates {
@@ -56,7 +56,8 @@ pub struct AccessNodeData {
     pub value_min: Option<f64>,
     pub value_max: Option<f64>,
     pub value_step: Option<f64>,
-    pub checked: Option<bool>,
+    /// `Some(Toggled::Mixed)` is the tri-state a parent checkbox shows over a partial selection.
+    pub checked: Option<Toggled>,
     pub selected: Option<bool>,
     pub expanded: Option<bool>,
     /// 0.5.6 (#160): a toggle button's state; wins over `checked` when set.
@@ -70,6 +71,17 @@ pub struct AccessNodeData {
     /// 0.5.6 (#160): the rarely set, larger accessibility data, boxed so a
     /// node that has none pays one pointer.
     pub extra: Option<Box<AccessExtra>>,
+    /// 0.6.11 (UXREQ-003): how many items the set this node holds. AccessKit keeps it on the
+    /// container, and a reader takes it from the nearest ancestor that has one; a `virtual_list`
+    /// without one says its `item_count`.
+    pub set_size: Option<usize>,
+    /// 0.6.11 (UXREQ-003): this node's 1-based place in its set (AccessKit's is zero-based, the
+    /// tree builder subtracts one). A `virtual_list` row without one gets its index plus one.
+    pub pos_in_set: Option<usize>,
+    /// 0.6.11 (UXREQ-004): the axis of a slider, scrollbar, separator, toolbar...
+    pub orientation: Option<Orientation>,
+    /// 0.6.11 (UXREQ-004): a dialog that blocks the content behind it.
+    pub modal: bool,
     /// A heading's level, 1 for the most important.
     pub level: Option<usize>,
     pub live: Option<Live>,
@@ -117,6 +129,10 @@ impl AccessNodeData {
             current: None,
             extra: None,
             level: None,
+            set_size: None,
+            pos_in_set: None,
+            orientation: None,
+            modal: false,
             live: None,
             hidden: false,
             focusable: None,
