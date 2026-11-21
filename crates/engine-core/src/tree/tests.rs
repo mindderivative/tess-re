@@ -8929,3 +8929,25 @@ fn a_node_is_never_its_own_active_descendant_and_focus_stays_put() {
     );
     assert_eq!(tree.focused(), Some(field));
 }
+
+#[test]
+fn an_unlabelled_root_is_named_after_the_surface_and_a_labelled_one_keeps_its_label() {
+    let (mut tree, root) = announce_scene();
+    let label_of = |update: &accesskit::TreeUpdate| {
+        let id = to_access_id(root);
+        update
+            .nodes
+            .iter()
+            .find(|(n, _)| *n == id)
+            .and_then(|(_, node)| node.label().map(str::to_string))
+    };
+    let update = tree.build_access_update_titled(root, 1.0, "click-away");
+    assert_eq!(label_of(&update).as_deref(), Some("click-away"));
+    assert_eq!(
+        label_of(&tree.build_access_update_titled(root, 1.0, "")),
+        None
+    );
+    tree.get_mut(root).unwrap().access.label = Some("Launcher".into());
+    let update = tree.build_access_update_titled(root, 1.0, "click-away");
+    assert_eq!(label_of(&update).as_deref(), Some("Launcher"));
+}

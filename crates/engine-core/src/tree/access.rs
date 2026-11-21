@@ -118,6 +118,29 @@ impl Tree {
         nodes.extend(made);
     }
 
+    /// 0.6.11: `build_access_update_scaled`, with the root named after the window's `title` (a
+    /// `LayerWindow`'s namespace) when the app gave it no label. A surface whose root is
+    /// `a11y_hidden` (a click catcher) is still a window node on the AT-SPI bus; an unnamed one
+    /// is something a screen reader may announce or navigate to. A root the app labelled keeps
+    /// its label; an empty `title` changes nothing.
+    pub fn build_access_update_titled(
+        &self,
+        root: NodeId,
+        scale: f64,
+        title: &str,
+    ) -> accesskit::TreeUpdate {
+        let mut update = self.build_access_update_scaled(root, scale);
+        if !title.is_empty() {
+            let root_id = to_access_id(root);
+            if let Some((_, node)) = update.nodes.iter_mut().find(|(id, _)| *id == root_id)
+                && node.label().is_none()
+            {
+                node.set_label(title);
+            }
+        }
+        update
+    }
+
     /// 0.5.4 (#102): [`build_access_update`](Self::build_access_update) with
     /// every node's bounds multiplied by `scale`: layout is in logical
     /// pixels, and assistive technology wants the window's physical ones.
