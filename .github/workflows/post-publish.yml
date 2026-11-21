@@ -1,0 +1,155 @@
+# After a release: check the PUBLISHED artifacts, not the build's. Replaces the by-hand
+# steps of the release checklist (install from PyPI in a clean venv, import, look at the
+# GitHub Release).
+#
+# A separate workflow, not a job of wheels.yml, for two reasons: (1) `workflow_run` fires only
+# once the whole Wheels run has finished, so the owner's approval of the `pypi` environment has
+# already happened and this never waits on it; (2) `workflow_dispatch` with a `version` can
+# re-run just this check against an already published version, where a dispatch of wheels.yml
+# would rebuild every wheel first. It reads, installs and reports; it never tags, approves,
+# uploads or edits the Release (contents: read only, no secrets, no new tokens).
+name: Post-publish
+
+on:
+  workflow_run:
+    workflows: ["Wheels"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "A published version to check, such as 0.6.10 (no leading v)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    # Only a finished, successful Wheels run for a tag push (a manual Wheels run has no tag, no
+    # Release and no PyPI upload), or a manual run of this workflow.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        env:
+          # Both come from outside this file: passed as env, never interpolated into the script.
+          INPUT_VERSION: ${{ inputs.version }}
+          RUN_REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          version="${INPUT_VERSION:-${RUN_REF#v}}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::'$version' is not a release version"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Wait until PyPI serves the version
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          url="https://pypi.org/pypi/tesserae-engine/$VERSION/json"
+          for attempt in $(seq 1 45); do
+            if curl -fsS "$url" -o /dev/null; then echo "PyPI serves $VERSION"; exit 0; fi
+            echo "not on PyPI yet (attempt $attempt)"; sleep 20
+          done
+          echo "::error::tesserae-engine $VERSION did not appear on PyPI within 15 minutes"; exit 1
+
+  smoke:
+    needs: resolve
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+        python-version: ["3.12", "3.14"]
+    steps:
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install the published version in a clean venv and import it
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          python -m venv venv
+          if [ -f venv/Scripts/python.exe ]; then py=venv/Scripts/python.exe; else py=venv/bin/python; fi
+          # The JSON API can answer before the simple index (what pip reads) does, and pip must
+          # not reuse a cached index while it waits (the same reason tess-ui's release.yml has).
+          installed=false
+          for attempt in $(seq 1 30); do
+            if "$py" -m pip install --quiet --no-cache-dir "tesserae-engine==$VERSION"; then installed=true; break; fi
+            echo "tesserae-engine $VERSION is not installable yet (attempt $attempt)"; sleep 20
+          done
+          [ "$installed" = true ] || { echo "::error::tesserae-engine $VERSION could not be installed"; exit 1; }
+          cd "$RUNNER_TEMP"   # not the checkout: import the installed package
+          "$py" -I -c "
+          import importlib.metadata as m, os, tess_re
+          want = os.environ['VERSION']
+          assert m.version('tesserae-engine') == want, m.version('tesserae-engine')
+          assert 'site-packages' in tess_re.__file__, tess_re.__file__
+          # headless-safe: builds a window object, opens nothing
+          w = tess_re.Window(width=10, height=10)
+          assert w.get('dark') in (True, False, None)
+          print('tesserae-engine', want, 'imports on', os.name)
+          "
+
+  report:
+    needs: [resolve, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check PyPI files and the GitHub Release, write the summary
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys, urllib.request
+          v, repo = os.environ["VERSION"], os.environ["REPO"]
+          problems = []
+
+          pypi = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/tesserae-engine/{v}/json"))
+          files = [f["filename"] for f in pypi["urls"]]
+          def count(sub): return sum(1 for f in files if f.endswith(".whl") and sub in f)
+          pypi_counts = {"linux": count("manylinux"), "macos": count("macosx"), "windows": count("win_amd64")}
+          pypi_sdist = sum(1 for f in files if f.endswith(".tar.gz"))
+
+          rel = json.loads(subprocess.run(
+              ["gh", "release", "view", f"v{v}", "-R", repo, "--json", "assets,body,url"],
+              check=True, capture_output=True, text=True).stdout)
+          names = [a["name"] for a in rel["assets"]]
+          def rcount(sub): return sum(1 for n in names if n.endswith(".whl") and sub in n)
+          rel_counts = {"linux": rcount("manylinux"), "macos": rcount("macosx"), "windows": rcount("win_amd64")}
+          sdists = sum(1 for n in names if n.endswith(".tar.gz"))
+          sos = sum(1 for n in names if n.endswith(".so"))
+
+          # The floor is Python 3.12 to 3.14 on each platform (the build matrices); more is fine.
+          for label, counts in (("PyPI", pypi_counts), ("Release", rel_counts)):
+              for plat, n in counts.items():
+                  if n < 3: problems.append(f"{label} has {n} {plat} wheels, expected at least 3")
+          if pypi_sdist != 1: problems.append(f"PyPI has {pypi_sdist} sdists, expected 1")
+          if sdists != 1: problems.append(f"the Release has {sdists} sdists, expected 1")
+          if sos != 1: problems.append(f"the Release has {sos} standalone .so files, expected 1")
+          if not rel["body"].strip(): problems.append("the Release body is empty")
+
+          summary = f"""## tesserae-engine {v} is published
+          - PyPI: https://pypi.org/project/tesserae-engine/{v}/ ({len(files)} files; wheels {pypi_counts}, {pypi_sdist} sdist)
+          - Release: {rel['url']} ({len(names)} assets; wheels {rel_counts}, {sdists} sdist, {sos} standalone .so)
+          - Clean-venv install and import: passed on ubuntu, macOS and Windows, Python 3.12 and 3.14
+          - Not checked here: KWin and other real compositors, a GPU, macOS and Windows windows (#187, #188)
+          """
+          if problems:
+              summary += "\n### Problems\n" + "\n".join(f"- {p}" for p in problems) + "\n"
+          else:
+              summary += "\nNext manual steps for the maintainer: none (move the issues to Done, update LOG.md Status and the memory entity).\n"
+          open(os.environ["GITHUB_STEP_SUMMARY"], "a").write("\n".join(l.lstrip() for l in summary.splitlines()) + "\n")
+          for p in problems: print("::error::" + p)
+          sys.exit(1 if problems else 0)
+          PY
