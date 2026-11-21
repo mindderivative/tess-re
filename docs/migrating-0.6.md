@@ -232,6 +232,10 @@ Nothing you have written breaks. One new call and one fix:
   exclusive zone. The stored configuration is now sent as soon as the surface exists, in the order it was made. Code
   that sends the setting again at the first `configure` to work around it can drop that.
 
+## 0.6.10 (2026-11-20)
+
+Nothing you have written breaks. New calls and fixes, listed by request:
+
 - **`active_descendant` on any node (TRE-REQ-023, new, nothing to migrate).** `field.set(active_descendant=row)` tells
   assistive technology which node is the current item of a node that keeps keyboard focus (a search field and its
   result list); `None` clears it. Focus does not move. See
@@ -272,3 +276,11 @@ Nothing you have written breaks. One new call and one fix:
   run their ramp `repeat` times across the span, `spread` being `"repeat"`, `"reflect"` or `"pad"`; the default is one
   pass, drawn as in 0.6.9. `gradient.repeat` and `gradient.spread` read them back, and `repeat` animates. See
   [Repeating a ramp](reference/paint.md#repeating-a-ramp-0610).
+
+- **Timers, `call_soon` and `on_complete` run while every Wayland window is hidden (#247, a fix).** A lone bar under a
+  fullscreen window, or windows on another workspace, no longer hold back timers, thread-posted `call_soon` work and
+  animation completions until a window is shown again. Nothing is drawn meanwhile. See
+  [Hidden windows](reference/window.md#hidden-windows).
+- **A resizing window presents at most 250 times a second (#248, a fix).** A fullscreen change on KWin with RADV made an
+  animating window commit about 10,000 times a second for 0.4 s. The resize still presents without a vsync barrier, now
+  at least 4 ms apart. The issue stays open until the resize is checked by hand on KWin.
