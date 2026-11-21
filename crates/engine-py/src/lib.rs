@@ -40,6 +40,7 @@ mod scheme;
 mod scrollbar_props;
 mod shader;
 mod shaper;
+mod state_layer_props;
 mod terminal;
 mod text_interaction;
 mod thread_bound;

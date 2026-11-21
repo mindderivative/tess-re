@@ -194,6 +194,55 @@ Every node.
 
 Each transform part animates on its own, so easing one never disturbs another.
 
+## State layers (0.6.11)
+
+Every node. The engine already knows which node is hovered, pressed and focused; a toolkit declares the overlays once
+and the engine draws them over the node's own fill and border (and text, image or other content), under its children,
+clipped to its shape (`corner_radius`, `corner_radii`, `corner_style`), and fades them in and out. Nothing runs in
+Python per frame, and a node with none set draws as before. The defaults are the Tesserae UX spec's (State Layers,
+ADR-0009: hover 8 %, pressed 10 %, focus 10 %, fade `short2` = 100 ms on the `standard` easing); the engine paints
+no colour of its own, so say the colour and its alpha, which *is* the layer's opacity.
+
+| Property | Type | Default | Unit | Example |
+| --- | --- | --- | --- | --- |
+| `hover_layer` | colour `(r, g, b, a)` or `None` | `None`: no hover layer | alpha 0-255 is the opacity | `button.set(hover_layer=(29, 27, 32, 20))` (`on_surface` at 8 %) |
+| `pressed_layer` | colour or `None` | `None` | alpha 0-255 | `button.set(pressed_layer=(29, 27, 32, 26))` (10 %) |
+| `focus_layer` | colour or `None` | `None` | alpha 0-255 | `button.set(focus_layer=(29, 27, 32, 26))` (10 %) |
+| `focus_layer_any_modality` | `bool` | `False`: `focus_layer` shows only for keyboard (or assistive-technology) focus | | `field.set(focus_layer_any_modality=True)` |
+| `state_layer_ms` | number `0`..one hour, or `None` | `100` (`None` resets): fade in and out, `0` is at once | milliseconds | `button.set(state_layer_ms=150)` |
+| `state_layer_easing` | preset name or cubic bezier `(x1, y1, x2, y2)`, or `None` | `"standard"` (`None` resets) | see [Easings](#scrollbar-and-scroll-feel-0611) | `button.set(state_layer_easing="linear")` |
+
+```python
+# A button that follows the UX spec: on_surface layers, no code per frame.
+ON_SURFACE = (29, 27, 32)
+button = window.create("box", fill=(231, 224, 236, 255), corner_radius=20, focusable=True, role="button",
+                       hover_layer=(*ON_SURFACE, 20), pressed_layer=(*ON_SURFACE, 26),
+                       focus_layer=(*ON_SURFACE, 26))
+```
+
+- **Which layer shows.** One at a time, by the spec's precedence: pressed, then focus, then hover (a state with no colour
+  set passes to the next). The layer changes by fading the drawn colour (alpha, and the colour if two layers differ)
+  from what shows now to the new target over `state_layer_ms`, on `state_layer_easing`; a change in mid-fade starts from
+  where it is. The result colour of a pixel is `fill * (1 - a) + layer * a`.
+- **Hover** applies to the node under the pointer and every ancestor of it (what `pointer_enter` is told about is the
+  hit node; the layers follow the whole chain, as CSS `:hover` does), so a label inside a button hovers the button, and
+  a panel and the button in it can both have a hover layer. The pointer leaving the window clears it.
+- **Pressed** applies while a primary-button press is held, to the node the press lands on (a bare `text` label's press
+  goes to the node around it, as for a click) and its ancestors. Releasing or leaving does not stick: it follows the
+  engine's own press state.
+- **Focus** applies to the node holding keyboard focus only (not its ancestors), when focus is visible: the same
+  decision as `focus_visible` on the `focus` event, made when focus arrives (keyboard, assistive technology and
+  programmatic focus after a key press show it; a pointer press that focuses does not). `focus_layer_any_modality=True`
+  draws it for pointer focus too, as a text input does. The ring is yours to draw from `focus`/`unfocus`.
+- **Disabled.** A node with `disabled=True` draws no layer, whatever else holds, and gets it back when enabled. Only the
+  node's own flag counts, not an ancestor's.
+- **Reduced motion** (`Window.set(reduced_motion=...)`, default the OS): the layer is there in the next frame, with no fade.
+- **Not covered:** the spec's *dragged* layer (16 %) has no engine state to follow (the engine's only drag is a
+  scrollbar thumb), and the ripple stays an app recipe (`examples/ripple.py`).
+- `get` returns what was set (`None`, the defaults for the rest); a bad colour, a negative or non-numeric duration or an
+  unknown easing raises `ValueError` and changes nothing. They are plain node properties, so `create()` and
+  `set_defaults` take them like any other.
+
 ## Text
 
 On `text` and `text_input` unless noted.

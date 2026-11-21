@@ -798,6 +798,8 @@ impl<'t> walk::Visitor<'t> for Painter<'_> {
                 self.text,
                 self.geometry,
             );
+            // 0.6.11 (P13): the state layer, over the node's own paint and under its children.
+            draw_state_layer(node, v.id, v.w, v.h, v.composed, self.scene, self.geometry);
         }
 
         // M8 Phase 2 (§11.7): a node that clips its children paints them
@@ -1156,6 +1158,38 @@ fn stroke_box(
     if shaped {
         scene.reset_paint_transform();
     }
+}
+
+/// 0.6.11 (P13): the node's state layer -- the colour of the hover, pressed or focus layer in
+/// force, at the opacity it has faded to -- over its own fill and border, inside its shape (the
+/// rounded or concave corners of the box). Nothing is drawn while no layer shows.
+fn draw_state_layer(
+    node: &engine_core::Node,
+    id: NodeId,
+    w: f64,
+    h: f64,
+    composed: Affine,
+    scene: &mut Scene,
+    geometry: &mut GeometryCache,
+) {
+    let Some(color) = node
+        .paint
+        .state_layer
+        .as_deref()
+        .and_then(engine_core::StateLayer::visible)
+    else {
+        return;
+    };
+    scene.set_transform(composed);
+    scene.set_paint(color);
+    if node.paint.corner_radii_override.is_none()
+        && node.paint.corner_radius.current <= 0.0
+        && !node.paint.corner_concave.contains(&true)
+    {
+        scene.fill_rect(&Rect::new(0.0, 0.0, w, h));
+        return;
+    }
+    scene.fill_path(box_path(node, id, w, h, geometry));
 }
 
 /// A node's own paint -- shadows, then what its kind draws -- in its own

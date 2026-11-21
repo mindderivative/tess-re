@@ -313,6 +313,17 @@ class Node:
         path, canvas, scroll view, virtual list, terminal). An unknown
         name lists the valid ones. See the Properties reference.
 
+        (0.6.11) State layers, on every node: `hover_layer`, `pressed_layer`
+        and `focus_layer` (default `None`: nothing drawn; or a colour whose
+        alpha is the layer's opacity, e.g. `(29, 27, 32, 20)` for 8 %) are
+        drawn over the node's fill and border, under its children, clipped
+        to its shape. Hover applies to the hovered node and its ancestors; the
+        focus layer only on visible focus unless `focus_layer_any_modality`
+        (default `False`). One layer at a time: pressed, focus, hover. The
+        fade is `state_layer_ms` (default `100`) on `state_layer_easing`
+        (default `"standard"`; a preset or a bezier), instant under reduced
+        motion; a disabled node draws none.
+
         (0.6.11) `hit_testable` is `True`, `False` or `None` (the default:
         every kind takes pointer events, a plain `text` label included;
         `False` lets them fall to the node underneath). `vertical_align`

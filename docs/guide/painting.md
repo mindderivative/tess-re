@@ -228,6 +228,23 @@ baseline with your overrides): `surface`, `surface_container` and the other role
 colour in force. `set(scheme_colors={...})` replaces the window's overrides (`None` or `{}` clears them) and raises
 `ValueError`, listing the valid role names, for an unknown one; the overrides stay across a change of scheme.
 
+## State layers (0.6.11)
+
+A toolkit's hover, pressed and keyboard-focus feedback is a translucent overlay in the content colour over the control.
+Declare it once and the engine draws and fades it:
+
+```python
+ON_SURFACE = (29, 27, 32)
+button.set(hover_layer=(*ON_SURFACE, 20),    # 8 %
+           pressed_layer=(*ON_SURFACE, 26),  # 10 %
+           focus_layer=(*ON_SURFACE, 26))    # 10 %, keyboard focus only
+```
+
+The overlay is drawn over the node's fill and border and under its children, inside its rounded corners; one layer shows
+at a time (pressed, then focus, then hover) and changes fade over `state_layer_ms` (default 100) on `state_layer_easing`
+(default `"standard"`), instantly under reduced motion. A disabled node draws none. All the rules and defaults are in
+[State layers](../reference/properties.md#state-layers-0611).
+
 ## What Tesserae Engine leaves to you
 
 The colors Tesserae Engine draws for you all have properties: a text's and a text input's `fill`, a text input's

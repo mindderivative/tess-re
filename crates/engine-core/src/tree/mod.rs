@@ -50,9 +50,12 @@ pub use text_editing::{FieldRows, RowAnswer, RowQuery};
 mod nodes;
 mod region;
 mod scroll;
+mod state_layers;
 pub use scroll::{KEY_SCROLL_LINE, ScrollChange};
 mod virtual_scroll;
 pub use virtual_scroll::ScrollAlign;
+#[cfg(test)]
+mod state_layer_tests;
 #[cfg(test)]
 mod tests;
 mod text_editing;
@@ -118,6 +121,10 @@ pub struct Tree {
     /// as hit, so a repeated `PointerMoved` over the same node is a
     /// no-op rather than re-triggering a hover transition every frame.
     hovered: Option<NodeId>,
+    /// 0.6.11 (P13): the nodes whose state layers the next `tick_all` looks at again, and
+    /// whether the focus now held is visible (keyboard) rather than from a pointer press.
+    state_layer_pending: Vec<NodeId>,
+    focus_visible: bool,
     /// M4 Phase 1 step 1 (§11.10 dispatch): the `(button, node)` a
     /// `PointerPressed` last hit, so `PointerReleased` can tell a real
     /// click (same button, same node) from a drag-off (different node,
@@ -315,6 +322,8 @@ impl Tree {
             layout_watch: std::collections::HashMap::new(),
             focused: None,
             hovered: None,
+            state_layer_pending: Vec::new(),
+            focus_visible: true,
             pressed: None,
             dragging: None,
             scrollbar_hover: None,
@@ -673,6 +682,7 @@ impl Tree {
     /// nothing else -- `detach` and `insert_child` decide what else a
     /// detach or a move means.
     fn unlink(&mut self, parent: NodeId, child: NodeId) {
+        self.note_state_leaving(Some(parent), child);
         let parent_taffy = *self
             .taffy_nodes
             .get(parent)
@@ -686,6 +696,17 @@ impl Tree {
             .expect("detach: taffy rejected removing this parent/child pair");
         self.nodes[parent].children.retain(|&c| c != child);
         self.nodes[child].parent = None;
+    }
+
+    /// 0.6.11 (P13): `child` is about to leave `parent` (or the tree): the hover or press it
+    /// holds goes, so `parent` and its ancestors lose it from their state layers too.
+    fn note_state_leaving(&mut self, parent: Option<NodeId>, child: NodeId) {
+        let inside = |tree: &Self, held: Option<NodeId>| {
+            held.is_some_and(|held| tree.ancestors(held).any(|a| a == child))
+        };
+        if inside(self, self.hovered) || inside(self, self.pressed.map(|(_, node)| node)) {
+            self.note_state_chain(parent);
+        }
     }
 
     /// Clears focus, hover, press, and pointer capture held by `id` or a
@@ -788,11 +809,14 @@ impl Tree {
     /// `set_access`'s own "id not found is a silent no-op" contract).
     pub fn remove(&mut self, id: NodeId) -> bool {
         self.dirty = true;
+        let Some(parent) = self.nodes.get(id).map(|n| n.parent) else {
+            return false;
+        };
+        self.note_state_leaving(parent, id);
         let Some(node) = self.nodes.get(id) else {
             return false;
         };
         let children: Vec<NodeId> = node.children.clone();
-        let parent = node.parent;
         // M65 (§5, §6): the real, single decrement choke point --
         // mirrors `insert`'s own increment above exactly. Read while
         // `node` is still borrowed, before `self.nodes.remove(id)`
@@ -1041,6 +1065,8 @@ impl Tree {
         self.clock = now;
         let reduced = self.reduced_motion();
         let mut completed = Vec::new();
+        // 0.6.11 (P13): state-layer fades start here, before the animations started are counted.
+        self.sync_state_layers(now);
         let started = crate::animation::animations_started();
         // What was reached mutably since the last tick: an animation can only
         // have been started on one of these. Drained every tick so it cannot
