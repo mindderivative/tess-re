@@ -78,7 +78,7 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           python -m venv venv
-          if [ -f venv/Scripts/python.exe ]; then py=venv/Scripts/python.exe; else py=venv/bin/python; fi
+          if [ -f venv/Scripts/python.exe ]; then py="$PWD/venv/Scripts/python.exe"; else py="$PWD/venv/bin/python"; fi
           # The JSON API can answer before the simple index (what pip reads) does, and pip must
           # not reuse a cached index while it waits (the same reason tess-ui's release.yml has).
           installed=false
