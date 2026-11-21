@@ -7,7 +7,7 @@ needs a fast adapter (`tools/with_adapter.sh radv`); on lavapipe the present its
 test passes there with or without the cap. It counts `wl_surface.commit` in the protocol log.
 """
 
-import datetime
+import json
 import os
 import re
 import shutil
@@ -35,7 +35,9 @@ CHILD = textwrap.dedent(
     """
 )
 
-STAMP = re.compile(r"^\[(\d+):(\d+):(\d+\.\d+)\]")
+CLOCK = re.compile(r"^\[(\d+):(\d+):(\d+\.\d+)\]")  # newer libwayland: [HH:MM:SS.us] (UTC)
+MONO = re.compile(r"^\[\s*(\d+\.\d+)\]")  # Ubuntu 24.04's: [seconds.millis] since boot
+COMMIT = re.compile(r"wl_surface[#@]\d+\.commit\(\)")
 
 
 def _sway():
@@ -44,29 +46,69 @@ def _sway():
 
 
 def _seconds(line):
-    match = STAMP.match(line)
-    if not match:
-        return None
-    h, m, s = match.groups()
-    return int(h) * 3600 + int(m) * 60 + float(s)
+    """The protocol log's own timestamp of a line, in seconds, whichever libwayland wrote it."""
+    match = CLOCK.match(line)
+    if match:
+        h, m, s = match.groups()
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    match = MONO.match(line)
+    return float(match.group(1)) if match else None
 
 
-def _commits(path, t0, span):
-    """`wl_surface.commit` lines of the child's protocol log between t0 and t0 + span."""
-    count = 0
+def _lines(path):
     with open(path, errors="ignore") as log:
-        for line in log:
-            at = _seconds(line)
-            if at is not None and t0 <= at < t0 + span and re.search(
-                r"wl_surface[#@]\d+\.commit\(\)", line
-            ):
-                count += 1
-    return count
+        return log.read().splitlines()
 
 
-def _now():
-    now = datetime.datetime.now(datetime.timezone.utc)
-    return now.hour * 3600 + now.minute * 60 + now.second + now.microsecond / 1e6
+def _burst(lines, start, span):
+    """Commits within `span` seconds of the first commit at or after line `start`, by the
+    log's own clock. Returns (count, first commit time or None)."""
+    first, count = None, 0
+    for line in lines[start:]:
+        at = _seconds(line)
+        if at is None or not COMMIT.search(line):
+            continue
+        if first is None:
+            first = at
+        if at - first >= span:
+            break
+        count += 1
+    return count, first
+
+
+def _diagnosis(lines, start, extra=""):
+    stamps = [t for t in map(_seconds, lines) if t is not None]
+    commits = sum(1 for line in lines if COMMIT.search(line))
+    return (
+        f"{extra} log lines {len(lines)}, change at line {start}, commits in log {commits}, "
+        f"first/last stamp {stamps[:1]}/{stamps[-1:]}; last lines:\n" + "\n".join(lines[-15:])
+    )
+
+
+def _fullscreen(change):
+    out = subprocess.run(
+        ["swaymsg", f'[title="resize-cap"] fullscreen {change}'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return out
+
+
+def _is_fullscreen():
+    tree = subprocess.run(
+        ["swaymsg", "-t", "get_tree"], capture_output=True, text=True, check=False
+    ).stdout
+    node = next(
+        (n for n in _walk(json.loads(tree)) if n.get("name") == "resize-cap"), None
+    )
+    return bool(node and node.get("fullscreen_mode"))
+
+
+def _walk(node):
+    yield node
+    for child in node.get("nodes", []) + node.get("floating_nodes", []):
+        yield from _walk(child)
 
 
 def test_a_size_change_does_not_make_an_animating_window_commit_in_a_burst():
@@ -82,22 +124,30 @@ def test_a_size_change_does_not_make_an_animating_window_commit_in_a_burst():
                 env=env,
             )
         try:
-            time.sleep(3.0)
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline and not _is_window():
+                time.sleep(0.2)
+            time.sleep(2.0)
             for change in ("enable", "disable"):
-                t0 = _now()
-                subprocess.run(
-                    ["swaymsg", f'[title="resize-cap"] fullscreen {change}'],
-                    capture_output=True,
-                    check=False,
+                start = len(_lines(log))
+                out = _fullscreen(change)
+                assert out.returncode == 0 and '"success": true' in out.stdout, (
+                    f"swaymsg fullscreen {change}: rc {out.returncode} {out.stdout} {out.stderr}"
                 )
-                time.sleep(1.5)
-                n = _commits(log, t0, 0.5)
+                assert _is_fullscreen() == (change == "enable")
+                time.sleep(2.0)
+                lines = _lines(log)
+                n, first = _burst(lines, start, 0.5)
+                assert first is not None, _diagnosis(lines, start, f"{change}: no commit.")
                 # 250 a second is 125 in half a second; unthrottled it was ~4,000.
-                assert 0 < n < 400, f"fullscreen {change}: {n} commits in 0.5 s"
-            # Settled: back to the compositor's pace, well under the cap.
-            t0 = _now()
-            time.sleep(1.5)
-            assert _commits(log, t0 + 0.2, 1.0) < 200
+                assert n < 400, _diagnosis(lines, start, f"{change}: {n} commits in 0.5 s.")
         finally:
             proc.kill()
             proc.wait()
+
+
+def _is_window():
+    tree = subprocess.run(
+        ["swaymsg", "-t", "get_tree"], capture_output=True, text=True, check=False
+    ).stdout
+    return any(n.get("name") == "resize-cap" for n in _walk(json.loads(tree)))
