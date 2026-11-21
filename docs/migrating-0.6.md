@@ -288,6 +288,56 @@ Nothing you have written breaks. New calls and fixes, listed by request:
 
 ## 0.6.11
 
+0.6.11 is mostly additive: new properties, each with the Tesserae UX specification's value as its default and `None` meaning
+that default. A few defaults change; read **Changed defaults** first. **New properties** are grouped by area in the order they
+were added; **Internal (Rust)** lists API changes that Python never sees.
+
+### Changed defaults
+
+- **A wheel notch scrolls 40 px, not 20 (changed, UXREQ-001).** The Tesserae UX note "Scrollbar and Scroll Container"
+  sets `scroll.wheel.notch` to 40. It applies to every `"scroll_view"` and `"virtual_list"`, and to the pixels a
+  `wheel` event reports for a wheel that sends lines. Deltas that arrive in pixels (a trackpad, a touch pan) are taken
+  as they come. Code that tuned a count of notches for 20 px (an app that wrote `scroll_offset` from a wheel
+  listener, a test that scrolls by one line and expects 20) takes half as many notches now.
+
+- **Colour scheme: the engine's own default colours follow `Window(scheme=...)` (new; changes defaults; P4, tess-ui
+  finding 5).** `scheme` (`"light"`, `"dark"`, `"auto"` = follow the OS, light while unknown) on `Window`, `LayerWindow`,
+  `PopupWindow`, `window.set` and `App(scheme=...)` / `app.set`; `window.get("scheme_resolved")`,
+  `tess_re.scheme_colors("light" | "dark")` (49 role colours) and `window.set(scheme_colors={...})` overrides.
+  **Changed defaults:** a text's and a text input's unset `fill` is `on_surface` (`#1D1B20` light) instead of opaque
+  black, so `get("fill")` reads that, and an animation of an unset `fill` starts from it; a text input with no `fill`
+  paints its caret in `primary` and its selection in `primary` at 30% (were the text colour, and the text colour
+  at 30%) and its placeholder in `on_surface_variant`; a scroll view's default thumb is `on_surface_variant`
+  (`#49454F` light, `#CAC4D0` dark; it was `#CAC4D0` in both); a terminal's `palette` `foreground`, `cursor` and
+  `selection` read `None` until set (the scheme's `on_surface`, `primary` at 50%, `primary` at 30%; were
+  `#1C1B1F`-based). A node with a colour of its own is unchanged, and a text input with a `fill` keeps the derived
+  placeholder/caret/selection. To keep the old look, set the colours. `fill=None` on a text or text input gives it
+  back to the scheme; `palette` takes `None` for those three keys. See
+  [Colour scheme](guide/painting.md#colour-scheme-0611).
+
+- **`hit_testable` is on every node, and a plain `text` is hovered by default (changed, P2; tess-ui finding #4).**
+  `node.get("hit_testable")` is `None` (the default: the kind's own answer), `True` or `False`; it used to be `True`
+  or `False` with `True` the default read-back. A bare `text` label never took a pointer event before (unless
+  `selectable` or a link), so a tooltip listener on a label did nothing; it now gets `pointer_enter` and
+  `pointer_leave`, and the button around it stays hovered. A **press** on a plain label is still its parent's, exactly
+  as before (a button's label is part of the button, and a press on the label that ends on the button's padding is
+  still one click): `pointer_down`, `pointer_up` and `click` reach the label only when it opts in with
+  `label.set(hit_testable=True)` (or is `selectable` or a link), and then `click` bubbles to the button once with
+  `event.target` the label. `hit_testable=False` makes any node transparent to the pointer. A layer window's
+  `input_region="auto"` still leaves a plain label out (a click-through layer stays click-through);
+  `hit_testable=True` puts one in. Rust: `Node.hit_testable` and `Tree::set_hit_testable` take `Option<bool>`.
+
+- **Other changed defaults, each with an opt-out (read with the list above).** A single-line `text_input` now centres its
+  line vertically (`vertical_align="start"` restores the old top alignment). Selected text and a text input's selection
+  highlight are the scheme's `primary` at 30%, and a scroll bar's thumb, a text input's placeholder and caret and a
+  terminal's colours follow the scheme (set the colour to keep the old one). A plain window whose root paints nothing is
+  cleared to the scheme's `surface` colour instead of transparent (`set(background=(0, 0, 0, 255))` restores the old look).
+  The `alert` role is an assertive live region and `status` a polite one unless `live` is set. Ctrl+Shift+Escape no longer
+  reaches a shell in a `terminal` (`escape_chord=None` restores it). The `emphasized` easing preset is `(0.2, 0, 0, 1)`, the
+  Tesserae Motion note's value (it was `(0.3, 0, 0, 1)` in a pre-release build). Each is described in its own bullet below.
+
+### New properties and calls
+
 - **`virtual_list` keys, `scroll_to_index` and `scroll_into_view` (new; from the UX spec notes "List" and "Scrollbar and
   Scroll Container").** A focused virtual list, or a node inside one, now scrolls on Up/Down (40 px), Page Up/Page Down
   (the viewport less 10 percent) and Home/End, with the scroll-view rules (a `key_down` listener or a text input keeps
@@ -320,60 +370,69 @@ Nothing you have written breaks. New calls and fixes, listed by request:
 
 One behaviour changes for every scroll view and virtual list: the wheel notch. The rest is new and opt-in.
 
-- **A wheel notch scrolls 40 px, not 20 (changed, UXREQ-001).** The Tesserae UX note "Scrollbar and Scroll Container"
-  sets `scroll.wheel.notch` to 40. It applies to every `"scroll_view"` and `"virtual_list"`, and to the pixels a
-  `wheel` event reports for a wheel that sends lines. Deltas that arrive in pixels (a trackpad, a touch pan) are taken
-  as they come. Code that tuned a count of notches for 20 px (an app that wrote `scroll_offset` from a wheel
-  listener, a test that scrolls by one line and expects 20) takes half as many notches now.
 - **`orientation="both"` (UXREQ-001, new, opt-in).** A `"scroll_view"` scrolls on both axes, with `scroll_offset` the
   vertical offset and the new `scroll_offset_x` the horizontal one (settable, readable, animatable). `"vertical"` and
   `"horizontal"` views are unchanged: the same offsets, thumb, hit area, keys (a Page Up is still a whole viewport)
   and `scroll` event, apart from the notch above. A `scroll` event now carries `x` and `y`, the offsets after the
   change, on every scroll view; `old_value` and `new_value` stay the main axis' offset. See
   [Two axes](guide/nodes-and-layout.md#two-axes-0611).
+
 - **Scrollbar properties (UXREQ-001, new).** `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`,
   `scrollbar_gutter`, `scrollbar_corner`, `scrollbar_opacity`, `scrollbar_opacity_hover` and `scrollbar_opacity_drag`,
   next to `scrollbar_fill` and `scrollbar_width`. A `"both"` view defaults them to the spec (8 px thumb, 12 px hit strip,
   12 px gutter and corner, opacity 0.70 / 0.80 / 1.0); a one-axis view keeps its old look. `scrollbar_width` and the
   new ones take `None` for the default. See [Scrollbar](reference/properties.md#scrollbar-and-scroll-feel-0611).
+
 - **`virtual_list` takes every scrollbar property, and shares the scroll view's scrollbar (P1, new, opt-in).** A
   virtual list's thumb used to be fixed (4 px, `#CAC4D0` at 55%, no emphasis) and every `scrollbar_*` property raised
   `ValueError` on it. All of them now work on a `virtual_list` (and on a `scroll_view`), with one implementation of the
   geometry, hit-testing, hover, drag and fade. A list that sets nothing looks and behaves as before; the error for a
   `scrollbar_*` property on another node now reads "applies only to a scroll_view or virtual_list node". See
   [Scrollbar and scroll feel](reference/properties.md#scrollbar-and-scroll-feel-0611).
+
 - **`scrollbar_radius` (P1, new).** The thumb's corner radius, in pixels: default a pill (half the thickness) on a
   `"both"` view and 2 on a one-axis view and a list. `scrollbar_radius=0` is square.
+
 - **`scrollbar_track_fill` and `scrollbar_track_opacity` (P1, new).** A track behind the thumb, as long as the lane and
   as thick as the thumb. Default none (the spec is track-less); opacity 1.0.
+
 - **`scrollbar_fill_hover` and `scrollbar_fill_drag` (P1, new).** The thumb's colour with the pointer over it and while
   dragged, faded in and out like the opacity; unset, they are `scrollbar_fill`.
+
 - **`scrollbar_side_v` and `scrollbar_side_h` (P1, new).** The edge of each bar: `"end"` (default: right, bottom),
   `"start"` (left, top), or physical (`"left"`, `"right"` for the vertical bar, `"top"`, `"bottom"` for the horizontal).
   `"start"` and `"end"` follow the layout direction; there is no right-to-left layout yet, so they are left-to-right,
   resolved in one place. The gutter and the corner follow the bar to its edge (a left bar makes the content start 12 px
   in).
+
 - **`scrollbar_show`, `scrollbar_hide_delay_ms` (P1, new).** `"overflow"` (default, today's behaviour), `"always"` (a
   full-length thumb even without overflow, no gutter), `"auto_hide"` (fades out after the delay, default 1000 ms, and
   back in on scroll, hover and drag) or `"never"` (no bar and no gutter; the view still scrolls).
+
 - **`scrollbar_fade_in_ms`, `scrollbar_fade_out_ms`, `scrollbar_hover_delay_ms`, `scrollbar_fade_easing` (P1, new).**
   The durations of the thumb's fades (default 100 ms each, replacing the fixed 100 ms), how long the pointer rests on
   the bar before the hover emphasis starts (default 0), and the curve: a preset name (`"linear"`, `"standard"` default,
   `"emphasized"`, `"ease_out"` and others) or a cubic bezier `(x1, y1, x2, y2)`.
+
 - **`scrollbar_gutter_reserve` (P1, new).** `True` (default) reserves the gutter; `False` lets the thumb overlay the
   content.
+
 - **`scrollbar_arrows`, `scrollbar_arrow_step` (P1, new).** `"both"` adds an arrow button at each end of the lane (a
   minimal triangle in the thumb's colour); a press scrolls the step (default 40 px) and repeats while held. Default
   `"none"`.
+
 - **`scrollbar_lane_click` (P1, new).** `"page"` (default for a `"both"` view; the existing lane paging), `"jump"` (the
   thumb's middle goes to the press and the press carries on as a drag) or `"none"` (the default for a one-axis view and a
   list, as before: a press beside the thumb goes to the content).
+
 - **`wheel_notch`, `key_line`, `page_fraction` (P1, new).** The wheel notch, the arrow-key step and the page, per scroll
   view and virtual list: defaults 40, 40 and 0.9 (a one-axis scroll view keeps a whole-viewport page, 1.0). A list's page
   was a constant 0.9 of the viewport and is now this property.
+
 - **`scroll_smooth_ms`, `scroll_easing` (P1, new).** With `scroll_smooth_ms` above 0 (default 0: keys and wheel jump,
   as the spec says) the wheel and keys ease over that many milliseconds with the easing (default `"standard"`); notches
   add up. Drags, lane and arrow presses and `scroll_offset=` stay direct.
+
 - **Named easings everywhere an easing is taken (P7, new).** `animate`, `animate_param`, `Shader.animate`,
   `LayerWindow.animate_margin` (and so a path's `trim_*`/`data` and the layout properties) now take a preset name too,
   next to `"linear"`, a bezier tuple and the springs: `"linear"`, `"standard"`, `"standard_decelerate"`,
@@ -382,47 +441,22 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   raises `ValueError` listing them. The first seven are the table of the Tesserae UX note "Motion". **Changed
   (unreleased P1 preset):** `"emphasized"` was `(0.3, 0, 0, 1)`, a value in no MD3 table; it is now the note's
   `(0.2, 0, 0, 1)`, the same curve as `"standard"`.
+
 - **`scroll_snap_settle_ms`, `scroll_snap_duration_ms`, `scroll_snap_easing` (P7, new).** The wait before a snapping
   `scroll_view` settles (default 120 ms), how long the settle takes (200 ms; 0 under reduced motion) and its curve
   (`"standard"`), until now constants of the engine.
+
 - **`fling_tau_ms`, `fling_stop_speed`, `fling_min_speed` (P7, new).** A touch flick's decay time constant (default
   350 ms), the speed at which the coast ends (30 px/s) and the speed below which a flick does not coast (150 px/s), until
   now constants of the engine. A fling is not changed by reduced motion (it never was).
+
 - **`page_repeat_delay_ms`, `page_repeat_ms` (P1, new).** The held lane or arrow press repeats after 400 ms, then every
   100 ms (were constants).
+
 - **`Window.set(reduced_motion=...)` (P1, new).** `True`/`False` overrides, `None` (default) follows the OS value
   `window.get("reduced_motion")` already reported; `get` returns the window's own say, else the OS's. While it is true
   the scrollbar's fades, the smooth scroll and the scroll snap settle take no time (a snap settle took 200 ms before
   whatever the OS said): this closes the "reduced motion is not wired" limit of the two-axis scroll view.
-- **Internal (Rust):** `ScrollViewState::scrollbar_width` is a `Prop::Width` setting of `bar` (`ScrollbarState`, shared with `VirtualListState`; the per-kind `thumb_drag_anchor`, `level`, `scrollbar_fill` and `scrollbar` fields are gone); `ScrollbarOverrides` and `SCROLLBAR_PROPS` are the `ScrollProp` table; `grabs_virtual_list_thumb` and `grabs_scroll_view_thumb` are `Tree::grabs_thumb`;
-- **Colour scheme: the engine's own default colours follow `Window(scheme=...)` (new; changes defaults; P4, tess-ui
-  finding 5).** `scheme` (`"light"`, `"dark"`, `"auto"` = follow the OS, light while unknown) on `Window`, `LayerWindow`,
-  `PopupWindow`, `window.set` and `App(scheme=...)` / `app.set`; `window.get("scheme_resolved")`,
-  `tess_re.scheme_colors("light" | "dark")` (49 role colours) and `window.set(scheme_colors={...})` overrides.
-  **Changed defaults:** a text's and a text input's unset `fill` is `on_surface` (`#1D1B20` light) instead of opaque
-  black, so `get("fill")` reads that, and an animation of an unset `fill` starts from it; a text input with no `fill`
-  paints its caret in `primary` and its selection in `primary` at 30% (were the text colour, and the text colour
-  at 30%) and its placeholder in `on_surface_variant`; a scroll view's default thumb is `on_surface_variant`
-  (`#49454F` light, `#CAC4D0` dark; it was `#CAC4D0` in both); a terminal's `palette` `foreground`, `cursor` and
-  `selection` read `None` until set (the scheme's `on_surface`, `primary` at 50%, `primary` at 30%; were
-  `#1C1B1F`-based). A node with a colour of its own is unchanged, and a text input with a `fill` keeps the derived
-  placeholder/caret/selection. To keep the old look, set the colours. `fill=None` on a text or text input gives it
-  back to the scheme; `palette` takes `None` for those three keys. See
-  [Colour scheme](guide/painting.md#colour-scheme-0611).
-- **Internal (Rust):** `ScrollViewState::scrollbar_width` is `scrollbar.thickness: Option<f64>`;
-  `Tree::take_scroll_changes` returns `ScrollChange` values, not tuples; `grabs_scroll_view_thumb` returns the
-  `ScrollAxis` it grabbed. The Python API has no such change.
-- **`hit_testable` is on every node, and a plain `text` is hovered by default (changed, P2; tess-ui finding #4).**
-  `node.get("hit_testable")` is `None` (the default: the kind's own answer), `True` or `False`; it used to be `True`
-  or `False` with `True` the default read-back. A bare `text` label never took a pointer event before (unless
-  `selectable` or a link), so a tooltip listener on a label did nothing; it now gets `pointer_enter` and
-  `pointer_leave`, and the button around it stays hovered. A **press** on a plain label is still its parent's, exactly
-  as before (a button's label is part of the button, and a press on the label that ends on the button's padding is
-  still one click): `pointer_down`, `pointer_up` and `click` reach the label only when it opts in with
-  `label.set(hit_testable=True)` (or is `selectable` or a link), and then `click` bubbles to the button once with
-  `event.target` the label. `hit_testable=False` makes any node transparent to the pointer. A layer window's
-  `input_region="auto"` still leaves a plain label out (a click-through layer stays click-through);
-  `hit_testable=True` puts one in. Rust: `Node.hit_testable` and `Tree::set_hit_testable` take `Option<bool>`.
 
 - **`vertical_align` on `text` and `text_input` (new, P3, UXREQ-005); a single-line `text_input` centres its line
   (changed).** `vertical_align` is `"start"`, `"center"` or `"end"`: where the lines sit in the content box when it is
@@ -431,6 +465,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   sits high. An app that sized an input to its text sees no change; one that relied on the top alignment in a taller box
   sets `vertical_align="start"`. The caret, selection rectangles, `caret_rect()`, `text_rects()`, the IME's candidate
   area and a click's caret position all follow the offset. See [Text](reference/properties.md#text).
+
 - **`letter_spacing` and `line_height` on `text_input` (new, P3).** As on `text`: pixels after each character
   (default `0`) and a multiple of the font size (default `None`, the font's own), shaped with the same layout the
   caret, selection and clicks use.
@@ -447,6 +482,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `tooltip` and `scrollbar`. One behaviour change: a node with `role="alert"` and no `live` is now an assertive live
   region (AccessKit gave it no politeness; a reader may now interrupt for it), and `role="status"` is polite; set `live`
   to override. Nothing else to migrate. See [Accessibility](guide/accessibility.md#roles).
+
 - **`escape_chord`, `escape_chord_reverse` on `terminal`, and the `terminal_escape` event (new; UXREQ-006, WCAG 2.1.2).**
   A focused terminal sent every key to the shell, so a keyboard user could not leave it. `escape_chord` (default
   `"ctrl+shift+escape"`; `None` disables) is checked before the key reaches the shell: the key is not sent, focus moves to
@@ -464,6 +500,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   disabled node draws none. All are `None` or off by default, so nothing changes for an app that sets none: no
   migration. An app that drew these states itself from `pointer_enter`/`pointer_leave`/`focus` can drop that code.
   See [State layers](reference/properties.md#state-layers-0611).
+
 - **`Window(first_present=...)` and `window.ready()` (P5, new, opt-in).** `first_present` is `"immediate"` (the default,
   as before), `"on_ready"` (the first frame is presented only after the app calls `window.ready()`) or a number of
   milliseconds (`"on_ready"` with a deadline, counted from when the OS window was made). While it is held the engine
@@ -474,6 +511,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `"immediate"` (anything else raises `ValueError`, "not supported on LayerWindow yet"). Verified on Wayland (sway) only;
   the X11, macOS and Windows paths (window created hidden, shown after the first present) are written but unverified. See
   [First present and background](reference/window.md#first-present-and-background-0611).
+
 - **`Window(background=...)` / `set(background=...)` (P5, new; changes what unpainted pixels look like).** The colour every
   frame is cleared to before the scene paints, an `(r, g, b, a)` tuple, or `None`, the default. **`None` is now the window
   scheme's `surface` role** (`#FEF7FF` light, `#141218` dark) for an ordinary window: before, pixels no node painted
@@ -481,3 +519,11 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   black window and now has the scheme's surface. A see-through window (`transparent=True`), a `LayerWindow` and a
   `PopupWindow` still clear to nothing unless `background` is given. An app that paints its own root background sees no
   change; to keep the old black, `window.set(background=(0, 0, 0, 255))`.
+
+### Internal (Rust)
+
+- **Internal (Rust):** `ScrollViewState::scrollbar_width` is a `Prop::Width` setting of `bar` (`ScrollbarState`, shared with `VirtualListState`; the per-kind `thumb_drag_anchor`, `level`, `scrollbar_fill` and `scrollbar` fields are gone); `ScrollbarOverrides` and `SCROLLBAR_PROPS` are the `ScrollProp` table; `grabs_virtual_list_thumb` and `grabs_scroll_view_thumb` are `Tree::grabs_thumb`;
+
+- **Internal (Rust):** `ScrollViewState::scrollbar_width` is `scrollbar.thickness: Option<f64>`;
+  `Tree::take_scroll_changes` returns `ScrollChange` values, not tuples; `grabs_scroll_view_thumb` returns the
+  `ScrollAxis` it grabbed. The Python API has no such change.

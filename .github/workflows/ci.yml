@@ -235,6 +235,13 @@ jobs:
         run: |
           python tools/gen_python_api.py
           git diff --exit-code -- docs/api/python.md
+      - name: Check the generated Rust API page is current
+        run: |
+          for crate in engine-core engine-render engine-platform; do
+            RUSTC_BOOTSTRAP=1 cargo rustdoc -p "$crate" --lib -- -Z unstable-options --output-format json
+          done
+          python tools/gen_rust_api.py
+          git diff --exit-code -- docs/api/rust.md
 
       - name: Python tests (the whole suite)
         if: needs.plan.outputs.pytest_scope == 'all'
@@ -442,12 +449,20 @@ jobs:
 
       # 0.5.4 (review): docs/api/python.md is generated from the built
       # extension and committed; an API change without regenerating it fails
-      # here instead of drifting. (docs/api/rust.md needs rustdoc JSON from a
-      # nightly toolchain, which this job does not install; it is checked by hand.)
+      # here instead of drifting. docs/api/rust.md is checked below the same way
+      # (rustdoc JSON with RUSTC_BOOTSTRAP=1, no nightly toolchain needed).
       - name: Check the generated Python API page is current
         run: |
           python tools/gen_python_api.py
           git diff --exit-code -- docs/api/python.md
+
+      - name: Check the generated Rust API page is current
+        run: |
+          for crate in engine-core engine-render engine-platform; do
+            RUSTC_BOOTSTRAP=1 cargo rustdoc -p "$crate" --lib -- -Z unstable-options --output-format json
+          done
+          python tools/gen_rust_api.py
+          git diff --exit-code -- docs/api/rust.md
 
       - name: Python FFI test suite
         run: python -m pytest tests/ -v
