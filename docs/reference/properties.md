@@ -259,6 +259,14 @@ and its own height, and detaches rows scrolled away. A detached row is freed
 unless you keep a handle to it to reuse. Changing `item_count`, `item_extent`,
 `size_hint`, or `materialize` rebuilds every row.
 
+A virtual list scrolls by wheel, thumb drag and (0.6.11) keys: Up and Down by 40
+pixels, Page Up and Page Down by the viewport less 10 percent, Home and End to the
+ends (the [keyboard scrolling](../guide/nodes-and-layout.md#keyboard-scrolling)
+rules apply). `node.scroll_to_index(index, align="nearest")` scrolls to a row by
+index, built or not; `scroll_into_view()` and focus reveal a built row by the least
+distance; `scroll` fires for every change. A row holding focus is kept built when it
+scrolls out of the window.
+
 ## Terminal
 
 | Property | Value |

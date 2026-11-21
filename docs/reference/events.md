@@ -37,7 +37,7 @@ listing the valid ones.
 | `input` | Committed text arrives for the focused text field | yes |
 | `focus`, `unfocus` | A node gains or loses keyboard focus | yes |
 | `change` | A text field's text was changed by the user | no |
-| `scroll` | A scroll view's offset changed, by any cause: wheel, keys, `scroll_into_view`, focus, `set`, or an animation, once a frame (0.4.2) | no |
+| `scroll` | A scroll view's or (0.6.11) virtual list's offset changed, by any cause: wheel, keys, `scroll_into_view`, focus, `set`, or an animation, once a frame (0.4.2) | no |
 | `animation_end` | An animation on the node ended: it ran to its end (`finished` is `True`), or it was replaced by another animation of the same property, or the property was set or `stop_animation`ped (`finished` is `False`); `property` names it. Delivered in the frame after, and after any `on_complete` callback (0.5.6) | no |
 | `submit` | Enter in a single-line text input (0.5.6) | no |
 | `compose_start`, `compose_update`, `compose_end` | An IME composition began, changed or ended in a text input; `text` is the preedit text and `preedit_cursor` the IME's cursor range. The commit follows as `input` and `change` (0.5.6) | no |

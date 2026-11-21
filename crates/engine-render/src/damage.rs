@@ -2184,6 +2184,8 @@ fn list_fingerprint(h: &mut impl Hasher, state: &VirtualListState, with_offset: 
         // -- not every offset, which a long list would pay for per frame.
         resolved_offsets: _,
         thumb_drag_anchor,
+        // Event bookkeeping, not paint.
+        reported: _,
     } = state;
     item_count.hash(h);
     match item_extent {

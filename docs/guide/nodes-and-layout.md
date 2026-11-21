@@ -354,8 +354,13 @@ scroll nothing. A key pressed with Ctrl, Alt, or Meta held is a shortcut, not a
 scroll (0.4.3) — Ctrl+Page Down or Alt+Left stays yours — while Shift still
 scrolls. Keyboard scrolls jump rather than ease.
 
-Keys, `scroll_into_view`, and the `scroll` event below apply to
-`"scroll_view"` nodes; a `"virtual_list"` scrolls by wheel only.
+A `"virtual_list"` takes the same keys (0.6.11) with the same exclusions and the
+same chaining, vertically only: Up and Down by 40 pixels (a list's rows may be any
+height), Page Up and Page Down by the viewport less 10 percent, Home and End to
+offset 0 and the furthest offset. Besides the keys and the wheel, its scrollbar
+thumb can be dragged. The keys move the offset, not a selection or an active
+row: the framework chooses which row is current. A focused row that has scrolled
+out of the window stays built until focus moves off it, so the keys keep working.
 
 ### Revealing a node
 
@@ -368,9 +373,31 @@ does an assistive technology's `scroll_into_view` request.
 rows[40].scroll_into_view()
 ```
 
+A virtual list is one of those scrollers (0.6.11): focus moving to one of its
+built rows, or `scroll_into_view()` on it, scrolls the list by the least distance
+that shows the row. A row that is not built cannot be asked; use
+`scroll_to_index`.
+
+### Scrolling a virtual list to a row
+
+`list.scroll_to_index(index, align="nearest")` (0.6.11) scrolls a virtual list so
+row `index` shows, whether or not the row is built, at once; it returns whether
+the offset changed. `align` is `"nearest"` (the least scroll that shows the whole
+row; none if it is already shown; a row taller than the list goes to its top),
+`"start"` (row top at the list's top), `"center"` or `"end"` (row bottom at the
+list's bottom); the offset is clamped to the list's range. An `index` outside
+`0..item_count`, an unknown `align`, or a node that is not a virtual list raises
+`ValueError`. The offsets are exact: `index * item_extent`, or the sum of the
+`size_hint` of the rows before it (`size_hint` is called for every row when the
+list is first laid out, so a very long variable list pays that once).
+
+```python
+rows.scroll_to_index(5000, align="center")
+```
+
 ### The `scroll` event
 
-A scroll view fires `scroll` whenever its offset changes, whatever changed it:
+A scroll view or (0.6.11) virtual list fires `scroll` whenever its offset changes, whatever changed it:
 the wheel, a key, `scroll_into_view`, focus, `set`, or an animation, once a
 frame. `event.old_value` and `event.new_value` are the offsets before and
 after. It doesn't bubble.
@@ -424,5 +451,7 @@ rows = window.create("virtual_list", item_count=len(items), item_extent=32,
 Every row is `item_extent` tall, or give `size_hint(index)` for rows of
 different heights. A `materialize` or `size_hint` that raises is logged, and
 its row stays empty. Changing `item_count` (or either callback) rebuilds the
-visible rows. See `examples/scrollable_list.py` and
+visible rows. A virtual list scrolls by wheel, keys, thumb drag,
+`scroll_to_index` and `scroll_into_view`, and fires `scroll`; see Keyboard
+scrolling above. See `examples/scrollable_list.py` and
 `examples/variable_height_list.py`.

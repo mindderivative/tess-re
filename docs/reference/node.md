@@ -56,7 +56,14 @@ the scroll views around it scroll to show it (0.4.2).
 **`scroll_into_view()`** (0.4.2) scrolls every scroll view around the node,
 innermost first, by the least that shows it; a node longer than a view is
 aligned to its start. An assistive technology's `scroll_into_view` request
-does the same, after any `a11y_action` listener.
+does the same, after any `a11y_action` listener. A virtual list around the node
+is scrolled the same way (0.6.11).
+
+**`scroll_to_index(index, align="nearest")`** (0.6.11) scrolls a virtual list so
+row `index` shows, built or not, and returns whether the offset changed. `align`
+is `"nearest"`, `"start"`, `"center"` or `"end"`. Raises `ValueError` for another
+kind of node, an unknown `align` or an out-of-range `index`. See
+[Scrolling a virtual list to a row](../guide/nodes-and-layout.md#scrolling-a-virtual-list-to-a-row).
 
 ## Cursors
 

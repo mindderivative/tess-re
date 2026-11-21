@@ -321,7 +321,17 @@ class Node:
         """0.4.2: scrolls every scroll view around this node just enough to
         show it, innermost first, at once. The `scroll_into_view`
         accessibility action does the same, after any `a11y_action`
-        listener."""
+        listener. (0.6.11) A virtual list around the node scrolls too."""
+        ...
+    def scroll_to_index(self, index: int, align: str = "nearest") -> bool:
+        """0.6.11: scrolls this virtual list so row `index` shows, whether or
+        not it is built, at once. `align` is `"nearest"` (the least scroll
+        that shows it), `"start"`, `"center"` or `"end"`; the offset is
+        clamped to the list's range. Offsets are exact (`index *
+        item_extent`, or the sum of the `size_hint` of earlier rows).
+        Returns whether the offset changed. Raises `ValueError` for another
+        kind of node, an unknown `align`, or an `index` outside
+        `0..item_count`."""
         ...
     def on(self, event: str, handler: Callable[..., object]) -> None:
         """M94: registers `handler` for `event`, replacing any earlier

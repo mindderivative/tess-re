@@ -667,17 +667,21 @@ impl Tree {
         list: NodeId,
         keep: std::ops::Range<usize>,
     ) -> Vec<NodeId> {
+        // The row holding keyboard focus stays built, so its keys keep working.
+        let pinned = self.virtual_list_focused_row(list);
         let released: Vec<NodeId> = match self.nodes.get(list).map(|n| &n.kind) {
             Some(NodeKind::VirtualList(state)) => state
                 .materialized
                 .iter()
-                .filter(|(idx, _)| !keep.contains(idx))
+                .filter(|(idx, _)| !keep.contains(idx) && Some(**idx) != pinned)
                 .map(|(_, &id)| id)
                 .collect(),
             _ => return Vec::new(),
         };
         if let NodeKind::VirtualList(state) = &mut self.nodes[list].kind {
-            state.materialized.retain(|idx, _| keep.contains(idx));
+            state
+                .materialized
+                .retain(|idx, _| keep.contains(idx) || Some(*idx) == pinned);
         }
         for &row in &released {
             if self.nodes.get(row).and_then(|n| n.parent) == Some(list) {
@@ -766,6 +770,10 @@ impl Tree {
                 wants_horizontal.is_none_or(|h| h == state.horizontal)
                     && self.can_scroll(id, toward)
             }
+            // A virtual list is vertical: every key but Left/Right.
+            NodeKind::VirtualList(_) => {
+                wants_horizontal != Some(true) && self.can_scroll(id, toward)
+            }
             _ => false,
         })
     }
@@ -774,6 +782,9 @@ impl Tree {
     /// `KEY_SCROLL_LINE`, Page Up/Down by the viewport, Home/End to the
     /// ends -- at once, not eased. Whether the offset changed.
     pub fn scroll_by_key(&mut self, view: NodeId, key: Key) -> bool {
+        if let Some(moved) = self.virtual_list_scroll_by_key(view, key) {
+            return moved;
+        }
         let Some((_, viewport, content)) = self.scroll_view_extents(view) else {
             return false;
         };
@@ -817,10 +828,24 @@ impl Tree {
         let views: Vec<NodeId> = self
             .ancestors(id)
             .skip(1)
-            .filter(|&a| matches!(self.nodes[a].kind, NodeKind::ScrollView(_)))
+            .filter(|&a| {
+                matches!(
+                    self.nodes[a].kind,
+                    NodeKind::ScrollView(_) | NodeKind::VirtualList(_)
+                )
+            })
             .collect();
         let mut moved = false;
         for view in views {
+            if matches!(self.nodes[view].kind, NodeKind::VirtualList(_)) {
+                let shift = self.virtual_list_reveal(view, y0, y1);
+                if shift != 0.0 {
+                    moved = true;
+                    y0 -= shift;
+                    y1 -= shift;
+                }
+                continue;
+            }
             let Some((horizontal, viewport, content)) = self.scroll_view_extents(view) else {
                 continue;
             };
@@ -923,7 +948,7 @@ impl Tree {
     pub fn take_scroll_changes(&mut self) -> Vec<(NodeId, f64, f64)> {
         let mut changes = Vec::new();
         if self.scroll_view_count == 0 {
-            return changes;
+            return self.take_virtual_list_scroll_changes();
         }
         // Found with a read-only pass: iterating `&mut self.nodes` counts every
         // node as touched, which sent the damage tracker down its full walk on
@@ -942,6 +967,7 @@ impl Tree {
                 state.reported = state.scroll.current;
             }
         }
+        changes.extend(self.take_virtual_list_scroll_changes());
         changes
     }
 }

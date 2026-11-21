@@ -51,6 +51,8 @@ mod nodes;
 mod region;
 mod scroll;
 pub use scroll::KEY_SCROLL_LINE;
+mod virtual_scroll;
+pub use virtual_scroll::ScrollAlign;
 #[cfg(test)]
 mod tests;
 mod text_editing;
