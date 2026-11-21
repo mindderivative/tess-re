@@ -9086,7 +9086,7 @@ mod two_axis_scroll {
         );
         assert_eq!(
             (m.opacity_rest, m.opacity_hover, m.opacity_drag),
-            (0.60, 0.80, 1.0)
+            (0.70, 0.80, 1.0)
         );
         assert_eq!(KEY_SCROLL_LINE, 40.0);
         // A one-axis view keeps the scrollbar it always had.
@@ -9426,8 +9426,9 @@ mod two_axis_scroll {
         tree.add_child(content, target);
         layout(&mut tree, view, (200.0, 100.0));
         assert!(tree.scroll_into_view(target));
-        // Its far edges (550, 270) end at the viewport's.
-        assert_eq!(at(&tree, view), (350.0, 170.0));
+        // Its far edges (550, 270) end at the viewport's, short of the 12 px gutter the
+        // other axis' thumb holds there (AC-SCB-15).
+        assert_eq!(at(&tree, view), (362.0, 182.0));
         assert!(!tree.scroll_into_view(target), "already in view");
         // From past it, the near edges are the viewport's.
         tree.scroll_axis_by(view, ScrollAxis::Horizontal, 250.0);
@@ -9498,7 +9499,7 @@ mod two_axis_scroll {
         let t0 = Instant::now();
         let ms = Duration::from_millis;
         let opacity = |tree: &Tree| state(tree, view).thumb_opacity(ScrollAxis::Vertical);
-        assert!((opacity(&tree) - 0.60).abs() < 1e-9, "rest");
+        assert!((opacity(&tree) - 0.70).abs() < 1e-9, "rest");
         // The other thumb has its own state.
         let other = |tree: &Tree| state(tree, view).thumb_opacity(ScrollAxis::Horizontal);
 
@@ -9506,10 +9507,10 @@ mod two_axis_scroll {
         assert_eq!(tree.scrollbar_hover, Some((view, ScrollAxis::Vertical)));
         tree.tick_all(t0 + ms(50));
         let mid = opacity(&tree);
-        assert!(mid > 0.60 && mid < 0.80, "mid-fade {mid}");
+        assert!(mid > 0.70 && mid < 0.80, "mid-fade {mid}");
         tree.tick_all(t0 + ms(120));
         assert!((opacity(&tree) - 0.80).abs() < 1e-9, "hover");
-        assert!((other(&tree) - 0.60).abs() < 1e-9);
+        assert!((other(&tree) - 0.70).abs() < 1e-9);
 
         press(&mut tree, view, 194.0, 18.0, t0 + ms(200));
         tree.tick_all(t0 + ms(240));
@@ -9522,13 +9523,13 @@ mod two_axis_scroll {
         // The pointer leaves its hit area: rest.
         move_to(&mut tree, view, 50.0, 50.0, t0 + ms(800));
         tree.tick_all(t0 + ms(1_000));
-        assert!((opacity(&tree) - 0.60).abs() < 1e-9, "rest again");
+        assert!((opacity(&tree) - 0.70).abs() < 1e-9, "rest again");
         // A drag that ends away from the thumb rests too.
         press(&mut tree, view, 194.0, 18.0, t0 + ms(1_100));
         move_to(&mut tree, view, 50.0, 60.0, t0 + ms(1_150));
         release(&mut tree, view, 50.0, 60.0, t0 + ms(1_200));
         tree.tick_all(t0 + ms(1_400));
-        assert!((opacity(&tree) - 0.60).abs() < 1e-9);
+        assert!((opacity(&tree) - 0.70).abs() < 1e-9);
     }
 
     #[test]

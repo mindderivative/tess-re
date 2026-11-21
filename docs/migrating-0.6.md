@@ -315,7 +315,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
 - **Scrollbar properties (UXREQ-001, new).** `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`,
   `scrollbar_gutter`, `scrollbar_corner`, `scrollbar_opacity`, `scrollbar_opacity_hover` and `scrollbar_opacity_drag`,
   next to `scrollbar_fill` and `scrollbar_width`. A `"both"` view defaults them to the spec (8 px thumb, 12 px hit strip,
-  12 px gutter and corner, opacity 0.60 / 0.80 / 1.0); a one-axis view keeps its old look. `scrollbar_width` and the
+  12 px gutter and corner, opacity 0.70 / 0.80 / 1.0); a one-axis view keeps its old look. `scrollbar_width` and the
   new ones take `None` for the default. See [Scrollbar](reference/properties.md#scrollbar-0611).
 - **Internal (Rust):** `ScrollViewState::scrollbar_width` is `scrollbar.thickness: Option<f64>`;
   `Tree::take_scroll_changes` returns `ScrollChange` values, not tuples; `grabs_scroll_view_thumb` returns the

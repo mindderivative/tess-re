@@ -32,7 +32,7 @@ pub const SPEC_THICKNESS: f64 = 8.0;
 pub const SPEC_HIT: f64 = 12.0;
 pub const SPEC_GUTTER: f64 = 12.0;
 pub const SPEC_CORNER: f64 = 12.0;
-pub const SPEC_OPACITY_REST: f64 = 0.60;
+pub const SPEC_OPACITY_REST: f64 = 0.70;
 pub const SPEC_OPACITY_HOVER: f64 = 0.80;
 pub const SPEC_OPACITY_DRAG: f64 = 1.0;
 

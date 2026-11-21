@@ -175,7 +175,7 @@ def test_scroll_into_view_moves_each_axis_by_the_least_that_shows_the_node():
     far = window.create("box", position="absolute", x=500, y=250, width=50, height=20, focusable=True)
     box.add_child(far)
     far.scroll_into_view()
-    assert at(view) == (350.0, 170.0), "its far edges at the viewport's"
+    assert at(view) == (362.0, 182.0), "its far edges at the viewport, short of the 12 px gutter"
     view.set(scroll_offset_x=600, scroll_offset=300)
     far.focus()
     assert at(view) == (500.0, 250.0), "its near edges at the viewport's"
@@ -309,7 +309,7 @@ SCROLLBAR = [
 def test_the_scrollbar_properties_default_to_the_spec_on_a_both_view_and_to_the_old_look_otherwise():
     window = Window(width=800, height=600)
     view, _, _ = both_view(window)
-    spec = [8.0, 12.0, 2.0, 32.0, 12.0, 12.0, 0.6, 0.8, 1.0]
+    spec = [8.0, 12.0, 2.0, 32.0, 12.0, 12.0, 0.7, 0.8, 1.0]
     assert [view.get(n) for n in SCROLLBAR] == spec
     one = add(window, "scroll_view", width=100, height=100)
     assert [one.get(n) for n in SCROLLBAR] == [4.0, 16.0, 2.0, 32.0, 0.0, 0.0, 1.0, 1.0, 1.0]
@@ -364,8 +364,8 @@ def test_two_thumbs_are_drawn_where_the_axes_overflow_and_leave_the_corner_empty
     window.root.set(padding=0)
     view, _, _ = both_view(window)
     view.set(fill=BACKGROUND)
-    # At rest: 0.60 of #CAC4D0 over the view's colour.
-    over = tuple(round(c * 0.6 + b * 0.4) for c, b in zip((0xCA, 0xC4, 0xD0), BACKGROUND))
+    # At rest: 0.70 of #CAC4D0 over the view's colour.
+    over = tuple(round(c * 0.7 + b * 0.3) for c, b in zip((0xCA, 0xC4, 0xD0), BACKGROUND))
     for where, name in [((194, 18), "vertical"), ((20, 94), "horizontal")]:
         got = pixel(window, *where)
         assert all(abs(g - w) <= 2 for g, w in zip(got, over)), (name, got, over)

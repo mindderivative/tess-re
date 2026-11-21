@@ -252,7 +252,7 @@ it unless you set a property. Each takes a number, or `None` for the default, an
 | `scrollbar_min_length` | 32 | 32 | The shortest the thumb gets, along its axis |
 | `scrollbar_gutter` | 12 | 0 | What an overflowing axis reserves at its end edge ([how](../guide/nodes-and-layout.md#two-axes-0611)); only a `"both"` view reserves any |
 | `scrollbar_corner` | 12 | 0 | How far each lane stops short of the end when the other axis overflows too, so the thumbs never meet |
-| `scrollbar_opacity` | 0.60 | 1.0 | The thumb's opacity at rest |
+| `scrollbar_opacity` | 0.70 | 1.0 | The thumb's opacity at rest |
 | `scrollbar_opacity_hover` | 0.80 | = rest | …with the pointer in the thumb's hit area |
 | `scrollbar_opacity_drag` | 1.0 | = rest | …while the thumb is dragged |
 

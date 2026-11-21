@@ -322,7 +322,7 @@ view.on("scroll", lambda e: print(e.x, e.y))                   # the offsets aft
   the bottom. When both show, each lane stops 12 px short of the end (`scrollbar_corner`), so the thumbs never
   overlap, and the 12 × 12 corner is left empty. Thumb length is `max(32, lane × viewport ÷ content)`.
 - **Defaults** are the spec's: thumb 8 px thick and pill-shaped, a 12 px hit strip centred on it, 2 px margin,
-  at 0.60 opacity at rest, 0.80 with the pointer in the hit strip, 1.0 while dragged (fading over 100 ms), in the
+  at 0.70 opacity at rest, 0.80 with the pointer in the hit strip, 1.0 while dragged (fading over 100 ms), in the
   colour `#CAC4D0` (the role `on_surface_variant`); each is a property (`scrollbar_fill`, `scrollbar_width`,
   `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`, `scrollbar_opacity`,
   `scrollbar_opacity_hover`, `scrollbar_opacity_drag`, `scrollbar_gutter`, `scrollbar_corner`; see

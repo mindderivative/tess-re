@@ -1052,17 +1052,26 @@ impl Tree {
             let NodeKind::ScrollView(state) = &self.nodes[view].kind else {
                 continue;
             };
-            let axes = state.axes();
+            let (axes, both) = (state.axes(), state.both);
+            // AC-SCB-15: the other axis' thumb sits in a gutter at this axis' end edge
+            // (a `both` view whose other axis overflows), so a revealed node stops short of it.
+            let overflow = state.overflows(view_size, content);
+            let gutter = state.metrics().gutter;
             let origin = self.absolute_position(view);
             for &axis in axes {
+                let reserve = if both && overflow[axis.other().index()] {
+                    gutter
+                } else {
+                    0.0
+                };
                 let (viewport, content) = (axis.pick(view_size), axis.pick(content));
                 let (start, end) = match axis {
                     ScrollAxis::Horizontal => (x0, x1),
                     ScrollAxis::Vertical => (y0, y1),
                 };
                 let v_start = axis.pick(origin);
-                let v_end = v_start + viewport;
-                let delta = if start < v_start || end - start > viewport {
+                let v_end = v_start + viewport - reserve;
+                let delta = if start < v_start || end - start > viewport - reserve {
                     start - v_start
                 } else if end > v_end {
                     end - v_end

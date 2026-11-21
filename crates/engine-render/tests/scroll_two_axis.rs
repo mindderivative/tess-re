@@ -276,14 +276,14 @@ fn the_two_thumbs_are_drawn_at_rest_opacity_and_no_wider_than_8() {
     let (cx, cy) = ((vx + vw - 6.0) as u32, (vy + 18.0) as u32);
     near(
         rgba(&pixels, cx, cy),
-        blended(role, 0.60, rgba(&under, cx, cy)),
+        blended(role, 0.70, rgba(&under, cx, cy)),
         "vertical thumb at rest",
     );
     // Horizontal thumb: y 90..98, x 2..48 in the view.
     let (hx, hy) = ((vx + 20.0) as u32, (vy + vh - 6.0) as u32);
     near(
         rgba(&pixels, hx, hy),
-        blended(role, 0.60, rgba(&under, hx, hy)),
+        blended(role, 0.70, rgba(&under, hx, hy)),
         "horizontal thumb at rest",
     );
     // The thumb is 8 wide (x 190..198): 5 px left of its centre is the content, untouched.
