@@ -108,6 +108,136 @@ pub struct Modifiers {
     pub meta: bool,
 }
 
+/// 0.6.11 (UXREQ-006): a keyboard chord -- the modifiers held plus one key --
+/// such as a terminal's `escape_chord`. Matching is exact: every modifier in
+/// the chord must be held and no other.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyChord {
+    pub modifiers: Modifiers,
+    /// The key's lowercase name, as `InputEvent::Key` names it (`"escape"`, `"f10"`, `"k"`).
+    pub key: String,
+}
+
+impl KeyChord {
+    /// What `parse` accepts, for error messages.
+    pub const FORMAT: &'static str = "modifiers joined by `+`, then one key, e.g. `ctrl+shift+escape`; \
+        modifiers: ctrl, shift, alt, meta; keys: escape, tab, enter, space, backspace, delete, insert, \
+        home, end, page_up, page_down, arrow_left, arrow_right, arrow_up, arrow_down, f1 to f24, \
+        context_menu, print_screen, pause, plus, or one character (a character needs ctrl, alt or meta)";
+
+    /// Parses `ctrl+shift+escape` -- case-insensitive, modifiers in any order
+    /// (`control`, `cmd`, `super`, `option` are accepted for ctrl, meta, alt).
+    pub fn parse(text: &str) -> Result<KeyChord, String> {
+        let invalid = |why: String| {
+            format!(
+                "invalid key chord {text:?}: {why} -- format: {}",
+                Self::FORMAT
+            )
+        };
+        let lower = text.trim().to_lowercase();
+        let mut parts: Vec<&str> = lower.split('+').map(str::trim).collect();
+        // A trailing `+` key is spelled `plus`, so empty parts are mistakes.
+        let key = parts.pop().unwrap_or("");
+        if key.is_empty() {
+            return Err(invalid("no key".into()));
+        }
+        let mut modifiers = Modifiers::default();
+        for part in parts {
+            let flag = match part {
+                "ctrl" | "control" => &mut modifiers.ctrl,
+                "shift" => &mut modifiers.shift,
+                "alt" | "option" => &mut modifiers.alt,
+                "meta" | "cmd" | "super" | "win" => &mut modifiers.meta,
+                other => return Err(invalid(format!("unknown modifier {other:?}"))),
+            };
+            if *flag {
+                return Err(invalid(format!("modifier {part:?} given twice")));
+            }
+            *flag = true;
+        }
+        let key = match key {
+            "esc" => "escape",
+            "return" => "enter",
+            "pageup" => "page_up",
+            "pagedown" => "page_down",
+            "plus" => "+",
+            other => other,
+        };
+        const NAMED: [&str; 20] = [
+            "escape",
+            "tab",
+            "enter",
+            "space",
+            "backspace",
+            "delete",
+            "insert",
+            "home",
+            "end",
+            "page_up",
+            "page_down",
+            "arrow_left",
+            "arrow_right",
+            "arrow_up",
+            "arrow_down",
+            "context_menu",
+            "print_screen",
+            "pause",
+            "left",
+            "right",
+        ];
+        let function = key
+            .strip_prefix('f')
+            .and_then(|n| n.parse::<u8>().ok())
+            .is_some_and(|n| (1..=24).contains(&n));
+        let key = match key {
+            "left" => "arrow_left",
+            "right" => "arrow_right",
+            other => other,
+        };
+        let single = key.chars().count() == 1 && key != " ";
+        if !(NAMED.contains(&key) || function || single) {
+            return Err(invalid(format!("unknown key {key:?}")));
+        }
+        if single && !(modifiers.ctrl || modifiers.alt || modifiers.meta) {
+            return Err(invalid(
+                "a character key needs ctrl, alt or meta, or it could never be typed".into(),
+            ));
+        }
+        if modifiers == Modifiers::default() && key == "tab" {
+            return Err(invalid(
+                "plain Tab is how focus moves; add a modifier".into(),
+            ));
+        }
+        Ok(KeyChord {
+            modifiers,
+            key: key.to_string(),
+        })
+    }
+
+    /// Whether `key` (an `InputEvent::Key` name) pressed with exactly `held` is this chord.
+    pub fn matches(&self, key: &str, held: Modifiers) -> bool {
+        held == self.modifiers && key.to_lowercase() == self.key
+    }
+
+    /// The chord as `parse` reads it, modifiers in the order ctrl, shift, alt, meta.
+    pub fn name(&self) -> String {
+        let mut out = String::new();
+        for (on, word) in [
+            (self.modifiers.ctrl, "ctrl"),
+            (self.modifiers.shift, "shift"),
+            (self.modifiers.alt, "alt"),
+            (self.modifiers.meta, "meta"),
+        ] {
+            if on {
+                out.push_str(word);
+                out.push('+');
+            }
+        }
+        out.push_str(if self.key == "+" { "plus" } else { &self.key });
+        out
+    }
+}
+
 /// The generic input vocabulary `engine-platform` translates real
 /// `winit` events into (§4). `position` is already in the same
 /// coordinate space `Tree::hit_test`/`Tree::absolute_position` use --
@@ -467,4 +597,66 @@ pub enum ComposePhase {
     Start,
     Update,
     End,
+}
+
+#[cfg(test)]
+mod chord_tests {
+    use super::*;
+
+    fn held(ctrl: bool, shift: bool, alt: bool, meta: bool) -> Modifiers {
+        Modifiers {
+            shift,
+            ctrl,
+            alt,
+            meta,
+        }
+    }
+
+    #[test]
+    fn parses_modifiers_in_any_order_and_names_them_canonically() {
+        let chord = KeyChord::parse("Shift+Ctrl+Esc").unwrap();
+        assert_eq!(chord.name(), "ctrl+shift+escape");
+        assert_eq!(
+            KeyChord::parse("ctrl+alt+tab").unwrap().name(),
+            "ctrl+alt+tab"
+        );
+        assert_eq!(KeyChord::parse("ctrl+plus").unwrap().key, "+");
+        assert_eq!(KeyChord::parse("alt+f10").unwrap().key, "f10");
+    }
+
+    #[test]
+    fn rejects_bad_chords_listing_the_format() {
+        for bad in [
+            "",
+            "ctrl+",
+            "ctrl+nope",
+            "hyper+escape",
+            "ctrl+ctrl+k",
+            "k",
+            "tab",
+            "f25",
+        ] {
+            let err = KeyChord::parse(bad).unwrap_err();
+            assert!(err.contains("format:"), "{bad}: {err}");
+        }
+    }
+
+    #[test]
+    fn matching_is_exact_about_modifiers() {
+        let chord = KeyChord::parse("ctrl+shift+escape").unwrap();
+        assert!(chord.matches("escape", held(true, true, false, false)));
+        assert!(!chord.matches("escape", held(true, false, false, false)));
+        assert!(!chord.matches("escape", held(true, true, true, false)));
+        assert!(!chord.matches("escape", held(false, true, false, false)));
+        assert!(!chord.matches("tab", held(true, true, false, false)));
+        let letter = KeyChord::parse("ctrl+alt+k").unwrap();
+        assert!(letter.matches("K", held(true, false, true, false)));
+    }
+
+    #[test]
+    fn a_terminal_defaults_to_ctrl_shift_escape_forward_only() {
+        let state = crate::TerminalState::new(10, 3, "monospace", 14.0);
+        assert_eq!(state.escape_chord.unwrap().name(), "ctrl+shift+escape");
+        assert!(state.escape_chord_reverse.is_none());
+    }
 }

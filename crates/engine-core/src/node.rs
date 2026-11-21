@@ -356,6 +356,11 @@ pub struct TerminalState {
     pub selection_end: Option<(u16, u16)>,
     /// M95: the colors this terminal paints.
     pub palette: TerminalPalette,
+    /// 0.6.11 (UXREQ-006): the chord that leaves this terminal, forward in tab
+    /// order, without being sent to the shell (WCAG 2.1.2). `None` disables it.
+    pub escape_chord: Option<crate::KeyChord>,
+    /// The chord that leaves it backward; `None` (the default) has none.
+    pub escape_chord_reverse: Option<crate::KeyChord>,
 }
 
 impl TerminalState {
@@ -397,6 +402,8 @@ impl TerminalState {
             selection_start: None,
             selection_end: None,
             palette: TerminalPalette::default(),
+            escape_chord: crate::KeyChord::parse("ctrl+shift+escape").ok(),
+            escape_chord_reverse: None,
         }
     }
 

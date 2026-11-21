@@ -57,8 +57,8 @@ pub use gesture::{
 };
 pub use gradient::{Gradient, GradientShape, GradientStop, Spread};
 pub use input::{
-    ChangedValue, ComposePhase, DispatchOutcome, InputEvent, Key, Modifiers, PointerButton,
-    ScrollDelta, ctrl_shortcut,
+    ChangedValue, ComposePhase, DispatchOutcome, InputEvent, Key, KeyChord, Modifiers,
+    PointerButton, ScrollDelta, ctrl_shortcut,
 };
 pub use layout_anim::{LayoutAnim, LayoutProp};
 pub use node::{

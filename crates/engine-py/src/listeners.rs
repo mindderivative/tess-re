@@ -147,10 +147,13 @@ pub(crate) enum EventType {
     /// 0.5.7 (#178): the node's laid-out size changed (or it was laid out for
     /// the first time); carries `width`, `height`, `old_value`, `new_value`.
     Layout,
+    /// 0.6.11 (UXREQ-006): a focused terminal's `escape_chord` was pressed and focus left it;
+    /// carries `key` (the chord, `"ctrl+shift+escape"`) and `related_target` (the node focus moved to).
+    TerminalEscape,
 }
 
 impl EventType {
-    const ALL: [EventType; 40] = [
+    const ALL: [EventType; 41] = [
         Self::PointerEnter,
         Self::PointerLeave,
         Self::PointerDown,
@@ -191,6 +194,7 @@ impl EventType {
         Self::CaretMove,
         Self::OverwriteChange,
         Self::Layout,
+        Self::TerminalEscape,
     ];
 
     pub(crate) fn name(self) -> &'static str {
@@ -235,6 +239,7 @@ impl EventType {
             Self::CaretMove => "caret_move",
             Self::OverwriteChange => "overwrite_change",
             Self::Layout => "layout",
+            Self::TerminalEscape => "terminal_escape",
         }
     }
 

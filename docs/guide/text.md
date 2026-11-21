@@ -415,7 +415,25 @@ and named keys go to the shell, and Ctrl+*letter* sends that control byte, so
 Ctrl+C interrupts. Ctrl+Shift+C copies its selection, the wheel scrolls its
 history, and `set(cols=, rows=)` resizes the grid and tells the shell.
 `get("text")` reads the visible grid, one line per row, and `selection` is
-`(start_row, start_col, end_row, end_col)`. The `palette` recolors it — any of
+`(start_row, start_col, end_row, end_col)`.
+
+**Leaving a terminal from the keyboard (0.6.11, UXREQ-006).** Because the terminal takes every key, a keyboard user
+could never leave it (WCAG 2.1.2). The chord `escape_chord`, default `"ctrl+shift+escape"`, is checked first: it is
+not sent to the shell, focus moves to the next focusable node in tab order, and `terminal_escape` fires on the
+terminal (`event.key` is the chord, `event.related_target` the node that took focus). `escape_chord_reverse`
+(default `None`) does the same toward the previous node. A chord is modifiers (`ctrl`, `shift`, `alt`, `meta`) and one
+key joined by `+`, matched exactly: Ctrl+Escape and Ctrl+Shift+Alt+Escape do not fire it and reach the shell.
+`None` turns the chord off; a malformed chord raises `ValueError` listing the format and the keys.
+
+```python
+term.on("terminal_escape", lambda e: print("left with", e.key))
+term.set(escape_chord="ctrl+alt+tab", escape_chord_reverse="ctrl+alt+shift+tab")
+print(term.get("escape_chord"))      # "ctrl+alt+tab"
+```
+
+The terminal has no scrollbar for its history yet (the wheel scrolls it); that is a later item.
+
+The `palette` recolors it — any of
 `ansi` (16 colors), `foreground`, `background`, `cursor`, and `selection`:
 
 ```python
