@@ -93,6 +93,25 @@ spec. Properties added under this rule so far (0.6.11):
 | `vertical_align` (`text`, `text_input`; `"start"`, `"center"`, `"end"`) | `text`: `"start"`; `text_input`: `None`, which is `"center"` single-line and `"start"` multiline | [Text](reference/properties.md#text) |
 | `letter_spacing`, `line_height` (now on `text_input` too) | `0`, `None` (the font's own) | [Text](reference/properties.md#text) |
 
+**Scrollbar and scroll feel (0.6.11, P1).** A `scroll_view` and a `virtual_list` share one scrollbar: one table of
+properties (`engine_core::ScrollProp`), one geometry (`ScrollbarMetrics::thumbs`), one hit test, hover, drag and fade
+(`ScrollbarState`), one painter. The final properties, all on both kinds (reference:
+[Scrollbar and scroll feel](reference/properties.md#scrollbar-and-scroll-feel-0611)):
+
+| Group | Properties (default) |
+| --- | --- |
+| Measures | `scrollbar_width` (8; 4 one-axis/list), `scrollbar_radius` (pill; 2), `scrollbar_hit_width` (12; width + 12), `scrollbar_margin` (2), `scrollbar_min_length` (32), `scrollbar_gutter` (12; 0), `scrollbar_corner` (12; 0), `scrollbar_gutter_reserve` (`True`) |
+| Colour | `scrollbar_fill` (`#CAC4D0`), `scrollbar_fill_hover`, `scrollbar_fill_drag` (= fill), `scrollbar_track_fill` (none), opacities `scrollbar_opacity` (0.70; 1.0), `_opacity_hover` (0.80), `_opacity_drag` (1.0), `scrollbar_track_opacity` (1.0) |
+| Place and visibility | `scrollbar_side_v`, `scrollbar_side_h` (`"end"`), `scrollbar_show` (`"overflow"`), `scrollbar_hide_delay_ms` (1000) |
+| Motion | `scrollbar_fade_in_ms`, `scrollbar_fade_out_ms` (100), `scrollbar_hover_delay_ms` (0), `scrollbar_fade_easing` (`"standard"`) |
+| Buttons and lane | `scrollbar_arrows` (`"none"`), `scrollbar_arrow_step` (40), `scrollbar_lane_click` (`"page"`; `"none"` one-axis/list) |
+| Feel | `wheel_notch` (40), `key_line` (40), `page_fraction` (0.9; 1.0 one-axis), `scroll_smooth_ms` (0), `scroll_easing` (`"standard"`), `page_repeat_delay_ms` (400), `page_repeat_ms` (100) |
+
+The named easings live in one table (`engine_core::EASINGS`: `linear`, `standard`, `emphasized`, `ease`, `ease_in`,
+`ease_out`, `ease_in_out`, `standard_accelerate`, `standard_decelerate`) for every property that takes an easing.
+`Window.set(reduced_motion=...)` (default: follow the OS) collapses the fades, the smooth scroll and the snap settle to
+0 ms.
+
 ## Design principles
 
 - **Rust owns every frame; Python owns intent.** Python never runs during

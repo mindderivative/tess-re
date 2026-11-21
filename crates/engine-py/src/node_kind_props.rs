@@ -101,7 +101,7 @@ pub(crate) struct KindChange {
     pub(crate) svg_ratio: Option<f64>,
 }
 
-fn change(edit: impl FnOnce(&mut engine_core::Node) + 'static) -> PyResult<KindChange> {
+pub(crate) fn change(edit: impl FnOnce(&mut engine_core::Node) + 'static) -> PyResult<KindChange> {
     Ok(KindChange {
         edit: Box::new(edit),
         late: false,
@@ -387,6 +387,10 @@ pub(crate) fn parse_kind_prop(
     kind: &NodeKind,
     props: &Bound<'_, PyDict>,
 ) -> Option<PyResult<KindChange>> {
+    // 0.6.11: the scrollbar and scroll-feel properties of a scroll view and a list.
+    if let Some(parsed) = crate::scrollbar_props::parse(name, value, kind) {
+        return Some(parsed);
+    }
     if !KIND_PROPS.contains(&name) {
         return None;
     }
@@ -1075,6 +1079,9 @@ pub(crate) fn read_kind_prop(
     node: &engine_core::Node,
     py: Python<'_>,
 ) -> Option<PyResult<Py<PyAny>>> {
+    if let Some(read) = crate::scrollbar_props::read(name, node, py) {
+        return Some(read);
+    }
     if !KIND_PROPS.contains(&name) || name == "scroll_offset" || name == "scroll_offset_x" {
         return None;
     }

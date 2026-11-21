@@ -495,7 +495,7 @@ impl PyWindow {
 const SETTABLE: &str = "title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, \
     min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, \
     dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, \
-    touch_slop, touch_target_slop, pause_when_occluded";
+    touch_slop, touch_target_slop, pause_when_occluded, reduced_motion";
 
 /// 0.5.8 (#132): a distance in layout pixels, zero or more.
 fn extract_distance(name: &str, value: &Bound<'_, PyAny>) -> PyResult<f64> {
@@ -974,6 +974,7 @@ impl PyWindow {
         let mut system_menu = None;
         let mut pause_when_occluded = None;
         let (mut touch_slop, mut touch_target_slop) = (None, None);
+        let mut reduced_motion: Option<Option<bool>> = None;
         if let Some(props) = props {
             for (name, value) in props.iter() {
                 let name: String = name.extract()?;
@@ -1055,6 +1056,20 @@ impl PyWindow {
                             )
                         })?);
                     }
+                    // 0.6.11: `True`/`False` overrides the OS for the engine's own
+                    // animations (the scrollbar's fades, smooth scrolling, the snap
+                    // settle); `None` follows the OS again.
+                    "reduced_motion" => {
+                        reduced_motion = Some(if value.is_none() {
+                            None
+                        } else {
+                            Some(value.extract::<bool>().map_err(|_| {
+                                PyValueError::new_err(
+                                    "window property `reduced_motion` must be a bool or None",
+                                )
+                            })?)
+                        });
+                    }
                     "touch_slop" => {
                         touch_slop = Some(extract_distance(&name, &value)?);
                     }
@@ -1101,6 +1116,11 @@ impl PyWindow {
         }
         if let Some(on) = profile_nodes {
             self.handles.profile_nodes.set(on);
+        }
+        if let Some(choice) = reduced_motion {
+            let mut tree = self.handles.tree.borrow_mut();
+            tree.set_reduced_motion_override(choice);
+            tree.mark_dirty();
         }
         if let Some(slop) = touch_slop {
             self.handles.touch.borrow_mut().set_slop(slop);
@@ -1587,12 +1607,16 @@ impl PyWindow {
                     .into_any()
                     .unbind()
             }
+            // The window's own say if it has one, else what the OS reports.
             "reduced_motion" => {
                 let window = self.handles.os_window.borrow().clone();
-                engine_platform::appearance::current_reduced_motion(window.as_deref())
-                    .into_pyobject(py)?
-                    .into_any()
-                    .unbind()
+                let own = self.handles.tree.borrow().reduced_motion_override();
+                own.or_else(|| {
+                    engine_platform::appearance::current_reduced_motion(window.as_deref())
+                })
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()
             }
             "high_contrast" => {
                 let window = self.handles.os_window.borrow().clone();

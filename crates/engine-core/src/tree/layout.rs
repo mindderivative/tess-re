@@ -1,6 +1,7 @@
 //! Layout: computing it (with scroll views and virtual lists synced first), reading it, and composing each node's transform.
 
 use super::*;
+use crate::scrollbar::Scroller;
 
 /// 0.5.3 (#98): the style `taffy` lays a node out with.
 ///
@@ -632,41 +633,65 @@ impl Tree {
                 state.scroll_x.current = clamped_x;
             }
 
-            // 0.6.11 (UXREQ-001): the gutter. An axis of a `both` view that
-            // overflows, as measured by the last layout, has its thumb at the
-            // end edge, and what is laid out in the view stays clear of it:
-            // `Overflow::Scroll` on that side makes taffy reserve
-            // `scrollbar_width` (the gutter) there, so a content box sized by
-            // percent or inset ends before the thumb, as it would with end padding.
-            // A box with a size of its own is the author's: it keeps it.
+            // 0.6.11 (UXREQ-001): the gutter. An axis that overflows, as measured
+            // by the last layout, has its thumb at its edge (`scrollbar_side_v`,
+            // `scrollbar_side_h`), and what is laid out in the view stays clear of
+            // it. At the end edge (right, bottom), `Overflow::Scroll` on that side
+            // makes taffy reserve `scrollbar_width` (the gutter) there, so a content
+            // box sized by percent or inset ends before the thumb, as it would with
+            // end padding. At the near edge (left, top) the content box starts the
+            // gutter in, and taffy's reservation at the far edge keeps it as wide as
+            // the view less the gutter. A box with a size of its own is the author's:
+            // it keeps it. `scrollbar_gutter_reserve` off reserves nothing (the
+            // thumb overlays content), and so does a view whose bar never shows.
             let NodeKind::ScrollView(state) = &self.nodes[view].kind else {
                 unreachable!("checked by the filter above")
             };
-            let (overflow, scrollbar_width) = match (state.both, self.scroll_view_boxes(view)) {
-                (true, Some((size, content))) => {
-                    let over = state.overflows(size, content);
-                    let side = |on: bool| {
-                        if on {
-                            Overflow::Scroll
-                        } else {
-                            Overflow::Visible
-                        }
-                    };
+            let metrics = state.metrics();
+            let gutter = metrics.reserved_gutter();
+            let (overflow, scrollbar_width, inset) = if state.both || gutter > 0.0 {
+                let (outer, inner) = (self.layout(view).size, self.layout(child).size);
+                let over = state.overflows(
+                    (f64::from(outer.width), f64::from(outer.height)),
+                    (f64::from(inner.width), f64::from(inner.height)),
+                );
+                let side = |on: bool| {
+                    if on {
+                        Overflow::Scroll
+                    } else {
+                        Overflow::Visible
+                    }
+                };
+                let near = |axis: crate::scrollbar::ScrollAxis| {
+                    if over[axis.index()]
+                        && metrics.edge(axis) == crate::scrollbar_props::Edge::Near
+                    {
+                        gutter as f32
+                    } else {
+                        0.0
+                    }
+                };
+                (
+                    TaffyPoint {
+                        x: side(over[crate::scrollbar::ScrollAxis::Horizontal.index()]),
+                        y: side(over[crate::scrollbar::ScrollAxis::Vertical.index()]),
+                    },
+                    gutter as f32,
+                    // The vertical bar's gutter is at the left, the horizontal's at the top.
                     (
-                        TaffyPoint {
-                            x: side(over[crate::scrollbar::ScrollAxis::Horizontal.index()]),
-                            y: side(over[crate::scrollbar::ScrollAxis::Vertical.index()]),
-                        },
-                        state.metrics().gutter as f32,
-                    )
-                }
-                _ => (
+                        near(crate::scrollbar::ScrollAxis::Vertical),
+                        near(crate::scrollbar::ScrollAxis::Horizontal),
+                    ),
+                )
+            } else {
+                (
                     TaffyPoint {
                         x: Overflow::Visible,
                         y: Overflow::Visible,
                     },
                     0.0,
-                ),
+                    (0.0, 0.0),
+                )
             };
             let mut view_style = self.nodes[view].layout_style.clone();
             if view_style.overflow != overflow
@@ -684,8 +709,8 @@ impl Tree {
             let mut style = self.nodes[child].layout_style.clone();
             style.position = Position::Absolute;
             style.inset = TaffyRect {
-                left: length(0.0),
-                top: length(0.0),
+                left: length(inset.0),
+                top: length(inset.1),
                 right: auto(),
                 bottom: auto(),
             };

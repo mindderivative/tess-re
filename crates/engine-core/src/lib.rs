@@ -22,6 +22,7 @@ mod animation;
 mod box_shape;
 mod canvas;
 mod dock;
+mod easing;
 mod gesture;
 mod gradient;
 mod input;
@@ -31,6 +32,7 @@ mod overlay;
 mod path;
 mod path_template;
 mod scrollbar;
+mod scrollbar_props;
 mod shader;
 mod svg;
 mod svg_smil;
@@ -47,6 +49,7 @@ pub use animation::{
 pub use box_shape::box_outline;
 pub use canvas::{CanvasState, CustomHitTest, DrawCommand};
 pub use dock::{DockLayout, DockSide, DockZone};
+pub use easing::{Easing, PRESETS as EASINGS};
 pub use gesture::{
     Gesture, GestureConfig, GestureKind, GesturePhase, GestureRecognizer, SwipeDirection,
     TouchPhase,
@@ -69,8 +72,14 @@ pub use overlay::{AnchorBox, OverlayMeta, Placement};
 pub use path::{HitShape, MorphMode, PathData, PathState, fit_transform, trim};
 pub use path_template::PathTemplate;
 pub use scrollbar::{
-    FADE as SCROLLBAR_FADE, PAGE_DELAY, PAGE_FRACTION, PAGE_REPEAT, SCROLLBAR_PROPS, ScrollAxis,
-    ScrollOrientation, ScrollbarMetrics, ScrollbarOverrides, Thumb, WHEEL_NOTCH,
+    Arrow, Defaults as ScrollDefaults, FADE as SCROLLBAR_FADE, KEY_LINE, PAGE_DELAY, PAGE_FRACTION,
+    PAGE_REPEAT, ScrollAxis, ScrollOrientation, ScrollbarMetrics, ScrollbarState, Scroller, Thumb,
+    WHEEL_NOTCH,
+};
+pub use scrollbar_props::{
+    Arrows, BarSide, Direction, Edge, HORIZONTAL_SIDE_NAMES, Kind as PropKind, LaneClick,
+    MAX_MILLIS as MAX_SCROLL_MILLIS, Overrides, Prop as ScrollProp, Show, VERTICAL_SIDE_NAMES,
+    Value as PropValue,
 };
 pub use shader::{
     FRAME_BLOCK_SIZE, Shader, ShaderError, ShaderMode, UniformKind, UniformValue, frame_block,

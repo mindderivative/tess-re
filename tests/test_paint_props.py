@@ -90,7 +90,7 @@ def test_get_target_and_stop_only_take_animatable_names() -> None:
         ({"corner_radius": (1, 2)}, "top_left, top_right"),
         ({"shadows": [(1, 2)]}, "list of \\(color, offset_x"),
         ({"placeholder": "x"}, "applies only to a text_input node"),
-        ({"scrollbar_width": 3}, "applies only to a scroll_view node"),
+        ({"scrollbar_width": 3}, "applies only to a scroll_view or virtual_list node"),
         ({"palette": {}}, "applies only to a terminal node"),
     ],
 )

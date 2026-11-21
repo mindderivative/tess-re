@@ -1,7 +1,6 @@
 //! Input dispatch: an `InputEvent` through hover, press, focus, keys, and scrolling to its outcome.
 
 use super::*;
-use crate::scrollbar::WHEEL_NOTCH;
 
 /// 0.5.6 (#165): what places a text field's caret: cursor, selection anchor,
 /// and the text's length.
@@ -19,6 +18,7 @@ impl Tree {
     /// `Tree` has no idea what activating a node means, only that it
     /// happened.
     pub fn dispatch(&mut self, root: NodeId, event: InputEvent, now: Instant) -> DispatchOutcome {
+        self.clock = now;
         // 0.5.6 (#165): a keystroke or press restarts the caret's blink so it
         // is solid while you type; and what moved the focused field's caret is
         // noted for `caret_move`.
@@ -177,42 +177,26 @@ impl Tree {
                 if button == PointerButton::Primary {
                     let mut current = hit;
                     while let Some(id) = current {
-                        if matches!(self.nodes[id].kind, NodeKind::ScrollView(_)) {
-                            if let Some(axis) = self.grabs_scroll_view_thumb(id, position) {
+                        if self.nodes[id].kind.scroller().is_some() {
+                            if let Some(axis) = self.grabs_thumb(id, position) {
                                 let coord = axis.pick((position.x, position.y));
-                                let NodeKind::ScrollView(state) = &mut self.nodes[id].kind else {
-                                    unreachable!("checked above")
-                                };
-                                let scroll = state.offset(axis);
-                                state.thumb_drag_anchor = Some((coord, scroll));
-                                state.thumb_drag_axis = axis;
+                                let scroller =
+                                    self.nodes[id].kind.scroller_mut().expect("checked above");
+                                let scroll = axis.pick(scroller.scroll_offsets());
+                                let bar = scroller.bar_mut();
+                                bar.drag_anchor = Some((coord, scroll));
+                                bar.drag_axis = axis;
                                 self.dragging = Some(id);
-                                self.fade_thumb(id, axis, now);
+                                self.refresh_bar(id, now);
                                 self.set_pressed(None);
                                 return DispatchOutcome::None;
                             }
-                            // 0.6.11: a press on the lane beside the thumb pages.
-                            if self.press_scroll_lane(id, position, now) {
+                            // 0.6.11: a press on an arrow button, or on the lane
+                            // beside the thumb, pages or jumps.
+                            if self.press_scrollbar(id, position, now) {
                                 self.set_pressed(None);
                                 return DispatchOutcome::None;
                             }
-                        }
-                        // M47 (§5, §7, §11.7): the identical real grab-
-                        // takes-priority-over-content technique above,
-                        // for `VirtualList`'s own thumb -- vertical-only,
-                        // so no `horizontal` branch is needed the way
-                        // `ScrollView`'s own arm above has one.
-                        if matches!(self.nodes[id].kind, NodeKind::VirtualList(_))
-                            && self.grabs_virtual_list_thumb(id, position)
-                        {
-                            let NodeKind::VirtualList(state) = &mut self.nodes[id].kind else {
-                                unreachable!("checked above")
-                            };
-                            let scroll = state.scroll_offset.current;
-                            state.thumb_drag_anchor = Some((position.y, scroll));
-                            self.dragging = Some(id);
-                            self.set_pressed(None);
-                            return DispatchOutcome::None;
                         }
                         current = self.nodes[id].parent;
                     }
@@ -319,21 +303,19 @@ impl Tree {
                     // gesture -- mirrors pyCopper's own real `on_
                     // pointer_up`, which pops the identical `drag_from`/
                     // `drag_scroll` state.
-                    let dragged = self.dragging.and_then(|id| match &mut self.nodes[id].kind {
-                        NodeKind::ScrollView(state) => {
-                            state.thumb_drag_anchor = None;
-                            Some((id, state.thumb_drag_axis))
-                        }
-                        _ => None,
+                    let dragged = self.dragging.and_then(|id| {
+                        let bar = self.nodes[id].kind.scroller_mut()?.bar_mut();
+                        bar.drag_anchor = None;
+                        Some(id)
                     });
                     self.dragging = None;
-                    // 0.6.11: a held lane press stops, and a dragged thumb eases
-                    // back to hover or rest, by where the pointer is now.
+                    // 0.6.11: a held lane or arrow press stops, and a dragged thumb
+                    // eases back to hover or rest, by where the pointer is now.
                     self.page_repeat = None;
-                    if let Some((view, axis)) = dragged {
+                    if let Some(view) = dragged {
                         let hit = self.hit_test_input(root, position);
                         self.update_scrollbar_hover(hit, position, now);
-                        self.fade_thumb(view, axis, now);
+                        self.refresh_bar(view, now);
                     }
                 }
                 outcome
@@ -533,41 +515,27 @@ impl Tree {
                         // 0.4.3 M17, 0.4.4 M21: a list or view the wheel
                         // can't move -- no part along its axis, nothing to
                         // scroll, or already at that end -- passes it on to
-                        // the next one out (`can_scroll`): a plain wheel over
-                        // a carousel scrolls the page around it, and so does
-                        // one over an inner list at its end, as in a
+                        // the next one out (`can_scroll_axis`): a plain wheel
+                        // over a carousel scrolls the page around it, and so
+                        // does one over an inner list at its end, as in a
                         // browser. One that can move takes the whole wheel.
-                        if matches!(node.kind, NodeKind::VirtualList(_)) {
-                            let delta_y = match delta {
-                                ScrollDelta::Lines(_, y) => y * WHEEL_NOTCH,
-                                ScrollDelta::Pixels(_, y) => y,
-                            };
-                            if self.can_scroll(id, delta_y) {
-                                self.scroll_virtual_list_by(id, delta_y);
-                                break;
-                            }
-                        }
-                        // M36 Phase 1 (§5, §7, §11.7): the identical
-                        // real "walk up to the nearest scrollable
-                        // ancestor" widening, a third time, for a real
-                        // general `ScrollView` -- a wheel notch over
-                        // any of its scrolled content bubbles to it
-                        // exactly the way one over a `VirtualList` row
-                        // already does above.
-                        if let NodeKind::ScrollView(state) = &node.kind {
-                            // 0.6.11: a `both` view takes the wheel's two parts, each on
-                            // its axis (a sideways wheel, or Shift made one, moves it
-                            // sideways); whatever it can move takes the wheel, and a
-                            // view that can move neither passes it on.
+                        // 0.6.11: a scroll view or a virtual list takes the
+                        // wheel's two parts, each on its axis (a sideways
+                        // wheel, or Shift made one, moves a `both` view
+                        // sideways), one notch being its `wheel_notch`;
+                        // whatever it can move takes the wheel.
+                        if let Some(scroller) = node.kind.scroller() {
+                            let notch = scroller.metrics().wheel_notch;
+                            let axes = scroller.scroll_axes();
                             let wheel = match delta {
-                                ScrollDelta::Lines(x, y) => (x * WHEEL_NOTCH, y * WHEEL_NOTCH),
+                                ScrollDelta::Lines(x, y) => (x * notch, y * notch),
                                 ScrollDelta::Pixels(x, y) => (x, y),
                             };
                             let mut moved = false;
-                            for &axis in state.axes() {
+                            for &axis in axes {
                                 let along = axis.pick(wheel);
                                 if self.can_scroll_axis(id, axis, along) {
-                                    self.scroll_axis_by(id, axis, along);
+                                    self.scroll_input(id, axis, along, now);
                                     moved = true;
                                 }
                             }
@@ -587,10 +555,13 @@ impl Tree {
             // 0.5.4 (#113): touches and trackpad pinches are recognized and
             // delivered by the window (`engine-py`); the tree has nothing to do.
             InputEvent::Touch { .. } | InputEvent::TrackpadPinch { .. } => DispatchOutcome::None,
-            // 0.5.4 (#115): OS preferences are reported by the window (`engine-py`).
-            InputEvent::ReducedMotionChanged { .. } | InputEvent::HighContrastChanged { .. } => {
+            // 0.5.4 (#115): OS preferences are reported by the window (`engine-py`);
+            // 0.6.11: the tree keeps the motion one for the scrollbar's fades.
+            InputEvent::ReducedMotionChanged { reduced } => {
+                self.os_reduced_motion = reduced;
                 DispatchOutcome::None
             }
+            InputEvent::HighContrastChanged { .. } => DispatchOutcome::None,
             // 0.5.4 (#114): files are delivered by the window (`engine-py`).
             InputEvent::FileHovered { .. }
             | InputEvent::FileHoverCancelled
@@ -701,7 +672,7 @@ impl Tree {
                 self.set_hovered(None);
                 // 0.6.11: a thumb the pointer was over goes back to rest.
                 if let Some((view, axis)) = self.scrollbar_hover.take() {
-                    self.fade_thumb(view, axis, now);
+                    self.set_bar_hover(view, axis, false, now);
                 }
                 if old_hovered.is_some() {
                     DispatchOutcome::HoverChanged {

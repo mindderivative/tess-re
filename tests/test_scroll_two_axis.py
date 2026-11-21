@@ -347,9 +347,9 @@ def test_bad_scrollbar_values_are_rejected(props, message):
 def test_a_scrollbar_property_on_another_node_raises(name):
     window = Window(width=800, height=600)
     box = add(window, "box")
-    with pytest.raises(ValueError, match="applies only to a scroll_view node"):
+    with pytest.raises(ValueError, match="applies only to a scroll_view or virtual_list node"):
         box.set(**{name: 1})
-    with pytest.raises(ValueError, match="applies only to a scroll_view node"):
+    with pytest.raises(ValueError, match="applies only to a scroll_view or virtual_list node"):
         box.get(name)
 
 

@@ -186,6 +186,11 @@ window.on("reduced_motion", lambda e: set_animations(not e.reduced_motion))
 window.on("high_contrast", lambda e: use_high_contrast_palette(e.high_contrast))
 ```
 
+(0.6.11) The engine's own animations follow the preference too: the scrollbar's fades, smooth scrolling
+(`scroll_smooth_ms`) and the scroll snap settle take no time while it is on. `window.set(reduced_motion=True)` or
+`False` overrides the OS for the window, and `None` (the default) follows it again; `get("reduced_motion")` then reads
+the window's own say, else the OS's.
+
 The engine reports them and changes nothing itself: durations are the app's to
 shorten, and colours its to swap. Linux reads the settings portal's
 `reduced-motion` and `contrast` (with GNOME's `enable-animations` and

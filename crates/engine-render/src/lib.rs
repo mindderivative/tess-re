@@ -38,8 +38,7 @@ mod walk;
 mod window_renderer;
 
 use engine_core::{
-    ContentFit, DrawCommand, NodeId, NodeKind, SCROLLBAR_MARGIN, SCROLLBAR_THICKNESS,
-    ScrollViewState, Tree, VirtualListState,
+    ContentFit, DrawCommand, NodeId, NodeKind, ScrollAxis, ScrollDefaults, Scroller, Tree,
 };
 use peniko::Color;
 use peniko::kurbo::{Affine, BezPath, Circle, Rect, RoundedRect, Shape, Stroke};
@@ -852,20 +851,10 @@ impl<'t> walk::Visitor<'t> for Painter<'_> {
             // necessarily `composed` any more -- reset it explicitly first,
             // the same real discipline every other paint call in this
             // function already follows.
-            if let NodeKind::ScrollView(state) = &v.node.kind
+            if let Some(scroller) = v.node.kind.scroller()
                 && drew
             {
-                paint_scroll_view_thumb(self.tree, v.id, state, v.w, v.h, v.composed, self.scene);
-            }
-            // M47 (§5, §7, §11.7): the identical real "paint after every
-            // child" scrollbar thumb, for `VirtualList` -- closes the one
-            // real gap M38 Phase 6 left open (named in M37's own trailer
-            // note): `VirtualList` has always scrolled correctly via wheel
-            // input, it just never had a visual thumb.
-            if let NodeKind::VirtualList(state) = &v.node.kind
-                && drew
-            {
-                paint_virtual_list_thumb(state, v.w, v.h, v.composed, self.scene);
+                paint_scrollbars(self.tree, v.id, scroller, v.composed, self.scene);
             }
         }
         if masked {
@@ -1878,122 +1867,61 @@ fn paint_svg_shape(
     }
 }
 
-/// M38 Phase 6 (§5, §7, §11.7): a real `ScrollView`'s own real
-/// scrollbar thumbs -- one for each axis with something to scroll
-/// (`content_extent > viewport_extent`, the identical real
-/// `self.scrollable` gate pyCopper's own `paint_foreground` already
-/// uses; 0.6.11: a `both` view has up to two), reading
-/// `ScrollViewState::thumbs`' own real, shared geometry (the identical
-/// values `Tree::grabs_scroll_view_thumb`/`update_scroll_view_thumb_drag`
-/// and the damage walk compute, so paint and hit-testing/dragging can
-/// never drift). Painted in the view's `scrollbar_fill`, or the default
-/// colour when it sets none, at the thumb's opacity (`thumb_opacity`: rest,
-/// hover or drag, in between while it fades). Uncached (no
-/// `GeometryCache` entry): the thumb's own position changes on every
-/// real scroll tick, so a per-frame cache would rarely hit anyway,
-/// and it's a genuinely small shape -- not worth the bookkeeping this
-/// catalog's own established "cache only where it measurably helps"
-/// discipline (M34 Phase 1's own real benchmark) already requires
-/// justifying.
-fn paint_scroll_view_thumb(
+/// A scroll view's or a virtual list's scrollbars (M38 Phase 6, M47; 0.6.11:
+/// one painter for both, `Scroller`): the track if `scrollbar_track_fill`
+/// sets one, then the thumb of each axis whose bar shows
+/// (`Tree::scroll_thumbs`, the geometry hit-testing, dragging and damage read
+/// too, so paint and input can never drift), then the arrow buttons if
+/// `scrollbar_arrows` asks for them. The thumb is painted in `scrollbar_fill`
+/// (or `_hover`, `_drag`), else the default colour, at the opacity its
+/// emphasis has (rest, hover or drag, in between while it fades) and how
+/// visible the bar is (`scrollbar_show` `auto_hide`). Uncached (no
+/// `GeometryCache` entry): the thumb's own position changes on every real
+/// scroll tick, and it is a genuinely small shape.
+fn paint_scrollbars(
     tree: &Tree,
     view: NodeId,
-    state: &ScrollViewState,
-    viewport_w: f64,
-    viewport_h: f64,
+    scroller: &dyn Scroller,
     composed: Affine,
     scene: &mut Scene,
 ) {
-    let Some(node) = tree.get(view) else {
+    let Some(thumbs) = tree.scroll_thumbs(view) else {
         return;
     };
-    let Some(&child) = node.children.first() else {
-        return;
-    };
-    let child_layout = tree.layout(child);
-    let content = (
-        f64::from(child_layout.size.width),
-        f64::from(child_layout.size.height),
-    );
-    let thumbs = state.thumbs((viewport_w, viewport_h), content, state.offsets());
+    let (m, bar) = (scroller.metrics(), scroller.bar());
     // The spec's thumb is the role colour, opaque, shown at its opacity; the
-    // one-axis view's default carries its own alpha.
-    let base = state.scrollbar_fill.unwrap_or(if state.both {
+    // legacy bar's default carries its own alpha.
+    let default = if scroller.defaults() == ScrollDefaults::Spec {
         DEFAULT_THUMB_COLOR
     } else {
         DEFAULT_SCROLLBAR_FILL
-    });
+    };
+    let track = bar.track_color(&m);
     for thumb in thumbs.iter().flatten() {
-        let opacity = state.thumb_opacity(thumb.axis);
-        let color = if opacity == 1.0 {
-            base
-        } else {
-            base.multiply_alpha(opacity as f32)
-        };
-        let rect = thumb.thumb;
-        // A `both` view's thumb is a pill (radius `full`); the one-axis view's keeps its 2.
-        let radius = if state.both {
-            rect.width().min(rect.height()) / 2.0
-        } else {
-            SCROLLBAR_THUMB_RADIUS
-        };
-        fill_scrollbar_thumb(rect, color, radius, composed, scene);
+        if let Some(track) = track {
+            fill_scrollbar_thumb(thumb.track_rect, track, m.radius, composed, scene);
+        }
+        let color = bar.thumb_color(&m, thumb.axis, default);
+        if color.components[3] <= 0.0 {
+            continue;
+        }
+        fill_scrollbar_thumb(thumb.thumb, color, m.radius, composed, scene);
+        for (end, arrow) in thumb.arrows.iter().flatten().enumerate() {
+            fill_scrollbar_arrow(arrow.rect, thumb.axis, end, color, composed, scene);
+        }
     }
 }
 
-/// M47 (§5, §7, §11.7): a real `VirtualList`'s own real scrollbar
-/// thumb -- the identical real gate/geometry/paint technique `paint_
-/// scroll_view_thumb` (M38 Phase 6) already established, narrowed to
-/// `VirtualList`'s own vertical-only axis. Unlike `ScrollView`,
-/// there's no single real child to measure for content extent --
-/// `VirtualListState::total_extent()` (already the same real primitive
-/// `Tree::scroll_virtual_list_by`'s own clamping and `Tree::grabs_
-/// virtual_list_thumb`'s own hit-test use) is the real source of truth
-/// here too, so paint and hit-testing/dragging can never disagree about
-/// it.
-fn paint_virtual_list_thumb(
-    state: &VirtualListState,
-    viewport_w: f64,
-    viewport_h: f64,
-    composed: Affine,
-    scene: &mut Scene,
-) {
-    if state.total_extent() <= viewport_h {
-        return;
-    }
-    let (track, thumb, along) = state.thumb_geometry(viewport_h);
-    if track <= 0.0 {
-        return;
-    }
-    let thumb = peniko::kurbo::Rect::new(
-        viewport_w - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN,
-        along,
-        viewport_w - SCROLLBAR_MARGIN,
-        along + thumb,
-    );
-    fill_scrollbar_thumb(
-        thumb,
-        DEFAULT_SCROLLBAR_FILL,
-        SCROLLBAR_THUMB_RADIUS,
-        composed,
-        scene,
-    );
-}
-
-/// M47 (§5, §7, §11.7): the real geometry-to-pixels fill both `paint_
-/// scroll_view_thumb`/`paint_virtual_list_thumb` need -- factored out
-/// once a second real caller needed the identical `RoundedRect` fill
-/// at the identical color/opacity/radius, the same "two real call
-/// sites justify factoring out" precedent this codebase already uses
-/// throughout.
-/// M95: the thumb color when a scroll view sets no `scrollbar_fill` --
-/// MD3's `outline_variant` at 55%.
+/// M95: the thumb color of a legacy (one-axis or list) bar when it sets no
+/// `scrollbar_fill` -- MD3's `outline_variant` at 55%.
 const DEFAULT_SCROLLBAR_FILL: Color = Color::from_rgba8(0xCA, 0xC4, 0xD0, 0x8C);
 
 /// 0.6.11: the thumb colour of a `both` view when it sets no `scrollbar_fill`:
 /// the role `on_surface_variant`, opaque; its opacity is the thumb's.
 const DEFAULT_THUMB_COLOR: Color = Color::from_rgba8(0xCA, 0xC4, 0xD0, 0xFF);
 
+/// The geometry-to-pixels fill of the track and the thumb: a rounded rectangle
+/// at `color` (radius `scrollbar_radius`).
 fn fill_scrollbar_thumb(
     rect: peniko::kurbo::Rect,
     color: Color,
@@ -2006,17 +1934,36 @@ fn fill_scrollbar_thumb(
     scene.fill_path(&RoundedRect::new(rect.x0, rect.y0, rect.x1, rect.y1, radius).to_path(0.1));
 }
 
-/// M38 Phase 6 (§5, §7, §11.7): pure-paint scrollbar tokens -- ported
-/// directly from pyCopper's own real `BAR_RADIUS` (`widgets/scroll.py`;
-/// its `BAR_OPACITY` of 0.55 now lives in `DEFAULT_SCROLLBAR_FILL`'s
-/// alpha, M95). Live here, not `engine-core`, since neither
-/// `Tree::grabs_scroll_view_thumb` nor `update_scroll_view_thumb_drag`
-/// needs a fill radius or an opacity to do real hit-testing/dragging --
-/// the identical real "geometry constants both crates need live in
-/// `engine-core`, pure-paint ones stay in `engine-render`" split
-/// `SCROLLBAR_THICKNESS`/`SCROLLBAR_MARGIN`'s own doc comment already
-/// states for the reverse case.
-const SCROLLBAR_THUMB_RADIUS: f64 = 2.0;
+/// An arrow button's triangle in `rect`, pointing toward the lane's start
+/// (`end` 0) or end (`end` 1) of `axis`: a quarter of the button is padding.
+/// The buttons are minimal: a triangle in the thumb's colour, with no hover
+/// state or background of its own.
+fn fill_scrollbar_arrow(
+    rect: Rect,
+    axis: ScrollAxis,
+    end: usize,
+    color: Color,
+    composed: Affine,
+    scene: &mut Scene,
+) {
+    let pad = rect.width().min(rect.height()) * 0.25;
+    let (x0, y0, x1, y1) = (rect.x0 + pad, rect.y0 + pad, rect.x1 - pad, rect.y1 - pad);
+    let (cx, cy) = (f64::midpoint(x0, x1), f64::midpoint(y0, y1));
+    let points = match (axis, end) {
+        (ScrollAxis::Vertical, 0) => [(cx, y0), (x1, y1), (x0, y1)],
+        (ScrollAxis::Vertical, _) => [(x0, y0), (x1, y0), (cx, y1)],
+        (ScrollAxis::Horizontal, 0) => [(x0, cy), (x1, y0), (x1, y1)],
+        (ScrollAxis::Horizontal, _) => [(x0, y0), (x1, cy), (x0, y1)],
+    };
+    let mut path = BezPath::new();
+    path.move_to(points[0]);
+    path.line_to(points[1]);
+    path.line_to(points[2]);
+    path.close_path();
+    scene.set_transform(composed);
+    scene.set_paint(color);
+    scene.fill_path(&path);
+}
 
 /// The `vello_gpu` renderer and its resources: its pipelines, the glyph and image atlases and the
 /// gradient cache. A renderer belongs to a device and a target format, not to a window -- it

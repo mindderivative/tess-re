@@ -316,8 +316,52 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `scrollbar_gutter`, `scrollbar_corner`, `scrollbar_opacity`, `scrollbar_opacity_hover` and `scrollbar_opacity_drag`,
   next to `scrollbar_fill` and `scrollbar_width`. A `"both"` view defaults them to the spec (8 px thumb, 12 px hit strip,
   12 px gutter and corner, opacity 0.70 / 0.80 / 1.0); a one-axis view keeps its old look. `scrollbar_width` and the
-  new ones take `None` for the default. See [Scrollbar](reference/properties.md#scrollbar-0611).
-- **Internal (Rust):** `ScrollViewState::scrollbar_width` is `scrollbar.thickness: Option<f64>`;
+  new ones take `None` for the default. See [Scrollbar](reference/properties.md#scrollbar-and-scroll-feel-0611).
+- **`virtual_list` takes every scrollbar property, and shares the scroll view's scrollbar (P1, new, opt-in).** A
+  virtual list's thumb used to be fixed (4 px, `#CAC4D0` at 55%, no emphasis) and every `scrollbar_*` property raised
+  `ValueError` on it. All of them now work on a `virtual_list` (and on a `scroll_view`), with one implementation of the
+  geometry, hit-testing, hover, drag and fade. A list that sets nothing looks and behaves as before; the error for a
+  `scrollbar_*` property on another node now reads "applies only to a scroll_view or virtual_list node". See
+  [Scrollbar and scroll feel](reference/properties.md#scrollbar-and-scroll-feel-0611).
+- **`scrollbar_radius` (P1, new).** The thumb's corner radius, in pixels: default a pill (half the thickness) on a
+  `"both"` view and 2 on a one-axis view and a list. `scrollbar_radius=0` is square.
+- **`scrollbar_track_fill` and `scrollbar_track_opacity` (P1, new).** A track behind the thumb, as long as the lane and
+  as thick as the thumb. Default none (the spec is track-less); opacity 1.0.
+- **`scrollbar_fill_hover` and `scrollbar_fill_drag` (P1, new).** The thumb's colour with the pointer over it and while
+  dragged, faded in and out like the opacity; unset, they are `scrollbar_fill`.
+- **`scrollbar_side_v` and `scrollbar_side_h` (P1, new).** The edge of each bar: `"end"` (default: right, bottom),
+  `"start"` (left, top), or physical (`"left"`, `"right"` for the vertical bar, `"top"`, `"bottom"` for the horizontal).
+  `"start"` and `"end"` follow the layout direction; there is no right-to-left layout yet, so they are left-to-right,
+  resolved in one place. The gutter and the corner follow the bar to its edge (a left bar makes the content start 12 px
+  in).
+- **`scrollbar_show`, `scrollbar_hide_delay_ms` (P1, new).** `"overflow"` (default, today's behaviour), `"always"` (a
+  full-length thumb even without overflow, no gutter), `"auto_hide"` (fades out after the delay, default 1000 ms, and
+  back in on scroll, hover and drag) or `"never"` (no bar and no gutter; the view still scrolls).
+- **`scrollbar_fade_in_ms`, `scrollbar_fade_out_ms`, `scrollbar_hover_delay_ms`, `scrollbar_fade_easing` (P1, new).**
+  The durations of the thumb's fades (default 100 ms each, replacing the fixed 100 ms), how long the pointer rests on
+  the bar before the hover emphasis starts (default 0), and the curve: a preset name (`"linear"`, `"standard"` default,
+  `"emphasized"`, `"ease_out"` and others) or a cubic bezier `(x1, y1, x2, y2)`.
+- **`scrollbar_gutter_reserve` (P1, new).** `True` (default) reserves the gutter; `False` lets the thumb overlay the
+  content.
+- **`scrollbar_arrows`, `scrollbar_arrow_step` (P1, new).** `"both"` adds an arrow button at each end of the lane (a
+  minimal triangle in the thumb's colour); a press scrolls the step (default 40 px) and repeats while held. Default
+  `"none"`.
+- **`scrollbar_lane_click` (P1, new).** `"page"` (default for a `"both"` view; the existing lane paging), `"jump"` (the
+  thumb's middle goes to the press and the press carries on as a drag) or `"none"` (the default for a one-axis view and a
+  list, as before: a press beside the thumb goes to the content).
+- **`wheel_notch`, `key_line`, `page_fraction` (P1, new).** The wheel notch, the arrow-key step and the page, per scroll
+  view and virtual list: defaults 40, 40 and 0.9 (a one-axis scroll view keeps a whole-viewport page, 1.0). A list's page
+  was a constant 0.9 of the viewport and is now this property.
+- **`scroll_smooth_ms`, `scroll_easing` (P1, new).** With `scroll_smooth_ms` above 0 (default 0: keys and wheel jump,
+  as the spec says) the wheel and keys ease over that many milliseconds with the easing (default `"standard"`); notches
+  add up. Drags, lane and arrow presses and `scroll_offset=` stay direct.
+- **`page_repeat_delay_ms`, `page_repeat_ms` (P1, new).** The held lane or arrow press repeats after 400 ms, then every
+  100 ms (were constants).
+- **`Window.set(reduced_motion=...)` (P1, new).** `True`/`False` overrides, `None` (default) follows the OS value
+  `window.get("reduced_motion")` already reported; `get` returns the window's own say, else the OS's. While it is true
+  the scrollbar's fades, the smooth scroll and the scroll snap settle take no time (a snap settle took 200 ms before
+  whatever the OS said): this closes the "reduced motion is not wired" limit of the two-axis scroll view.
+- **Internal (Rust):** `ScrollViewState::scrollbar_width` is a `Prop::Width` setting of `bar` (`ScrollbarState`, shared with `VirtualListState`; the per-kind `thumb_drag_anchor`, `level`, `scrollbar_fill` and `scrollbar` fields are gone); `ScrollbarOverrides` and `SCROLLBAR_PROPS` are the `ScrollProp` table; `grabs_virtual_list_thumb` and `grabs_scroll_view_thumb` are `Tree::grabs_thumb`;
   `Tree::take_scroll_changes` returns `ScrollChange` values, not tuples; `grabs_scroll_view_thumb` returns the
   `ScrollAxis` it grabbed. The Python API has no such change.
 - **`hit_testable` is on every node, and a plain `text` is hovered by default (changed, P2; tess-ui finding #4).**

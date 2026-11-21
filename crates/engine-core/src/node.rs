@@ -98,6 +98,23 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
+    /// 0.6.11: the scrollbar-carrying view of a scroll view or a virtual list.
+    pub fn scroller(&self) -> Option<&dyn crate::scrollbar::Scroller> {
+        match self {
+            NodeKind::ScrollView(state) => Some(state),
+            NodeKind::VirtualList(state) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn scroller_mut(&mut self) -> Option<&mut dyn crate::scrollbar::Scroller> {
+        match self {
+            NodeKind::ScrollView(state) => Some(state),
+            NodeKind::VirtualList(state) => Some(state),
+            _ => None,
+        }
+    }
+
     /// The kind's name as `window.create` takes it (0.5.4, #135: one list, for
     /// `get("kind")` and for statistics by kind).
     pub fn name(&self) -> &'static str {
@@ -430,31 +447,10 @@ pub struct ScrollViewState {
     /// 0.6.11 (UXREQ-001): the view scrolls on both axes, with the spec
     /// scrollbar (see `scrollbar.rs`).
     pub both: bool,
-    /// M38 Phase 6 (§5, §7, §11.7): `Some((pointer_coord, scroll_at_
-    /// start))`, set the instant a real thumb drag begins and cleared
-    /// when it ends -- `Tree::update_scroll_view_thumb_drag`'s own
-    /// real anchor, ported directly from pyCopper's own `state.data
-    /// ["drag_from"]`/`["drag_scroll"]` (`widgets/scroll.py`'s own
-    /// `on_pointer_down`/`on_pointer_move`). A *relative*-delta anchor,
-    /// not an absolute pointer-to-scroll mapping: grabbing the thumb
-    /// anywhere along its own length must not snap it so that point
-    /// jumps under the pointer, the identical real UX pyCopper's own
-    /// design already chose and this ports verbatim. Lives on this
-    /// state (not `Tree` itself): kind-specific drag anchor data belongs
-    /// to the kind, `Tree.dragging` alone only ever names *which* node
-    /// is being dragged.
-    pub thumb_drag_anchor: Option<(f64, f64)>,
-    /// 0.6.11: which thumb of a `both` view the drag in progress holds.
-    pub thumb_drag_axis: crate::scrollbar::ScrollAxis,
-    /// M95: the scrollbar thumb's color; `None` paints the default.
-    pub scrollbar_fill: Option<Color>,
-    /// 0.6.11: the scrollbar's measures and opacities the user set; the rest
-    /// follow the orientation (`ScrollViewState::metrics`).
-    pub scrollbar: crate::scrollbar::ScrollbarOverrides,
-    /// 0.6.11: how emphasised each thumb is, `[vertical, horizontal]`: 0 at
-    /// rest, 1 with the pointer over its hit area, 2 while dragged. Animated
-    /// over `scrollbar::FADE`; the thumb's opacity is read off it.
-    pub level: [Animated<f64>; 2],
+    /// 0.6.11: the scrollbar and scroll feel of the view -- what the user set
+    /// (`Prop`), the thumbs' emphasis and visibility, and the thumb drag in
+    /// progress (`ScrollbarState`) -- shared with the virtual list.
+    pub bar: Box<crate::scrollbar::ScrollbarState>,
     /// 0.4.2 M12 (issue #24): the offset last reported as a `scroll`
     /// event. `Tree::take_scroll_changes` compares `scroll` with it, so a
     /// change is noticed whatever made it.
@@ -471,11 +467,7 @@ impl ScrollViewState {
             snap: None,
             horizontal,
             both: false,
-            thumb_drag_anchor: None,
-            thumb_drag_axis: crate::scrollbar::ScrollAxis::Vertical,
-            scrollbar_fill: None,
-            scrollbar: crate::scrollbar::ScrollbarOverrides::default(),
-            level: [Animated::new(0.0), Animated::new(0.0)],
+            bar: Box::default(),
             reported: 0.0,
             reported_x: 0.0,
         }
@@ -507,12 +499,13 @@ impl ScrollViewState {
         content_extent: f64,
         offset: f64,
     ) -> (f64, f64, f64) {
+        use crate::scrollbar::Scroller;
         crate::scrollbar::axis_geometry(
             &self.metrics(),
             viewport_extent,
             content_extent,
             offset,
-            0.0,
+            (0.0, 0.0),
         )
     }
 }
@@ -1074,16 +1067,10 @@ pub struct VirtualListState {
     /// (populated via `Tree::set_virtual_list_resolved_offsets`), the
     /// same real reason `materialize` itself lives there too, not here.
     pub resolved_offsets: std::collections::BTreeMap<usize, f64>,
-    /// M47 (§5, §7, §11.7): `Some((pointer_y, scroll_at_drag_start))`,
-    /// set the instant a real thumb drag begins and cleared when it
-    /// ends -- byte-for-byte the same real anchor shape `ScrollViewState
-    /// ::thumb_drag_anchor` (M38 Phase 6) already established, ported
-    /// here rather than reinvented. A *relative*-delta anchor, not an
-    /// absolute pointer-to-scroll mapping, for the identical real reason
-    /// `ScrollView`'s own doc comment already gives: grabbing the thumb
-    /// anywhere along its own length must not snap it so that point
-    /// jumps under the pointer.
-    pub thumb_drag_anchor: Option<(f64, f64)>,
+    /// 0.6.11: the scrollbar and scroll feel of the list -- the same state, and
+    /// the same geometry, hit-testing, hover, drag and fade, as a scroll
+    /// view's (`scrollbar.rs`). A list that sets nothing keeps the legacy bar.
+    pub bar: Box<crate::scrollbar::ScrollbarState>,
     /// The offset last reported as a `scroll` event (see
     /// `ScrollViewState::reported`).
     pub reported: f64,
@@ -1097,19 +1084,16 @@ impl VirtualListState {
             materialized: std::collections::BTreeMap::new(),
             scroll_offset: Animated::new(0.0),
             resolved_offsets: std::collections::BTreeMap::new(),
-            thumb_drag_anchor: None,
+            bar: Box::default(),
             reported: 0.0,
         }
     }
 
     /// M47 (§5, §7, §11.7): real thumb geometry `(track, thumb, along)`
     /// -- the identical real shape `ScrollViewState::thumb_geometry`
-    /// (M38 Phase 6) already established, shared by painting
-    /// (`engine-render's paint walk`) and hit-testing/dragging
-    /// (`Tree::grabs_virtual_list_thumb`/`update_virtual_list_thumb_
-    /// drag`) so the two can never drift -- the same "one function,
-    /// every real caller" discipline this codebase already applies
-    /// throughout. Vertical-only (no `horizontal` parameter): `Virtual
+    /// (M38 Phase 6) already established. (0.6.11: painting, hit-testing and
+    /// dragging read `Scroller::thumbs`, one geometry for scroll views and
+    /// lists; this is the lane's `axis_geometry` alone.) Vertical-only (no `horizontal` parameter): `Virtual
     /// List` itself has no horizontal-scroll variant today (`Tree::
     /// scroll_virtual_list_by`'s own signature is vertical-only),
     /// unlike `ScrollView`, so this is a real, narrower single-axis
@@ -1126,25 +1110,14 @@ impl VirtualListState {
 
     /// `thumb_geometry` as it would be at scroll offset `offset`.
     pub fn thumb_geometry_at(&self, viewport_extent: f64, offset: f64) -> (f64, f64, f64) {
-        let track = viewport_extent - SCROLLBAR_MARGIN * 2.0;
-        if track <= 0.0 {
-            return (0.0, 0.0, 0.0);
-        }
-        let content_extent = self.total_extent();
-        let max_scroll = (content_extent - viewport_extent).max(0.0);
-        let thumb = if content_extent > 0.0 {
-            (track * (viewport_extent / content_extent)).max(SCROLLBAR_MIN_LENGTH)
-        } else {
-            track
-        };
-        let thumb = thumb.min(track);
-        let progress = if max_scroll > 0.0 {
-            offset / max_scroll
-        } else {
-            0.0
-        };
-        let along = SCROLLBAR_MARGIN + (track - thumb) * progress;
-        (track, thumb, along)
+        use crate::scrollbar::Scroller;
+        crate::scrollbar::axis_geometry(
+            &self.metrics(),
+            viewport_extent,
+            self.total_extent(),
+            offset,
+            (0.0, 0.0),
+        )
     }
 
     /// Item `idx`'s own real top-offset. M100: `0.0` when `item_extent`

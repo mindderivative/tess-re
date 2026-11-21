@@ -182,8 +182,9 @@ debugging. See [Window](../reference/window.md).
 ## What Tesserae Engine leaves to you
 
 The colors Tesserae Engine draws for you all have properties: a text input's
-`placeholder_fill`, `caret_color`, and `selection_fill`; a scroll view's
-`scrollbar_fill`, `scrollbar_width` and the other `scrollbar_*` measures; a terminal's `palette`. Hover and
+`placeholder_fill`, `caret_color`, and `selection_fill`; a scroll view's or virtual list's
+`scrollbar_fill` (and its hover, drag and track colours), `scrollbar_width`, `scrollbar_radius` and the other
+`scrollbar_*` measures; a terminal's `palette`. Hover and
 press feedback, focus rings, ripples, and disabled styling are yours to draw
 from [events](events-and-input.md) — [Building a Widget](building-a-widget.md)
 shows how.

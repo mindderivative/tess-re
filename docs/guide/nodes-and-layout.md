@@ -326,7 +326,7 @@ view.on("scroll", lambda e: print(e.x, e.y))                   # the offsets aft
   colour `#CAC4D0` (the role `on_surface_variant`); each is a property (`scrollbar_fill`, `scrollbar_width`,
   `scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`, `scrollbar_opacity`,
   `scrollbar_opacity_hover`, `scrollbar_opacity_drag`, `scrollbar_gutter`, `scrollbar_corner`; see
-  [Scrollbar](../reference/properties.md#scrollbar-0611)), so a project can theme it.
+  [Scrollbar](../reference/properties.md#scrollbar-and-scroll-feel-0611)), so a project can theme it.
 - **The gutter.** The 12 px at the end edge of an overflowing axis belongs to the thumb, so content does not
   sit under it. The engine does this where it can: the view's layout reserves the gutter on that side (taffy's
   scrollbar gutter, switched on for an axis once it overflows and off when it does not), so a content box sized
@@ -353,7 +353,43 @@ view.on("scroll", lambda e: print(e.x, e.y))                   # the offsets aft
 - **`scroll_snap`** settles the vertical (main) axis only.
 - **Accessibility.** The thumbs are paint, not nodes: they are not in the accessibility tree and not a
   Tab stop. The scroll view is as before.
-- A `virtual_list` is still vertical only.
+- A `virtual_list` is still vertical only, and takes the same scrollbar properties ([below](#theming-the-scrollbar-and-the-scroll-feel-0611)).
+
+### Theming the scrollbar and the scroll feel (0.6.11)
+
+Nothing about a scrollbar is fixed: every number, colour, side, timing and behaviour is a property of the scroll view or
+virtual list, `None` for the spec's default. The full table, with types, defaults and units, is
+[Scrollbar and scroll feel](../reference/properties.md#scrollbar-and-scroll-feel-0611). A `scroll_view` and a
+`virtual_list` share one implementation, so the same properties give the same bar on both:
+
+```python
+for node in (view, rows):                      # a scroll view and a virtual list
+    node.set(scrollbar_width=6, scrollbar_radius=3,
+             scrollbar_fill=(202, 196, 208, 255), scrollbar_fill_hover=(255, 255, 255, 255),
+             scrollbar_show="auto_hide", scrollbar_hide_delay_ms=800, scrollbar_fade_out_ms=250,
+             scrollbar_side_v="start",           # the left edge in today's left-to-right layouts
+             scrollbar_arrows="both", scrollbar_lane_click="jump",
+             wheel_notch=60, key_line=24, scroll_smooth_ms=120)
+window.set(reduced_motion=None)                # None follows the OS; True/False overrides it
+```
+
+- **Sides.** `scrollbar_side_v` puts the vertical bar on the right (`"end"`, the default, or `"right"`) or the left
+  (`"start"`, `"left"`); `scrollbar_side_h` the horizontal one on the bottom (`"end"`, `"bottom"`) or the top
+  (`"start"`, `"top"`). A bar's gutter is on its own edge: with the bar on the left or the top, the content starts
+  that far in. The lane of one axis stops `scrollbar_corner` short at the end where the other bar is.
+- **Showing.** `scrollbar_show` is `"overflow"` (the default), `"always"` (a full-length thumb even when nothing
+  overflows), `"auto_hide"` (fades after `scrollbar_hide_delay_ms`, back in on scroll, hover and drag) or `"never"`
+  (no bar and no gutter, still scrollable). `scrollbar_gutter_reserve=False` lets the thumb overlay content.
+- **Arrows and lane clicks.** `scrollbar_arrows="both"` adds a button at each end of the lane that scrolls
+  `scrollbar_arrow_step`, repeating while held; `scrollbar_lane_click` is `"page"`, `"jump"` (the thumb's middle goes
+  to the press and the press carries on as a drag) or `"none"`.
+- **Feel.** `wheel_notch`, `key_line` and `page_fraction` are the notch, the arrow key and the page; with
+  `scroll_smooth_ms` above 0 the wheel and the keys ease (`scroll_easing`), and a held press repeats after
+  `page_repeat_delay_ms` every `page_repeat_ms`.
+- **Reduced motion.** `Window.set(reduced_motion=True)` takes the fades, the smooth scroll and the snap settle to 0 ms.
+  `None` (the default) follows the OS.
+- **One bar, two kinds.** A list that sets none of this keeps the bar it had, but every property works on it, with
+  hover, drag and the lane click, exactly as on a scroll view.
 
 ### Snapping (0.5.6)
 
@@ -410,7 +446,8 @@ Page Down at the end of an inner list moves the page. Keys the focused node uses
 a text input keeps all but Page Up and Page Down. With nothing focused, keys
 scroll nothing. A key pressed with Ctrl, Alt, or Meta held is a shortcut, not a
 scroll (0.4.3) — Ctrl+Page Down or Alt+Left stays yours — while Shift still
-scrolls. Keyboard scrolls jump rather than ease.
+scrolls. Keyboard scrolls jump rather than ease, unless `scroll_smooth_ms` is set (0.6.11); the line (`key_line`)
+and the page (`page_fraction`) are properties of the view too.
 
 A `"virtual_list"` takes the same keys (0.6.11) with the same exclusions and the
 same chaining, vertically only: Up and Down by 40 pixels (a list's rows may be any

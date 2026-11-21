@@ -1,31 +1,47 @@
-//! 0.6.11 (UXREQ-001): the scroll view's scrollbar -- the geometry painting,
-//! hit-testing, dragging and damage all read, so they cannot drift apart.
+//! 0.6.11 (UXREQ-001): the scrollbar of a scroll view and of a virtual list --
+//! the geometry painting, hit-testing, dragging and damage all read, so they
+//! cannot drift apart, and the one state both kinds share (`ScrollbarState`).
 //!
 //! The numbers of the Tesserae UX note "Scrollbar and Scroll Container" are
-//! the defaults of a `both` view; a `vertical` or `horizontal` view keeps the
-//! scrollbar it always had (4 px thumb, 6 px of slop, the colour's own alpha)
-//! unless a property says otherwise.
+//! the defaults of a `both` view (`Defaults::Spec`); a `vertical` or
+//! `horizontal` view and a virtual list keep the scrollbar they always had
+//! (4 px thumb, 6 px of slop, the colour's own alpha) unless a property says
+//! otherwise (`Defaults::Legacy`, `Defaults::List`). Every aspect is a property
+//! (`Prop`); nothing here calls back into the app.
 
+use peniko::Color;
 use peniko::kurbo::{Point, Rect};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use crate::animation::Animated;
+use crate::animation::{Animated, CompletionHandle, MotionCurve};
+use crate::easing::{self, Easing};
 use crate::node::{
     SCROLLBAR_GRAB_SLOP, SCROLLBAR_MARGIN, SCROLLBAR_MIN_LENGTH, SCROLLBAR_THICKNESS,
-    ScrollViewState,
+    ScrollViewState, VirtualListState,
+};
+use crate::scrollbar_props::{
+    Arrows, BarSide, Edge, LAYOUT_DIRECTION, LaneClick, Overrides, Prop, Show, Value,
 };
 
 /// How far one wheel notch scrolls, in pixels (`Lines` deltas; `Pixels`
-/// deltas are taken as they come).
+/// deltas are taken as they come): `wheel_notch`.
 pub const WHEEL_NOTCH: f64 = 40.0;
+/// How far an arrow key, or a click on an arrow button, scrolls: `key_line`,
+/// `scrollbar_arrow_step`.
+pub const KEY_LINE: f64 = 40.0;
 /// How much of the viewport a page (Page Up/Down, a click on the lane)
-/// scrolls: the viewport less a tenth, so a line of context stays.
+/// scrolls: the viewport less a tenth, so a line of context stays:
+/// `page_fraction`.
 pub const PAGE_FRACTION: f64 = 0.9;
-/// A thumb changes opacity over this long (Motion `short2`).
+/// A thumb changes opacity over this long (Motion `short2`):
+/// `scrollbar_fade_in_ms`, `scrollbar_fade_out_ms`.
 pub const FADE: Duration = Duration::from_millis(100);
-/// A press on the lane pages again after this long, then every `PAGE_REPEAT`.
+/// A press on the lane pages again after this long, then every `PAGE_REPEAT`:
+/// `page_repeat_delay_ms`, `page_repeat_ms`.
 pub const PAGE_DELAY: Duration = Duration::from_millis(400);
 pub const PAGE_REPEAT: Duration = Duration::from_millis(100);
+/// `scrollbar_hide_delay_ms`: how long `auto_hide` waits.
+pub const HIDE_DELAY: Duration = Duration::from_millis(1000);
 
 /// The spec's own numbers (`both` views).
 pub const SPEC_THICKNESS: f64 = 8.0;
@@ -35,6 +51,8 @@ pub const SPEC_CORNER: f64 = 12.0;
 pub const SPEC_OPACITY_REST: f64 = 0.70;
 pub const SPEC_OPACITY_HOVER: f64 = 0.80;
 pub const SPEC_OPACITY_DRAG: f64 = 1.0;
+/// The thumb radius of a view that keeps its legacy scrollbar.
+pub const LEGACY_RADIUS: f64 = 2.0;
 
 /// One of a scroll view's two axes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -86,53 +104,22 @@ impl ScrollOrientation {
     ];
 }
 
-/// What the user set of a scrollbar; `None` is the default of the view's
-/// orientation (`ScrollViewState::metrics`).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct ScrollbarOverrides {
-    pub thickness: Option<f64>,
-    pub hit: Option<f64>,
-    pub margin: Option<f64>,
-    pub min_length: Option<f64>,
-    pub gutter: Option<f64>,
-    pub corner: Option<f64>,
-    pub opacity: Option<f64>,
-    pub opacity_hover: Option<f64>,
-    pub opacity_drag: Option<f64>,
+/// Which defaults a scroller's unset properties take.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Defaults {
+    /// The Tesserae UX spec: a `both` scroll view.
+    Spec,
+    /// What a `vertical` or `horizontal` scroll view always had: a 4 px thumb
+    /// with the colour's own alpha, a 6 px slop, no lane click, a page that is
+    /// the whole viewport.
+    Legacy,
+    /// What a virtual list always had: the legacy bar, and a page of nine
+    /// tenths of the viewport.
+    List,
 }
 
-/// The names of the node properties that set the scrollbar's measures, in the
-/// order of `ScrollbarOverrides`' fields (`slot`, `ScrollbarMetrics::get`).
-pub const SCROLLBAR_PROPS: [&str; 9] = [
-    "scrollbar_width",
-    "scrollbar_hit_width",
-    "scrollbar_margin",
-    "scrollbar_min_length",
-    "scrollbar_gutter",
-    "scrollbar_corner",
-    "scrollbar_opacity",
-    "scrollbar_opacity_hover",
-    "scrollbar_opacity_drag",
-];
-
-impl ScrollbarOverrides {
-    /// The setting that property `name` (one of `SCROLLBAR_PROPS`) sets.
-    pub fn slot(&mut self, name: &str) -> Option<&mut Option<f64>> {
-        Some(match name {
-            "scrollbar_width" => &mut self.thickness,
-            "scrollbar_hit_width" => &mut self.hit,
-            "scrollbar_margin" => &mut self.margin,
-            "scrollbar_min_length" => &mut self.min_length,
-            "scrollbar_gutter" => &mut self.gutter,
-            "scrollbar_corner" => &mut self.corner,
-            "scrollbar_opacity" => &mut self.opacity,
-            "scrollbar_opacity_hover" => &mut self.opacity_hover,
-            "scrollbar_opacity_drag" => &mut self.opacity_drag,
-            _ => return None,
-        })
-    }
-}
-/// The measures a scrollbar is built from, resolved.
+/// The measures a scrollbar and the scroll feel are built from, resolved: what
+/// the user set, else the defaults of the scroller (`Defaults`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollbarMetrics {
     /// Painted size across the axis.
@@ -143,32 +130,183 @@ pub struct ScrollbarMetrics {
     pub margin: f64,
     /// The shortest thumb.
     pub min_length: f64,
-    /// Reserved at the end edge of an axis that overflows.
+    /// Reserved at the edge of an axis that overflows (see `reserved_gutter`).
     pub gutter: f64,
-    /// How much a lane stops short when the other axis overflows too.
+    /// How much a lane stops short when the other axis has a bar too.
     pub corner: f64,
+    /// The thumb's (and track's) corner radius.
+    pub radius: f64,
     /// How far past the thumb's ends still grabs it.
     pub along_slop: f64,
     pub opacity_rest: f64,
     pub opacity_hover: f64,
     pub opacity_drag: f64,
+    /// Multiplies the track fill's alpha.
+    pub track_opacity: f64,
+    /// The edge each bar sits on, by `ScrollAxis::index`.
+    pub edges: [Edge; 2],
+    pub show: Show,
+    pub hide_delay_ms: f64,
+    pub fade_in_ms: f64,
+    pub fade_out_ms: f64,
+    pub hover_delay_ms: f64,
+    pub fade_easing: Easing,
+    /// Whether the gutter is reserved (`true`) or the thumb overlays content.
+    pub gutter_reserve: bool,
+    pub arrows: Arrows,
+    pub arrow_step: f64,
+    pub lane_click: LaneClick,
+    pub wheel_notch: f64,
+    pub key_line: f64,
+    pub page_fraction: f64,
+    pub smooth_ms: f64,
+    pub scroll_easing: Easing,
+    pub page_delay_ms: f64,
+    pub page_repeat_ms: f64,
+}
+
+/// `ms` milliseconds as a duration, none for a number that is no time.
+pub fn millis(ms: f64) -> Duration {
+    if ms.is_finite() && ms > 0.0 {
+        Duration::from_secs_f64(ms / 1000.0)
+    } else {
+        Duration::ZERO
+    }
 }
 
 impl ScrollbarMetrics {
-    /// What property `name` (one of `SCROLLBAR_PROPS`) reads: the measure in force.
-    pub fn get(&self, name: &str) -> Option<f64> {
-        Some(match name {
-            "scrollbar_width" => self.thickness,
-            "scrollbar_hit_width" => self.hit,
-            "scrollbar_margin" => self.margin,
-            "scrollbar_min_length" => self.min_length,
-            "scrollbar_gutter" => self.gutter,
-            "scrollbar_corner" => self.corner,
-            "scrollbar_opacity" => self.opacity_rest,
-            "scrollbar_opacity_hover" => self.opacity_hover,
-            "scrollbar_opacity_drag" => self.opacity_drag,
-            _ => return None,
-        })
+    /// What `overrides` and the defaults `d` make of every measure.
+    pub fn resolve(o: &Overrides, d: Defaults) -> Self {
+        let spec = d == Defaults::Spec;
+        let n = |prop: Prop, default: f64| o.number(prop).unwrap_or(default);
+        let thickness = n(
+            Prop::Width,
+            if spec {
+                SPEC_THICKNESS
+            } else {
+                SCROLLBAR_THICKNESS
+            },
+        );
+        let opacity_rest = n(Prop::Opacity, if spec { SPEC_OPACITY_REST } else { 1.0 });
+        let edge = |axis: ScrollAxis, prop: Prop| {
+            o.choice(prop)
+                .and_then(|i| BarSide::from_index(axis, i))
+                .unwrap_or(BarSide::End)
+                .edge(axis, LAYOUT_DIRECTION)
+        };
+        Self {
+            thickness,
+            hit: n(
+                Prop::HitWidth,
+                if spec {
+                    SPEC_HIT
+                } else {
+                    thickness + SCROLLBAR_GRAB_SLOP * 2.0
+                },
+            ),
+            margin: n(Prop::Margin, SCROLLBAR_MARGIN),
+            min_length: n(Prop::MinLength, SCROLLBAR_MIN_LENGTH),
+            gutter: n(Prop::Gutter, if spec { SPEC_GUTTER } else { 0.0 }),
+            corner: n(Prop::Corner, if spec { SPEC_CORNER } else { 0.0 }),
+            radius: n(
+                Prop::Radius,
+                if spec { thickness / 2.0 } else { LEGACY_RADIUS },
+            ),
+            along_slop: if spec { 0.0 } else { SCROLLBAR_GRAB_SLOP },
+            opacity_rest,
+            opacity_hover: n(
+                Prop::OpacityHover,
+                if spec {
+                    SPEC_OPACITY_HOVER
+                } else {
+                    opacity_rest
+                },
+            ),
+            opacity_drag: n(
+                Prop::OpacityDrag,
+                if spec {
+                    SPEC_OPACITY_DRAG
+                } else {
+                    opacity_rest
+                },
+            ),
+            track_opacity: n(Prop::TrackOpacity, 1.0),
+            edges: [
+                edge(ScrollAxis::Vertical, Prop::SideV),
+                edge(ScrollAxis::Horizontal, Prop::SideH),
+            ],
+            show: Show::from_index(o.choice(Prop::Show).unwrap_or(0)),
+            hide_delay_ms: n(Prop::HideDelay, HIDE_DELAY.as_secs_f64() * 1000.0),
+            fade_in_ms: n(Prop::FadeIn, FADE.as_secs_f64() * 1000.0),
+            fade_out_ms: n(Prop::FadeOut, FADE.as_secs_f64() * 1000.0),
+            hover_delay_ms: n(Prop::HoverDelay, 0.0),
+            fade_easing: o.easing(Prop::FadeEasing).unwrap_or(easing::STANDARD),
+            gutter_reserve: o.flag(Prop::GutterReserve).unwrap_or(true),
+            arrows: Arrows::from_index(o.choice(Prop::Arrows).unwrap_or(0)),
+            arrow_step: n(Prop::ArrowStep, KEY_LINE),
+            lane_click: LaneClick::from_index(o.choice(Prop::LaneClick).unwrap_or(if spec {
+                LaneClick::Page.index()
+            } else {
+                LaneClick::None.index()
+            })),
+            wheel_notch: n(Prop::WheelNotch, WHEEL_NOTCH),
+            key_line: n(Prop::KeyLine, KEY_LINE),
+            page_fraction: n(
+                Prop::PageFraction,
+                if d == Defaults::Legacy {
+                    1.0
+                } else {
+                    PAGE_FRACTION
+                },
+            ),
+            smooth_ms: n(Prop::ScrollSmooth, 0.0),
+            scroll_easing: o.easing(Prop::ScrollEasing).unwrap_or(easing::STANDARD),
+            page_delay_ms: n(Prop::PageRepeatDelay, PAGE_DELAY.as_secs_f64() * 1000.0),
+            page_repeat_ms: n(Prop::PageRepeat, PAGE_REPEAT.as_secs_f64() * 1000.0),
+        }
+    }
+
+    /// What property `prop` reads: the value in force, for every property that
+    /// is not a colour (colours and the side names are what the user set,
+    /// `ScrollbarState::get`).
+    pub fn get(&self, prop: Prop) -> Option<Value> {
+        let number = |n: f64| Some(Value::Number(n));
+        match prop {
+            Prop::Width => number(self.thickness),
+            Prop::HitWidth => number(self.hit),
+            Prop::Margin => number(self.margin),
+            Prop::MinLength => number(self.min_length),
+            Prop::Gutter => number(self.gutter),
+            Prop::Corner => number(self.corner),
+            Prop::Radius => number(self.radius),
+            Prop::Opacity => number(self.opacity_rest),
+            Prop::OpacityHover => number(self.opacity_hover),
+            Prop::OpacityDrag => number(self.opacity_drag),
+            Prop::TrackOpacity => number(self.track_opacity),
+            Prop::Show => Some(Value::Choice(self.show.index())),
+            Prop::HideDelay => number(self.hide_delay_ms),
+            Prop::FadeIn => number(self.fade_in_ms),
+            Prop::FadeOut => number(self.fade_out_ms),
+            Prop::HoverDelay => number(self.hover_delay_ms),
+            Prop::FadeEasing => Some(Value::Easing(self.fade_easing)),
+            Prop::GutterReserve => Some(Value::Flag(self.gutter_reserve)),
+            Prop::Arrows => Some(Value::Choice(self.arrows.index())),
+            Prop::ArrowStep => number(self.arrow_step),
+            Prop::LaneClick => Some(Value::Choice(self.lane_click.index())),
+            Prop::WheelNotch => number(self.wheel_notch),
+            Prop::KeyLine => number(self.key_line),
+            Prop::PageFraction => number(self.page_fraction),
+            Prop::ScrollSmooth => number(self.smooth_ms),
+            Prop::ScrollEasing => Some(Value::Easing(self.scroll_easing)),
+            Prop::PageRepeatDelay => number(self.page_delay_ms),
+            Prop::PageRepeat => number(self.page_repeat_ms),
+            Prop::Fill
+            | Prop::FillHover
+            | Prop::FillDrag
+            | Prop::TrackFill
+            | Prop::SideV
+            | Prop::SideH => None,
+        }
     }
 
     /// The thumb's opacity at emphasis `level` (0 rest, 1 hover, 2 drag; in
@@ -181,6 +319,60 @@ impl ScrollbarMetrics {
             self.opacity_hover + (self.opacity_drag - self.opacity_hover) * (level - 1.0)
         }
     }
+
+    /// The edge the bar of `axis` sits on.
+    pub fn edge(&self, axis: ScrollAxis) -> Edge {
+        self.edges[axis.index()]
+    }
+
+    /// What the gutter reserves along the edge of an overflowing axis: nothing
+    /// when `scrollbar_gutter_reserve` is off (the thumb overlays content) or
+    /// no bar shows.
+    pub fn reserved_gutter(&self) -> f64 {
+        if self.gutter_reserve && self.show != Show::Never {
+            self.gutter
+        } else {
+            0.0
+        }
+    }
+
+    /// The length of one arrow button along the lane: none without arrows.
+    pub fn arrow_len(&self) -> f64 {
+        if self.arrows == Arrows::Both {
+            self.thickness
+        } else {
+            0.0
+        }
+    }
+
+    /// Whether `show` lets a bar show for the axis of a view of `viewport`
+    /// over `content` along it: never for `never`, always for `always`, else
+    /// when the content is longer.
+    pub fn shows(&self, viewport: f64, content: f64) -> bool {
+        match self.show {
+            Show::Never => false,
+            Show::Always => true,
+            Show::Overflow | Show::AutoHide => content > viewport,
+        }
+    }
+
+    /// How long a smooth scroll takes: nothing under reduced motion.
+    pub fn smooth(&self, reduced: bool) -> Duration {
+        if reduced {
+            Duration::ZERO
+        } else {
+            millis(self.smooth_ms)
+        }
+    }
+}
+
+/// An arrow button at one end of a lane.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Arrow {
+    /// The painted square.
+    pub rect: Rect,
+    /// Where a press takes it: as long as the square, as wide as the hit strip.
+    pub hit: Rect,
 }
 
 /// One thumb, with the regions around it, all in the view's own coordinates.
@@ -191,8 +383,14 @@ pub struct Thumb {
     pub thumb: Rect,
     /// Where a press grabs the thumb.
     pub hit: Rect,
-    /// The strip along the axis a press pages in (the thumb is in it).
+    /// The strip along the axis a press pages in (the thumb is in it), between
+    /// the arrows when there are any.
     pub lane: Rect,
+    /// The painted track: the lane, as wide as the thumb.
+    pub track_rect: Rect,
+    /// The arrow buttons at the lane's ends, `[start, end]`, with
+    /// `scrollbar_arrows`.
+    pub arrows: Option<[Arrow; 2]>,
     /// The lane's length.
     pub track: f64,
     /// The thumb's length.
@@ -214,6 +412,32 @@ impl Thumb {
             ScrollAxis::Horizontal => (self.thumb.x0, self.thumb.x1),
         }
     }
+
+    /// The lane's start along its axis.
+    pub fn lane_start(&self) -> f64 {
+        match self.axis {
+            ScrollAxis::Vertical => self.lane.y0,
+            ScrollAxis::Horizontal => self.lane.x0,
+        }
+    }
+
+    /// Every region the bar paints: the track (when it has a fill, `track`),
+    /// the thumb, the arrows.
+    pub fn painted(&self, track: bool) -> impl Iterator<Item = Rect> {
+        let arrows = self.arrows.into_iter().flatten().map(|a| a.rect);
+        track
+            .then_some(self.track_rect)
+            .into_iter()
+            .chain([self.thumb])
+            .chain(arrows)
+    }
+
+    /// The arrow button a press at `point` (view coordinates) is on: 0 for the
+    /// one at the start of the lane, 1 for the end.
+    pub fn arrow_at(&self, point: Point) -> Option<usize> {
+        let arrows = self.arrows?;
+        arrows.iter().position(|a| holds(a.hit, point))
+    }
 }
 
 /// `rect` holds `point`, edges included.
@@ -222,17 +446,20 @@ pub fn holds(rect: Rect, point: Point) -> bool {
 }
 
 /// `(track, thumb length, along)` of a thumb for a `viewport` over `content`
-/// at `offset`: the lane is the viewport less the margins and `reserve`; the
-/// thumb is `max(min_length, lane * viewport / content)`, never longer than
-/// the lane, and sits along it by how far the content has scrolled.
+/// at `offset`: the lane is the viewport less the margins, `reserve` (the
+/// corner, at its `(start, end)`) and the arrows; the thumb is
+/// `max(min_length, lane * viewport / content)`, never longer than the lane,
+/// and sits along it by how far the content has scrolled.
 pub fn axis_geometry(
     m: &ScrollbarMetrics,
     viewport: f64,
     content: f64,
     offset: f64,
-    reserve: f64,
+    reserve: (f64, f64),
 ) -> (f64, f64, f64) {
-    let track = viewport - m.margin * 2.0 - reserve;
+    let arrow = m.arrow_len();
+    let start = m.margin + reserve.0 + arrow;
+    let track = viewport - start - m.margin - reserve.1 - arrow;
     if track <= 0.0 {
         return (0.0, 0.0, 0.0);
     }
@@ -244,11 +471,405 @@ pub fn axis_geometry(
     };
     let thumb = thumb.min(track);
     let progress = if max_scroll > 0.0 {
-        offset / max_scroll
+        (offset / max_scroll).clamp(0.0, 1.0)
     } else {
         0.0
     };
-    (track, thumb, m.margin + (track - thumb) * progress)
+    (track, thumb, start + (track - thumb) * progress)
+}
+
+impl ScrollbarMetrics {
+    /// The thumbs, `[vertical, horizontal]`, of a view of `size` over `content`
+    /// scrolled to `offsets` (all `(x, y)`): one for each of `axes` whose bar
+    /// shows (`shows`), each lane stopping `corner` short of the end where the
+    /// other axis has a bar too, so the two never meet. Each bar sits on its
+    /// edge (`edges`).
+    pub fn thumbs(
+        &self,
+        axes: &[ScrollAxis],
+        size: (f64, f64),
+        content: (f64, f64),
+        offsets: (f64, f64),
+    ) -> [Option<Thumb>; 2] {
+        let mut shown = [false; 2];
+        for &axis in axes {
+            shown[axis.index()] = self.shows(axis.pick(size), axis.pick(content));
+        }
+        let mut bars = [None, None];
+        for &axis in axes {
+            if !shown[axis.index()] {
+                continue;
+            }
+            let other = axis.other();
+            // The lane stops short at the end where the other axis' bar is.
+            let reserve = if shown[other.index()] {
+                match self.edge(other) {
+                    Edge::Far => (0.0, self.corner),
+                    Edge::Near => (self.corner, 0.0),
+                }
+            } else {
+                (0.0, 0.0)
+            };
+            let (viewport, extent, offset) =
+                (axis.pick(size), axis.pick(content), axis.pick(offsets));
+            let (track, length, along) = axis_geometry(self, viewport, extent, offset, reserve);
+            if track <= 0.0 {
+                continue;
+            }
+            let lane_start = self.margin + reserve.0 + self.arrow_len();
+            // The size across the axis: the width for a vertical bar.
+            let cross = other.pick(size);
+            let (across_start, across_end) = match self.edge(axis) {
+                Edge::Far => (cross - self.margin - self.thickness, cross - self.margin),
+                Edge::Near => (self.margin, self.margin + self.thickness),
+            };
+            let centre = f64::midpoint(across_start, across_end);
+            let (hit_a, hit_b) = (centre - self.hit / 2.0, centre + self.hit / 2.0);
+            // A rectangle `from..to` along the axis and `a..b` across it.
+            let rect = |from: f64, to: f64, a: f64, b: f64| match axis {
+                ScrollAxis::Vertical => Rect::new(a, from, b, to),
+                ScrollAxis::Horizontal => Rect::new(from, a, to, b),
+            };
+            let arrows = (self.arrows == Arrows::Both).then(|| {
+                let len = self.arrow_len();
+                let lane_end = lane_start + track;
+                [(lane_start - len, lane_start), (lane_end, lane_end + len)].map(|(from, to)| {
+                    Arrow {
+                        rect: rect(from, to, across_start, across_end),
+                        hit: rect(from, to, hit_a, hit_b),
+                    }
+                })
+            });
+            bars[axis.index()] = Some(Thumb {
+                axis,
+                thumb: rect(along, along + length, across_start, across_end),
+                hit: rect(
+                    along - self.along_slop,
+                    along + length + self.along_slop,
+                    hit_a,
+                    hit_b,
+                ),
+                lane: rect(lane_start, lane_start + track, hit_a, hit_b),
+                track_rect: rect(lane_start, lane_start + track, across_start, across_end),
+                arrows,
+                track,
+                length,
+                max_scroll: (extent - viewport).max(0.0),
+            });
+        }
+        bars
+    }
+}
+
+/// The state a scroll view and a virtual list share for their scrollbar: what
+/// the user set, and how emphasised and how visible each bar is.
+pub struct ScrollbarState {
+    /// What the user set (`Prop`); the rest are defaults (`Defaults`).
+    pub settings: Overrides,
+    /// How emphasised each thumb is, `[vertical, horizontal]`: 0 at rest, 1
+    /// with the pointer over its hit area, 2 while dragged. Animated over
+    /// `scrollbar_fade_in_ms` / `scrollbar_fade_out_ms`; the thumb's opacity
+    /// and colour are read off it.
+    pub level: [Animated<f64>; 2],
+    /// How visible the bars are, 0 to 1: 1 unless `scrollbar_show` is
+    /// `auto_hide` and the bars have faded out.
+    pub shown: Animated<f64>,
+    /// Which thumb the pointer is over, and since when.
+    pub hovered: [bool; 2],
+    hover_since: [Option<Instant>; 2],
+    /// `Some((pointer_coord, scroll_at_start))`, set the instant a thumb drag
+    /// begins and cleared when it ends: a *relative*-delta anchor, so grabbing
+    /// the thumb anywhere along its own length does not snap it so that point
+    /// jumps under the pointer.
+    pub drag_anchor: Option<(f64, f64)>,
+    /// Which thumb the drag in progress holds.
+    pub drag_axis: ScrollAxis,
+    /// When `auto_hide` fades the bars out, if nothing happens to them first.
+    hide_at: Option<Instant>,
+    /// The offsets the last tick saw: a change is a reason to show the bars.
+    seen: Option<(f64, f64)>,
+}
+
+impl Default for ScrollbarState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ScrollbarState {
+    pub fn new() -> Self {
+        Self {
+            settings: Overrides::default(),
+            level: [Animated::new(0.0), Animated::new(0.0)],
+            shown: Animated::new(1.0),
+            hovered: [false; 2],
+            hover_since: [None; 2],
+            drag_anchor: None,
+            drag_axis: ScrollAxis::Vertical,
+            hide_at: None,
+            seen: None,
+        }
+    }
+
+    /// The measures in force for a scroller with defaults `d`.
+    pub fn metrics(&self, d: Defaults) -> ScrollbarMetrics {
+        ScrollbarMetrics::resolve(&self.settings, d)
+    }
+
+    /// What property `prop` reads: the value in force, except for a colour
+    /// and a side, which read what was set (`None`: the default).
+    pub fn get(&self, prop: Prop, d: Defaults) -> Option<Value> {
+        match prop {
+            Prop::Fill | Prop::FillHover | Prop::FillDrag | Prop::TrackFill => {
+                self.settings.get(prop)
+            }
+            Prop::SideV | Prop::SideH => {
+                Some(Value::Choice(self.settings.choice(prop).unwrap_or(0)))
+            }
+            _ => self.metrics(d).get(prop),
+        }
+    }
+
+    /// The thumb's colour for `axis` now: `fill`, `fill_hover` or `fill_drag` by
+    /// how emphasised it is (`default_fill` when none is set), at that level's
+    /// opacity and how visible the bar is.
+    pub fn thumb_color(
+        &self,
+        m: &ScrollbarMetrics,
+        axis: ScrollAxis,
+        default_fill: Color,
+    ) -> Color {
+        let level = self.level[axis.index()].current.clamp(0.0, 2.0);
+        let rest = self.settings.colour(Prop::Fill).unwrap_or(default_fill);
+        let hover = self.settings.colour(Prop::FillHover).unwrap_or(rest);
+        let drag = self.settings.colour(Prop::FillDrag).unwrap_or(rest);
+        let base = if level <= 1.0 {
+            rest.lerp_rect(hover, level as f32)
+        } else {
+            hover.lerp_rect(drag, (level - 1.0) as f32)
+        };
+        let alpha = m.opacity(level) * self.shown.current;
+        if alpha == 1.0 {
+            base
+        } else {
+            base.multiply_alpha(alpha as f32)
+        }
+    }
+
+    /// The track's colour now, `None` when no `scrollbar_track_fill` is set (a
+    /// track-less bar, the default).
+    pub fn track_color(&self, m: &ScrollbarMetrics) -> Option<Color> {
+        let fill = self.settings.colour(Prop::TrackFill)?;
+        let alpha = m.track_opacity * self.shown.current;
+        (alpha > 0.0).then(|| fill.multiply_alpha(alpha as f32))
+    }
+
+    /// The pointer moved on or off the thumb of `axis`.
+    pub fn set_hover(&mut self, axis: ScrollAxis, on: bool, now: Instant) {
+        let i = axis.index();
+        if on && !self.hovered[i] {
+            self.hover_since[i] = Some(now);
+        }
+        if !on {
+            self.hover_since[i] = None;
+        }
+        self.hovered[i] = on;
+    }
+
+    /// The emphasis `axis`' thumb should have: dragged 2, hovered 1 (once
+    /// `scrollbar_hover_delay_ms` has passed), else rest 0; `true` as the second
+    /// part while a hover is still waiting out its delay.
+    fn target_level(&self, m: &ScrollbarMetrics, axis: ScrollAxis, now: Instant) -> (f64, bool) {
+        if self.drag_anchor.is_some() && self.drag_axis == axis {
+            return (2.0, false);
+        }
+        let i = axis.index();
+        if !self.hovered[i] {
+            return (0.0, false);
+        }
+        match self.hover_since[i] {
+            Some(since) if now.saturating_duration_since(since) >= millis(m.hover_delay_ms) => {
+                (1.0, false)
+            }
+            _ => (0.0, true),
+        }
+    }
+
+    /// Starts fading each thumb to the emphasis it should have (`level`), by
+    /// `scrollbar_fade_in_ms` going up and `scrollbar_fade_out_ms` coming down;
+    /// instantly under `reduced` motion. Whether a hover is still waiting out
+    /// `scrollbar_hover_delay_ms`, which keeps the scroller ticking until it
+    /// has.
+    pub fn sync_levels(&mut self, d: Defaults, now: Instant, reduced: bool) -> bool {
+        let m = self.metrics(d);
+        let mut busy = false;
+        for axis in ScrollAxis::BOTH {
+            let (target, waiting) = self.target_level(&m, axis, now);
+            let level = &mut self.level[axis.index()];
+            busy |= waiting;
+            if (*level.target() - target).abs() < 1e-9 {
+                continue;
+            }
+            let ms = if target > level.current {
+                m.fade_in_ms
+            } else {
+                m.fade_out_ms
+            };
+            let duration = if reduced { Duration::ZERO } else { millis(ms) };
+            if duration.is_zero() {
+                level.set_now(target);
+            } else {
+                level.animate_to(target, duration, m.fade_easing.curve(), now);
+            }
+        }
+        busy
+    }
+
+    /// Starts fading the bars to `target` visibility.
+    fn fade_shown(&mut self, m: &ScrollbarMetrics, target: f64, now: Instant, reduced: bool) {
+        let ms = if target > self.shown.current {
+            m.fade_in_ms
+        } else {
+            m.fade_out_ms
+        };
+        let duration = if reduced { Duration::ZERO } else { millis(ms) };
+        if duration.is_zero() {
+            self.shown.set_now(target);
+        } else {
+            self.shown
+                .animate_to(target, duration, m.fade_easing.curve(), now);
+        }
+    }
+
+    /// Advances the bar to `now`: the emphasis fades, and `auto_hide`'s
+    /// visibility -- shown by a change of `offsets`, a hover or a drag, hidden
+    /// `scrollbar_hide_delay_ms` after the last of them. Whether anything is
+    /// still moving or waiting, so the tree keeps ticking.
+    pub fn tick(
+        &mut self,
+        d: Defaults,
+        offsets: (f64, f64),
+        now: Instant,
+        reduced: bool,
+        completed: &mut Vec<CompletionHandle>,
+    ) -> bool {
+        let m = self.metrics(d);
+        let mut active = self.sync_levels(d, now, reduced);
+        if m.show == Show::AutoHide {
+            let moved = self.seen != Some(offsets);
+            let emphasised = self.hovered.iter().any(|h| *h) || self.drag_anchor.is_some();
+            if moved || emphasised {
+                self.hide_at = Some(now + millis(m.hide_delay_ms));
+                if *self.shown.target() < 1.0 {
+                    self.fade_shown(&m, 1.0, now, reduced);
+                }
+            } else if self.hide_at.is_some_and(|t| now >= t) {
+                self.hide_at = None;
+                self.fade_shown(&m, 0.0, now, reduced);
+            }
+            active |= self.hide_at.is_some();
+        } else {
+            self.hide_at = None;
+            if *self.shown.target() < 1.0 {
+                self.shown.set_now(1.0);
+            }
+        }
+        self.seen = Some(offsets);
+        let [vertical, horizontal] = &mut self.level;
+        for animated in [vertical, horizontal, &mut self.shown] {
+            active |= animated.tick(now, completed);
+        }
+        active
+    }
+}
+
+/// A node that scrolls and carries a scrollbar: a scroll view or a virtual
+/// list, so the bar's geometry, hit-testing, hover, drag and fade are one
+/// implementation for both.
+pub trait Scroller {
+    fn bar(&self) -> &ScrollbarState;
+    fn bar_mut(&mut self) -> &mut ScrollbarState;
+    /// Which defaults its unset properties take.
+    fn defaults(&self) -> Defaults;
+    /// The axes it scrolls along, `vertical` first.
+    fn scroll_axes(&self) -> &'static [ScrollAxis];
+    /// `(x, y)`: how far its content is scrolled right and down.
+    fn scroll_offsets(&self) -> (f64, f64);
+    /// The animated offset along `axis` (only called for one of `scroll_axes`).
+    fn offset_anim(&mut self, axis: ScrollAxis) -> &mut Animated<f64>;
+
+    /// The measures in force.
+    fn metrics(&self) -> ScrollbarMetrics {
+        self.bar().metrics(self.defaults())
+    }
+
+    /// The thumbs, `[vertical, horizontal]`, for a view of `size` over `content`
+    /// scrolled to `offsets`.
+    fn thumbs(
+        &self,
+        size: (f64, f64),
+        content: (f64, f64),
+        offsets: (f64, f64),
+    ) -> [Option<Thumb>; 2] {
+        self.metrics()
+            .thumbs(self.scroll_axes(), size, content, offsets)
+    }
+}
+
+impl Scroller for ScrollViewState {
+    fn bar(&self) -> &ScrollbarState {
+        &self.bar
+    }
+
+    fn bar_mut(&mut self) -> &mut ScrollbarState {
+        &mut self.bar
+    }
+
+    fn defaults(&self) -> Defaults {
+        if self.both {
+            Defaults::Spec
+        } else {
+            Defaults::Legacy
+        }
+    }
+
+    fn scroll_axes(&self) -> &'static [ScrollAxis] {
+        self.axes()
+    }
+
+    fn scroll_offsets(&self) -> (f64, f64) {
+        self.offsets()
+    }
+
+    fn offset_anim(&mut self, axis: ScrollAxis) -> &mut Animated<f64> {
+        self.animated(axis)
+    }
+}
+
+impl Scroller for VirtualListState {
+    fn bar(&self) -> &ScrollbarState {
+        &self.bar
+    }
+
+    fn bar_mut(&mut self) -> &mut ScrollbarState {
+        &mut self.bar
+    }
+
+    fn defaults(&self) -> Defaults {
+        Defaults::List
+    }
+
+    fn scroll_axes(&self) -> &'static [ScrollAxis] {
+        &[ScrollAxis::Vertical]
+    }
+
+    fn scroll_offsets(&self) -> (f64, f64) {
+        (0.0, self.scroll_offset.current)
+    }
+
+    fn offset_anim(&mut self, _axis: ScrollAxis) -> &mut Animated<f64> {
+        &mut self.scroll_offset
+    }
 }
 
 impl ScrollViewState {
@@ -320,54 +941,14 @@ impl ScrollViewState {
         }
     }
 
-    /// The scrollbar's measures: what the user set, else the defaults of the
-    /// view's orientation.
-    pub fn metrics(&self) -> ScrollbarMetrics {
-        let o = &self.scrollbar;
-        let spec = self.both;
-        let thickness = o.thickness.unwrap_or(if spec {
-            SPEC_THICKNESS
-        } else {
-            SCROLLBAR_THICKNESS
-        });
-        let opacity_rest = o
-            .opacity
-            .unwrap_or(if spec { SPEC_OPACITY_REST } else { 1.0 });
-        ScrollbarMetrics {
-            thickness,
-            hit: o.hit.unwrap_or(if spec {
-                SPEC_HIT
-            } else {
-                thickness + SCROLLBAR_GRAB_SLOP * 2.0
-            }),
-            margin: o.margin.unwrap_or(SCROLLBAR_MARGIN),
-            min_length: o.min_length.unwrap_or(SCROLLBAR_MIN_LENGTH),
-            gutter: o.gutter.unwrap_or(if spec { SPEC_GUTTER } else { 0.0 }),
-            corner: o.corner.unwrap_or(if spec { SPEC_CORNER } else { 0.0 }),
-            along_slop: if spec { 0.0 } else { SCROLLBAR_GRAB_SLOP },
-            opacity_rest,
-            opacity_hover: o.opacity_hover.unwrap_or(if spec {
-                SPEC_OPACITY_HOVER
-            } else {
-                opacity_rest
-            }),
-            opacity_drag: o.opacity_drag.unwrap_or(if spec {
-                SPEC_OPACITY_DRAG
-            } else {
-                opacity_rest
-            }),
-        }
-    }
-
-    /// The thumb's opacity now, off its emphasis `level` (see
-    /// `ScrollViewState::level`).
+    /// The thumb's opacity now, off its emphasis `level`.
     pub fn thumb_opacity(&self, axis: ScrollAxis) -> f64 {
-        self.metrics().opacity(self.level[axis.index()].current)
+        self.metrics().opacity(self.bar.level[axis.index()].current)
     }
 
-    /// Which axes of this view show a thumb: those whose content is longer
-    /// than the viewport, as measured. `size` is the view's, `content` its
-    /// content's, both `(width, height)`.
+    /// Which axes of this view overflow: those whose content is longer than the
+    /// viewport, as measured. `size` is the view's, `content` its content's,
+    /// both `(width, height)`.
     pub fn overflows(&self, size: (f64, f64), content: (f64, f64)) -> [bool; 2] {
         let mut out = [false; 2];
         for &axis in self.axes() {
@@ -376,72 +957,43 @@ impl ScrollViewState {
         out
     }
 
-    /// The thumbs, `[vertical, horizontal]`, for a view of `size` over
-    /// `content` scrolled to `offsets` (all `(x, y)`): one per axis that
-    /// overflows, each lane stopping `corner` short of the end when the other
-    /// axis has a thumb too, so the two never meet.
-    pub fn thumbs(
-        &self,
-        size: (f64, f64),
-        content: (f64, f64),
-        offsets: (f64, f64),
-    ) -> [Option<Thumb>; 2] {
+    /// The room the gutter takes at the near edge (left, top) of the view, `(x, y)`:
+    /// what the other axis' bar reserves there when it sits on that edge
+    /// (`scrollbar_side_v` `left`, `scrollbar_side_h` `top`) and its axis
+    /// overflows. The content starts that far in. `size` and `content` are as
+    /// for `overflows` (the content as laid out, without this inset).
+    pub fn near_insets(&self, size: (f64, f64), content: (f64, f64)) -> (f64, f64) {
         let m = self.metrics();
+        let gutter = m.reserved_gutter();
+        if gutter <= 0.0 {
+            return (0.0, 0.0);
+        }
         let over = self.overflows(size, content);
-        let mut bars = [None, None];
-        for &axis in self.axes() {
-            if !over[axis.index()] {
-                continue;
-            }
-            let (viewport, extent, offset) =
-                (axis.pick(size), axis.pick(content), axis.pick(offsets));
-            let reserve = if over[axis.other().index()] {
-                m.corner
+        let inset = |axis: ScrollAxis| {
+            if over[axis.index()] && m.edge(axis) == Edge::Near {
+                gutter
             } else {
                 0.0
-            };
-            let (track, length, along) = axis_geometry(&m, viewport, extent, offset, reserve);
-            if track <= 0.0 {
-                continue;
             }
-            let across_end = match axis {
-                ScrollAxis::Vertical => size.0,
-                ScrollAxis::Horizontal => size.1,
-            } - m.margin;
-            let (across_start, centre) = (across_end - m.thickness, across_end - m.thickness / 2.0);
-            let (hit_a, hit_b) = (centre - m.hit / 2.0, centre + m.hit / 2.0);
-            let (thumb, hit, lane) = match axis {
-                ScrollAxis::Vertical => (
-                    Rect::new(across_start, along, across_end, along + length),
-                    Rect::new(
-                        hit_a,
-                        along - m.along_slop,
-                        hit_b,
-                        along + length + m.along_slop,
-                    ),
-                    Rect::new(hit_a, m.margin, hit_b, m.margin + track),
-                ),
-                ScrollAxis::Horizontal => (
-                    Rect::new(along, across_start, along + length, across_end),
-                    Rect::new(
-                        along - m.along_slop,
-                        hit_a,
-                        along + length + m.along_slop,
-                        hit_b,
-                    ),
-                    Rect::new(m.margin, hit_a, m.margin + track, hit_b),
-                ),
-            };
-            bars[axis.index()] = Some(Thumb {
-                axis,
-                thumb,
-                hit,
-                lane,
-                track,
-                length,
-                max_scroll: (extent - viewport).max(0.0),
-            });
-        }
-        bars
+        };
+        // The vertical bar's gutter is at the left, the horizontal's at the top.
+        (inset(ScrollAxis::Vertical), inset(ScrollAxis::Horizontal))
+    }
+}
+
+/// How an animation to `to` over `duration` is started on `offset`: at once for
+/// no time. (Scroll offsets are driven directly and never ticked centrally
+/// unless an animation runs on them.)
+pub fn animate_offset(
+    offset: &mut Animated<f64>,
+    to: f64,
+    duration: Duration,
+    curve: MotionCurve,
+    now: Instant,
+) {
+    if duration.is_zero() {
+        offset.set_now(to);
+    } else {
+        offset.animate_to(to, duration, curve, now);
     }
 }

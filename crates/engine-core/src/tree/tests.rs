@@ -2110,15 +2110,16 @@ fn grabs_virtual_list_thumb_is_true_only_within_the_real_thumb_plus_slop() {
     // proof above).
     let (tree, list) = scrollable_list(20);
     assert!(
-        tree.grabs_virtual_list_thumb(list, Point::new(196.0, 18.0)),
+        tree.grabs_thumb(list, Point::new(196.0, 18.0)).is_some(),
         "a point squarely inside the real thumb rect must grab it"
     );
     assert!(
-        tree.grabs_virtual_list_thumb(list, Point::new(194.0 - 5.0, 18.0)),
+        tree.grabs_thumb(list, Point::new(194.0 - 5.0, 18.0))
+            .is_some(),
         "a point just within the real SCROLLBAR_GRAB_SLOP tolerance must still grab it"
     );
     assert!(
-        !tree.grabs_virtual_list_thumb(list, Point::new(10.0, 10.0)),
+        tree.grabs_thumb(list, Point::new(10.0, 10.0)).is_none(),
         "a point nowhere near the real thumb (e.g. over the scrolled content) must not grab it"
     );
 }
@@ -2131,7 +2132,7 @@ fn virtual_list_thumb_does_not_grab_when_theres_nothing_to_scroll() {
     // already proves for wheel scrolling; the thumb must agree.
     let (tree, list) = scrollable_list(3);
     assert!(
-        !tree.grabs_virtual_list_thumb(list, Point::new(196.0, 18.0)),
+        tree.grabs_thumb(list, Point::new(196.0, 18.0)).is_none(),
         "no thumb exists to grab when total_extent() <= viewport"
     );
 }
@@ -2145,14 +2146,14 @@ fn update_virtual_list_thumb_drag_moves_the_scroll_offset_proportionally_to_poin
     let NodeKind::VirtualList(state) = &mut tree.get_mut(list).unwrap().kind else {
         panic!("expected a VirtualList");
     };
-    state.thumb_drag_anchor = Some((18.0, 0.0));
+    state.bar.drag_anchor = Some((18.0, 0.0));
     tree.dragging = Some(list);
 
     // track - thumb = 96 - 32 = 64px of real thumb travel maps to
     // the real 300px of max_scroll -- moving the pointer down by
     // 32px (half the real travel) must move scroll by half of
     // max_scroll (150).
-    tree.update_virtual_list_thumb_drag(list, Point::new(0.0, 50.0));
+    tree.update_thumb_drag(list, Point::new(0.0, 50.0));
     let NodeKind::VirtualList(state) = &tree.get(list).unwrap().kind else {
         panic!("expected a VirtualList");
     };
@@ -2202,7 +2203,7 @@ fn update_virtual_list_thumb_drag_uses_the_real_non_uniform_total_extent_for_var
     let NodeKind::VirtualList(state) = &mut tree.get_mut(list).unwrap().kind else {
         panic!("expected a VirtualList");
     };
-    state.thumb_drag_anchor = Some((0.0, 0.0));
+    state.bar.drag_anchor = Some((0.0, 0.0));
     tree.dragging = Some(list);
 
     // track = 100 - 4 = 96, thumb = max(96*(100/200), 32) = 48,
@@ -2210,7 +2211,7 @@ fn update_virtual_list_thumb_drag_uses_the_real_non_uniform_total_extent_for_var
     // fixture above. A drag far past that travel must clamp to the
     // real max_scroll (200 - 100 = 100.0), not the wrong value a
     // Fixed-shaped formula (4 * some uniform guess) would produce.
-    tree.update_virtual_list_thumb_drag(list, Point::new(0.0, 10_000.0));
+    tree.update_thumb_drag(list, Point::new(0.0, 10_000.0));
     let NodeKind::VirtualList(state) = &tree.get(list).unwrap().kind else {
         panic!("expected a VirtualList");
     };
@@ -5640,18 +5641,16 @@ fn grabs_scroll_view_thumb_is_true_only_within_the_real_thumb_plus_slop() {
     // values`'s own proof above).
     let (tree, view, _content) = scrollable_view(false);
     assert!(
-        tree.grabs_scroll_view_thumb(view, Point::new(96.0, 18.0))
-            .is_some(),
+        tree.grabs_thumb(view, Point::new(96.0, 18.0)).is_some(),
         "a point squarely inside the real thumb rect must grab it"
     );
     assert!(
-        tree.grabs_scroll_view_thumb(view, Point::new(94.0 - 5.0, 18.0))
+        tree.grabs_thumb(view, Point::new(94.0 - 5.0, 18.0))
             .is_some(),
         "a point just within the real SCROLLBAR_GRAB_SLOP tolerance must still grab it"
     );
     assert!(
-        tree.grabs_scroll_view_thumb(view, Point::new(10.0, 10.0))
-            .is_none(),
+        tree.grabs_thumb(view, Point::new(10.0, 10.0)).is_none(),
         "a point nowhere near the real thumb (e.g. over the scrolled content) must not grab it"
     );
 }
@@ -5665,14 +5664,14 @@ fn update_scroll_view_thumb_drag_moves_the_scroll_offset_proportionally_to_point
     let NodeKind::ScrollView(state) = &mut tree.get_mut(view).unwrap().kind else {
         panic!("expected a ScrollView");
     };
-    state.thumb_drag_anchor = Some((18.0, 0.0));
+    state.bar.drag_anchor = Some((18.0, 0.0));
     tree.dragging = Some(view);
 
     // track - thumb = 96 - 32 = 64px of real thumb travel maps to
     // the real 300px of max_scroll -- moving the pointer down by
     // 32px (half the real travel) must move scroll by half of
     // max_scroll (150).
-    tree.update_scroll_view_thumb_drag(view, Point::new(0.0, 50.0), Instant::now());
+    tree.update_thumb_drag(view, Point::new(0.0, 50.0));
     let NodeKind::ScrollView(state) = &tree.get(view).unwrap().kind else {
         panic!("expected a ScrollView");
     };
@@ -9720,5 +9719,712 @@ mod two_axis_scroll {
         let ids: Vec<_> = update.nodes.iter().map(|(id, _)| *id).collect();
         assert_eq!(ids.len(), 2, "the view and its content, no thumb node");
         assert!(ids.contains(&to_access_id(view)) && ids.contains(&to_access_id(content)));
+    }
+}
+
+/// P1: every aspect of the scrollbar and the scroll feel is a property of a scroll view
+/// and of a virtual list, with the spec as the default.
+mod scrollbar_hooks {
+    use super::*;
+    use crate::easing::Easing;
+    use crate::input::{Modifiers, ScrollDelta};
+    use crate::scrollbar::{ScrollAxis, ScrollOrientation, Scroller};
+    use crate::scrollbar_props::{Prop, Value};
+    use peniko::kurbo::Rect;
+
+    fn paint() -> PaintProperties {
+        PaintProperties::new(Color::from_rgba8(0, 0, 0, 0), 0.0, 1.0)
+    }
+
+    fn layout(tree: &mut Tree, root: NodeId, size: (f32, f32)) {
+        for _ in 0..2 {
+            tree.compute_layout(
+                root,
+                Size {
+                    width: AvailableSpace::Definite(size.0),
+                    height: AvailableSpace::Definite(size.1),
+                },
+            );
+        }
+    }
+
+    type Settings<'a> = &'a [(Prop, Value)];
+
+    fn choice(prop: Prop, name: &str) -> (Prop, Value) {
+        let index = prop
+            .choices()
+            .unwrap()
+            .iter()
+            .position(|n| *n == name)
+            .unwrap();
+        (prop, Value::Choice(index as u8))
+    }
+
+    fn num(prop: Prop, n: f64) -> (Prop, Value) {
+        (prop, Value::Number(n))
+    }
+
+    fn apply(scroller: &mut dyn Scroller, settings: Settings<'_>) {
+        for (prop, value) in settings {
+            assert!(
+                scroller.bar_mut().settings.set(*prop, Some(*value)),
+                "{prop:?}"
+            );
+        }
+    }
+
+    /// A scroll view of `orientation`, `view` over a box of `content`, laid out.
+    fn view_of(
+        orientation: ScrollOrientation,
+        view: (f32, f32),
+        content: (f32, f32),
+        settings: Settings<'_>,
+    ) -> (Tree, NodeId, NodeId) {
+        let mut state = ScrollViewState::new(false);
+        state.set_orientation(orientation);
+        apply(&mut state, settings);
+        let mut tree = Tree::new();
+        let id = tree.insert(
+            NodeKind::ScrollView(state),
+            Style {
+                size: Size {
+                    width: length(view.0),
+                    height: length(view.1),
+                },
+                ..Default::default()
+            },
+            paint(),
+        );
+        let (k, s, p) = leaf(content.0, content.1);
+        let child = tree.insert(k, s, p);
+        tree.add_child(id, child);
+        layout(&mut tree, id, view);
+        (tree, id, child)
+    }
+
+    fn both(settings: Settings<'_>) -> (Tree, NodeId, NodeId) {
+        view_of(
+            ScrollOrientation::Both,
+            (200.0, 100.0),
+            (800.0, 400.0),
+            settings,
+        )
+    }
+
+    /// A list of 20 rows of 20 over a viewport of 200 by 100: 400 of content.
+    fn list(settings: Settings<'_>) -> (Tree, NodeId) {
+        let mut state = VirtualListState::new(20, ItemExtent::Fixed(20.0));
+        apply(&mut state, settings);
+        let mut tree = Tree::new();
+        let id = tree.insert(
+            NodeKind::VirtualList(state),
+            Style {
+                size: Size {
+                    width: length(200.0),
+                    height: length(100.0),
+                },
+                ..Default::default()
+            },
+            paint(),
+        );
+        layout(&mut tree, id, (200.0, 100.0));
+        (tree, id)
+    }
+
+    fn state(tree: &Tree, view: NodeId) -> &dyn Scroller {
+        tree.get(view).unwrap().kind.scroller().unwrap()
+    }
+
+    fn offsets(tree: &Tree, view: NodeId) -> (f64, f64) {
+        state(tree, view).scroll_offsets()
+    }
+
+    fn thumbs(tree: &Tree, view: NodeId) -> [Option<crate::Thumb>; 2] {
+        tree.scroll_thumbs(view).unwrap()
+    }
+
+    fn press(tree: &mut Tree, root: NodeId, x: f64, y: f64, now: Instant) {
+        tree.dispatch(
+            root,
+            InputEvent::PointerPressed {
+                position: Point::new(x, y),
+                button: PointerButton::Primary,
+            },
+            now,
+        );
+    }
+
+    fn release(tree: &mut Tree, root: NodeId, x: f64, y: f64, now: Instant) {
+        tree.dispatch(
+            root,
+            InputEvent::PointerReleased {
+                position: Point::new(x, y),
+                button: PointerButton::Primary,
+            },
+            now,
+        );
+    }
+
+    fn move_to(tree: &mut Tree, root: NodeId, x: f64, y: f64, now: Instant) {
+        tree.dispatch(
+            root,
+            InputEvent::PointerMoved {
+                position: Point::new(x, y),
+            },
+            now,
+        );
+    }
+
+    fn wheel(tree: &mut Tree, root: NodeId, lines: (f64, f64), now: Instant) {
+        tree.dispatch(
+            root,
+            InputEvent::Scroll {
+                delta: ScrollDelta::Lines(lines.0, lines.1),
+                position: Point::new(20.0, 20.0),
+            },
+            now,
+        );
+    }
+
+    fn ms(n: u64) -> Duration {
+        Duration::from_millis(n)
+    }
+
+    #[test]
+    fn every_default_is_the_spec_for_a_both_view_and_the_legacy_bar_for_the_rest() {
+        let spec = ScrollViewState::new(false);
+        let mut both = ScrollViewState::new(false);
+        both.set_orientation(ScrollOrientation::Both);
+        let list = VirtualListState::new(1, ItemExtent::Fixed(1.0));
+        let m = both.metrics();
+        assert_eq!((m.radius, m.track_opacity), (4.0, 1.0));
+        assert_eq!(m.edges, [crate::Edge::Far; 2]);
+        assert_eq!(m.show, crate::Show::Overflow);
+        assert_eq!(
+            (m.hide_delay_ms, m.fade_in_ms, m.fade_out_ms),
+            (1000.0, 100.0, 100.0)
+        );
+        assert_eq!(m.hover_delay_ms, 0.0);
+        assert_eq!(m.fade_easing, Easing::from_name("standard").unwrap());
+        assert!(m.gutter_reserve);
+        assert_eq!((m.arrows, m.arrow_step), (crate::Arrows::None, 40.0));
+        assert_eq!(m.lane_click, crate::LaneClick::Page);
+        assert_eq!(
+            (m.wheel_notch, m.key_line, m.page_fraction),
+            (40.0, 40.0, 0.9)
+        );
+        assert_eq!(
+            (m.smooth_ms, m.page_delay_ms, m.page_repeat_ms),
+            (0.0, 400.0, 100.0)
+        );
+        assert_eq!(m.scroll_easing, Easing::from_name("standard").unwrap());
+        // The one-axis view and the list keep their bar: a 2 px radius, no lane click.
+        for m in [spec.metrics(), list.metrics()] {
+            assert_eq!((m.radius, m.thickness, m.hit), (2.0, 4.0, 16.0));
+            assert_eq!(m.lane_click, crate::LaneClick::None);
+            assert_eq!(m.opacity_rest, 1.0);
+        }
+        // A page is the whole viewport for a one-axis view (it always was), nine tenths elsewhere.
+        assert_eq!(spec.metrics().page_fraction, 1.0);
+        assert_eq!(list.metrics().page_fraction, 0.9);
+    }
+
+    #[test]
+    fn a_vertical_bar_on_the_left_leaves_the_corner_at_the_start_of_the_horizontal_lane() {
+        let (tree, view, _) = both(&[choice(Prop::SideV, "start")]);
+        let [v, h] = thumbs(&tree, view);
+        let (v, h) = (v.unwrap(), h.unwrap());
+        assert_eq!(v.thumb, Rect::new(2.0, 2.0, 10.0, 34.0));
+        assert_eq!(v.hit, Rect::new(0.0, 2.0, 12.0, 34.0));
+        assert_eq!(v.lane, Rect::new(0.0, 2.0, 12.0, 86.0));
+        // The horizontal lane starts after the corner and runs to the far edge.
+        assert_eq!(h.lane, Rect::new(14.0, 88.0, 198.0, 100.0));
+        // (The content is 12 wider, for the gutter at its start: 184 * 200 / 812.)
+        assert_eq!(
+            h.thumb,
+            Rect::new(14.0, 90.0, 14.0 + 184.0 * 200.0 / 812.0, 98.0)
+        );
+        // `left` is the same edge, said physically.
+        let (other, view, _) = both(&[choice(Prop::SideV, "left")]);
+        assert_eq!(thumbs(&other, view)[0].unwrap().thumb, v.thumb);
+    }
+
+    #[test]
+    fn a_horizontal_bar_on_top_leaves_the_corner_at_the_start_of_the_vertical_lane() {
+        let (tree, view, _) = both(&[choice(Prop::SideH, "start")]);
+        let [v, h] = thumbs(&tree, view);
+        let (v, h) = (v.unwrap(), h.unwrap());
+        assert_eq!(h.thumb, Rect::new(2.0, 2.0, 48.0, 10.0));
+        assert_eq!(h.lane, Rect::new(2.0, 0.0, 186.0, 12.0));
+        assert_eq!(v.lane, Rect::new(188.0, 14.0, 200.0, 98.0));
+        assert_eq!(v.thumb, Rect::new(190.0, 14.0, 198.0, 46.0));
+        let (other, view, _) = both(&[choice(Prop::SideH, "top")]);
+        assert_eq!(thumbs(&other, view)[1].unwrap().thumb, h.thumb);
+        // `bottom` and `end` are the default edge.
+        let (other, view, _) = both(&[choice(Prop::SideH, "bottom")]);
+        assert_eq!(
+            thumbs(&other, view)[1].unwrap().thumb,
+            Rect::new(2.0, 90.0, 48.0, 98.0)
+        );
+    }
+
+    #[test]
+    fn a_bar_on_the_near_edge_has_its_gutter_there_and_the_content_starts_in() {
+        let (tree, view, content) = both(&[choice(Prop::SideV, "start")]);
+        assert_eq!(tree.layout(content).location.x, 12.0);
+        assert_eq!(tree.layout(content).location.y, 0.0);
+        // The content as wide as it is plus the gutter at its start: 612 of range.
+        assert_eq!(
+            tree.max_scroll_axis(view, ScrollAxis::Horizontal),
+            Some(612.0)
+        );
+        let (tree, view, content) = both(&[]);
+        assert_eq!(tree.layout(content).location.x, 0.0);
+        assert_eq!(
+            tree.max_scroll_axis(view, ScrollAxis::Horizontal),
+            Some(600.0)
+        );
+    }
+
+    #[test]
+    fn without_a_reserved_gutter_the_thumb_overlays_the_content() {
+        let (tree, view, _) = both(&[(Prop::GutterReserve, Value::Flag(false))]);
+        assert_eq!(tree.get(view).unwrap().layout_style.scrollbar_width, 0.0);
+        let (tree, view, _) = both(&[]);
+        assert_eq!(tree.get(view).unwrap().layout_style.scrollbar_width, 12.0);
+        // A bar that never shows reserves nothing either.
+        let (tree, view, _) = both(&[choice(Prop::Show, "never")]);
+        assert_eq!(tree.get(view).unwrap().layout_style.scrollbar_width, 0.0);
+    }
+
+    #[test]
+    fn the_show_policy_decides_when_a_bar_exists_and_a_hidden_one_still_scrolls() {
+        let (mut tree, view, _) = both(&[choice(Prop::Show, "never")]);
+        assert!(thumbs(&tree, view).iter().all(Option::is_none));
+        wheel(&mut tree, view, (0.0, -1.0), Instant::now());
+        assert_eq!(
+            offsets(&tree, view),
+            (0.0, 40.0),
+            "never hides the bar, not the scroll"
+        );
+        // No overflow: no bar by default...
+        let fits = |settings| {
+            view_of(
+                ScrollOrientation::Both,
+                (200.0, 100.0),
+                (100.0, 50.0),
+                settings,
+            )
+        };
+        let (tree, view, _) = fits(&[]);
+        assert!(thumbs(&tree, view).iter().all(Option::is_none));
+        // ...and `always` shows a thumb as long as its lane, which has nothing to travel.
+        let (tree, view, _) = fits(&[choice(Prop::Show, "always")]);
+        let [v, h] = thumbs(&tree, view);
+        let (v, h) = (v.unwrap(), h.unwrap());
+        assert_eq!((v.length, h.length), (v.track, h.track));
+        assert_eq!((v.max_scroll, v.travel()), (0.0, 0.0));
+        assert_eq!(v.thumb, Rect::new(190.0, 2.0, 198.0, 86.0));
+    }
+
+    #[test]
+    fn auto_hide_fades_the_bar_out_after_the_delay_and_back_in_on_scroll_and_hover() {
+        let (mut tree, view, _) = both(&[choice(Prop::Show, "auto_hide")]);
+        let shown = |tree: &Tree| state(tree, view).bar().shown.current;
+        let t0 = Instant::now();
+        assert!(
+            tree.tick_all(t0).0,
+            "waiting out the delay keeps the loop ticking"
+        );
+        assert_eq!(shown(&tree), 1.0);
+        tree.tick_all(t0 + ms(900));
+        assert_eq!(shown(&tree), 1.0, "not yet");
+        // The delay passed: the fade out takes the default 100 ms.
+        tree.tick_all(t0 + ms(1_010));
+        tree.tick_all(t0 + ms(1_060));
+        let mid = shown(&tree);
+        assert!(mid > 0.0 && mid < 1.0, "{mid}");
+        assert!(!tree.tick_all(t0 + ms(1_200)).0, "hidden and idle");
+        assert_eq!(shown(&tree), 0.0);
+        // The geometry is still there to hover or grab.
+        assert!(thumbs(&tree, view)[0].is_some());
+        // A scroll shows it again.
+        tree.scroll_axis_by(view, ScrollAxis::Vertical, 10.0);
+        tree.tick_all(t0 + ms(2_000));
+        tree.tick_all(t0 + ms(2_200));
+        assert_eq!(shown(&tree), 1.0);
+        // It hides again, unless the pointer is on it.
+        move_to(&mut tree, view, 194.0, 18.0, t0 + ms(2_300));
+        tree.tick_all(t0 + ms(2_300));
+        tree.tick_all(t0 + ms(3_900));
+        assert_eq!(shown(&tree), 1.0, "hovered");
+        move_to(&mut tree, view, 50.0, 50.0, t0 + ms(4_000));
+        tree.tick_all(t0 + ms(4_000));
+        tree.tick_all(t0 + ms(5_100));
+        tree.tick_all(t0 + ms(5_300));
+        assert_eq!(shown(&tree), 0.0);
+    }
+
+    #[test]
+    fn a_fade_takes_its_own_durations_and_hover_waits_its_delay() {
+        let (mut tree, view, _) = both(&[
+            num(Prop::FadeIn, 200.0),
+            num(Prop::FadeOut, 50.0),
+            num(Prop::HoverDelay, 300.0),
+            (Prop::FadeEasing, Value::Easing(Easing::Linear)),
+        ]);
+        let t0 = Instant::now();
+        let level = |tree: &Tree| state(tree, view).bar().level[0].current;
+        move_to(&mut tree, view, 194.0, 18.0, t0);
+        tree.tick_all(t0 + ms(100));
+        assert_eq!(level(&tree), 0.0, "still waiting out the 300 ms");
+        assert!(
+            tree.tick_all(t0 + ms(200)).0,
+            "the wait keeps the loop ticking"
+        );
+        tree.tick_all(t0 + ms(300));
+        tree.tick_all(t0 + ms(400));
+        // Linear over 200 ms from 300: halfway at 400.
+        assert!((level(&tree) - 0.5).abs() < 1e-9, "{}", level(&tree));
+        tree.tick_all(t0 + ms(600));
+        assert_eq!(level(&tree), 1.0);
+        move_to(&mut tree, view, 50.0, 50.0, t0 + ms(700));
+        tree.tick_all(t0 + ms(725));
+        assert!(
+            (level(&tree) - 0.5).abs() < 1e-9,
+            "50 ms out: {}",
+            level(&tree)
+        );
+        tree.tick_all(t0 + ms(800));
+        assert_eq!(level(&tree), 0.0);
+    }
+
+    #[test]
+    fn the_thumb_has_a_colour_per_state_and_the_rest_follow_the_fill() {
+        let red = Color::from_rgba8(255, 0, 0, 255);
+        let green = Color::from_rgba8(0, 255, 0, 255);
+        let blue = Color::from_rgba8(0, 0, 255, 255);
+        let (mut tree, view, _) = both(&[
+            (Prop::Fill, Value::Colour(red)),
+            (Prop::FillHover, Value::Colour(green)),
+            (Prop::FillDrag, Value::Colour(blue)),
+        ]);
+        let colour = |tree: &Tree, level: f64| {
+            let s = state(tree, view);
+            let (m, bar) = (s.metrics(), s.bar());
+            let _ = level;
+            bar.thumb_color(&m, ScrollAxis::Vertical, Color::WHITE)
+        };
+        let rgba = |c: Color| c.to_rgba8().to_u8_array();
+        assert_eq!(rgba(colour(&tree, 0.0)), [255, 0, 0, 179]);
+        let set_level = |tree: &mut Tree, level: f64| {
+            let NodeKind::ScrollView(s) = &mut tree.get_mut(view).unwrap().kind else {
+                unreachable!()
+            };
+            s.bar.level[0].current = level;
+        };
+        set_level(&mut tree, 1.0);
+        assert_eq!(rgba(colour(&tree, 1.0)), [0, 255, 0, 204]);
+        set_level(&mut tree, 2.0);
+        assert_eq!(rgba(colour(&tree, 2.0)), [0, 0, 255, 255]);
+        // Only a fill set: hover and drag keep it, at their opacities.
+        let (mut tree, view, _) = both(&[(Prop::Fill, Value::Colour(red))]);
+        let NodeKind::ScrollView(s) = &mut tree.get_mut(view).unwrap().kind else {
+            unreachable!()
+        };
+        s.bar.level[0].current = 1.0;
+        assert_eq!(rgba(colour(&tree, 1.0)), [255, 0, 0, 204]);
+        // The track is none until a fill is set, then at its opacity.
+        let s = state(&tree, view);
+        assert!(s.bar().track_color(&s.metrics()).is_none());
+        let (tree, view, _) = both(&[
+            (Prop::TrackFill, Value::Colour(green)),
+            num(Prop::TrackOpacity, 0.5),
+        ]);
+        let s = state(&tree, view);
+        assert_eq!(
+            rgba(s.bar().track_color(&s.metrics()).unwrap()),
+            [0, 255, 0, 128]
+        );
+    }
+
+    #[test]
+    fn arrows_shorten_the_lane_and_a_held_press_on_one_scrolls_a_step_at_a_time() {
+        let (mut tree, view, _) = both(&[choice(Prop::Arrows, "both")]);
+        let v = thumbs(&tree, view)[0].unwrap();
+        // 100 - 2*2 - 12 (corner) - 2*8 (arrows) = 68; the thumb is the 32 minimum.
+        assert_eq!(v.lane, Rect::new(188.0, 10.0, 200.0, 78.0));
+        assert_eq!(v.thumb, Rect::new(190.0, 10.0, 198.0, 42.0));
+        let [start, end] = v.arrows.unwrap();
+        assert_eq!(start.rect, Rect::new(190.0, 2.0, 198.0, 10.0));
+        assert_eq!(end.rect, Rect::new(190.0, 78.0, 198.0, 86.0));
+        assert_eq!(end.hit, Rect::new(188.0, 78.0, 200.0, 86.0));
+        let t0 = Instant::now();
+        press(&mut tree, view, 194.0, 80.0, t0);
+        assert_eq!(
+            offsets(&tree, view),
+            (0.0, 40.0),
+            "a step: scrollbar_arrow_step"
+        );
+        assert_eq!(tree.dragging, None);
+        // Held: again after 400 ms, then every 100.
+        tree.tick_all(t0 + ms(450));
+        assert_eq!(offsets(&tree, view).1, 80.0);
+        tree.tick_all(t0 + ms(650));
+        assert_eq!(offsets(&tree, view).1, 160.0);
+        release(&mut tree, view, 194.0, 80.0, t0 + ms(700));
+        tree.tick_all(t0 + ms(900));
+        assert_eq!(offsets(&tree, view).1, 160.0);
+        press(&mut tree, view, 194.0, 5.0, t0 + ms(1_000));
+        assert_eq!(offsets(&tree, view).1, 120.0);
+    }
+
+    #[test]
+    fn a_step_and_the_arrows_take_their_own_numbers() {
+        let (mut tree, view, _) = both(&[
+            choice(Prop::Arrows, "both"),
+            num(Prop::ArrowStep, 15.0),
+            num(Prop::PageRepeatDelay, 50.0),
+            num(Prop::PageRepeat, 10.0),
+        ]);
+        let t0 = Instant::now();
+        press(&mut tree, view, 194.0, 80.0, t0);
+        assert_eq!(offsets(&tree, view).1, 15.0);
+        tree.tick_all(t0 + ms(80));
+        // Owed at 50, 60, 70, 80.
+        assert_eq!(offsets(&tree, view).1, 75.0);
+    }
+
+    #[test]
+    fn a_lane_click_pages_by_default_and_jumps_when_asked() {
+        let t0 = Instant::now();
+        let (mut tree, view, _) = both(&[]);
+        press(&mut tree, view, 194.0, 70.0, t0);
+        assert_eq!(offsets(&tree, view).1, 90.0, "a page: 90 percent of 100");
+        assert_eq!(tree.dragging, None);
+
+        // Jump: the thumb's middle goes to the press (44 - 16 - 2 = 26 of 52 of travel).
+        let (mut tree, view, _) = both(&[choice(Prop::LaneClick, "jump")]);
+        press(&mut tree, view, 194.0, 44.0, t0);
+        assert_eq!(offsets(&tree, view).1, 150.0);
+        assert_eq!(tree.dragging, Some(view), "and carries on as a drag");
+        move_to(&mut tree, view, 194.0, 44.0 + 13.0, t0);
+        assert_eq!(offsets(&tree, view).1, 150.0 + 13.0 * 300.0 / 52.0);
+        release(&mut tree, view, 194.0, 57.0, t0);
+        // Before the first and past the last: the ends.
+        let (mut tree, view, _) = both(&[choice(Prop::LaneClick, "jump")]);
+        press(&mut tree, view, 194.0, 85.0, t0);
+        assert_eq!(offsets(&tree, view).1, 300.0);
+
+        // None: the press goes to what is under the lane.
+        let (mut tree, view, _) = both(&[choice(Prop::LaneClick, "none")]);
+        press(&mut tree, view, 194.0, 70.0, t0);
+        assert_eq!(offsets(&tree, view).1, 0.0);
+    }
+
+    #[test]
+    fn a_one_axis_view_has_no_lane_click_until_it_is_asked_for() {
+        let t0 = Instant::now();
+        let one = |settings| {
+            view_of(
+                ScrollOrientation::Vertical,
+                (100.0, 100.0),
+                (100.0, 400.0),
+                settings,
+            )
+        };
+        let (mut tree, view, _) = one(&[]);
+        press(&mut tree, view, 96.0, 70.0, t0);
+        assert_eq!(offsets(&tree, view).1, 0.0);
+        // Asked for, it pages by its own page: the whole viewport.
+        let (mut tree, view, _) = one(&[choice(Prop::LaneClick, "page")]);
+        press(&mut tree, view, 96.0, 70.0, t0);
+        assert_eq!(offsets(&tree, view).1, 100.0);
+    }
+
+    #[test]
+    fn the_feel_properties_set_the_wheel_the_keys_and_the_page_of_a_view_and_of_a_list() {
+        let feel = [
+            num(Prop::WheelNotch, 10.0),
+            num(Prop::KeyLine, 25.0),
+            num(Prop::PageFraction, 0.5),
+        ];
+        let t0 = Instant::now();
+        let (mut tree, view, _) = both(&feel);
+        wheel(&mut tree, view, (0.0, -1.0), t0);
+        assert_eq!(offsets(&tree, view), (0.0, 10.0));
+        tree.scroll_by_key(view, Key::ArrowDown);
+        assert_eq!(offsets(&tree, view).1, 35.0);
+        tree.scroll_by_key(view, Key::PageDown);
+        assert_eq!(offsets(&tree, view).1, 85.0);
+
+        let (mut tree, list) = list(&feel);
+        wheel(&mut tree, list, (0.0, -1.0), t0);
+        assert_eq!(offsets(&tree, list), (0.0, 10.0));
+        tree.scroll_by_key(list, Key::ArrowDown);
+        assert_eq!(offsets(&tree, list).1, 35.0);
+        tree.scroll_by_key(list, Key::PageDown);
+        assert_eq!(offsets(&tree, list).1, 85.0);
+        // Shift moves a page along on a `both` view, by the same fraction.
+        let (mut tree, view, _) = both(&feel);
+        tree.set_held_modifiers(Modifiers {
+            shift: true,
+            ..Default::default()
+        });
+        tree.scroll_by_key(view, Key::PageDown);
+        assert_eq!(offsets(&tree, view), (100.0, 0.0));
+    }
+
+    #[test]
+    fn smooth_scrolling_eases_the_wheel_and_the_keys_and_notches_add_up() {
+        let t0 = Instant::now();
+        let (mut tree, view, _) = both(&[
+            num(Prop::ScrollSmooth, 200.0),
+            (Prop::ScrollEasing, Value::Easing(Easing::Linear)),
+        ]);
+        wheel(&mut tree, view, (0.0, -1.0), t0);
+        assert_eq!(offsets(&tree, view).1, 0.0, "not at once");
+        tree.tick_all(t0 + ms(100));
+        assert!((offsets(&tree, view).1 - 20.0).abs() < 1e-9);
+        // A second notch goes on from where the first was heading.
+        wheel(&mut tree, view, (0.0, -1.0), t0 + ms(100));
+        tree.tick_all(t0 + ms(400));
+        assert_eq!(offsets(&tree, view).1, 80.0);
+        // A key eases too (from the tree's own clock).
+        tree.scroll_by_key(view, Key::ArrowDown);
+        assert_eq!(offsets(&tree, view).1, 80.0);
+        tree.tick_all(t0 + ms(500));
+        assert!((offsets(&tree, view).1 - 100.0).abs() < 1e-9);
+        tree.tick_all(t0 + ms(700));
+        assert_eq!(offsets(&tree, view).1, 120.0);
+        // A list the same.
+        let (mut tree, list) = list(&[num(Prop::ScrollSmooth, 100.0)]);
+        wheel(&mut tree, list, (0.0, -1.0), t0);
+        assert_eq!(offsets(&tree, list).1, 0.0);
+        tree.tick_all(t0 + ms(150));
+        assert_eq!(offsets(&tree, list).1, 40.0);
+    }
+
+    #[test]
+    fn reduced_motion_collapses_the_fades_the_smooth_scroll_and_the_snap_settle() {
+        let t0 = Instant::now();
+        assert!(!Tree::new().reduced_motion());
+        let mut tree = Tree::new();
+        tree.set_os_reduced_motion(true);
+        assert!(tree.reduced_motion());
+        tree.set_reduced_motion_override(Some(false));
+        assert!(!tree.reduced_motion(), "the window's own say wins");
+        tree.set_reduced_motion_override(None);
+        assert!(tree.reduced_motion());
+        tree.set_os_reduced_motion(false);
+        // The OS says so by event.
+        let root = tree.insert(NodeKind::Rect, Style::default(), paint());
+        tree.dispatch(root, InputEvent::ReducedMotionChanged { reduced: true }, t0);
+        assert!(tree.reduced_motion());
+
+        let (mut tree, view, _) = both(&[num(Prop::ScrollSmooth, 200.0)]);
+        tree.set_reduced_motion_override(Some(true));
+        wheel(&mut tree, view, (0.0, -1.0), t0);
+        assert_eq!(offsets(&tree, view).1, 40.0, "at once");
+        // The hover emphasis takes no time either.
+        move_to(&mut tree, view, 194.0, 18.0, t0);
+        assert_eq!(state(&tree, view).bar().level[0].current, 1.0);
+        // And an auto-hide fade out.
+        let (mut tree, view, _) = both(&[choice(Prop::Show, "auto_hide")]);
+        tree.set_reduced_motion_override(Some(true));
+        tree.tick_all(t0);
+        tree.tick_all(t0 + ms(1_001));
+        assert_eq!(state(&tree, view).bar().shown.current, 0.0);
+    }
+
+    #[test]
+    fn a_virtual_list_has_the_same_thumbs_as_a_scroll_view_of_the_same_extents() {
+        let settings: &[(Prop, Value)] = &[
+            num(Prop::Width, 10.0),
+            num(Prop::Margin, 3.0),
+            choice(Prop::SideV, "start"),
+            choice(Prop::Arrows, "both"),
+            num(Prop::MinLength, 20.0),
+        ];
+        for settings in [&[][..], settings] {
+            let (tree, list) = list(settings);
+            let (other, view, _) = view_of(
+                ScrollOrientation::Vertical,
+                (200.0, 100.0),
+                (200.0, 400.0),
+                settings,
+            );
+            assert_eq!(thumbs(&tree, list), thumbs(&other, view));
+        }
+        // By default that is the legacy bar: 4 wide, 6 of slop.
+        let (tree, list) = list(&[]);
+        let v = thumbs(&tree, list)[0].unwrap();
+        assert_eq!(v.thumb, Rect::new(194.0, 2.0, 198.0, 34.0));
+        assert_eq!(v.hit, Rect::new(188.0, -4.0, 204.0, 40.0));
+    }
+
+    #[test]
+    fn a_virtual_list_takes_every_scrollbar_property_hover_lane_arrows_and_drag() {
+        let t0 = Instant::now();
+        let (mut tree, list) = list(&[
+            num(Prop::OpacityHover, 0.5),
+            num(Prop::OpacityDrag, 0.25),
+            choice(Prop::LaneClick, "page"),
+            choice(Prop::Arrows, "both"),
+        ]);
+        let opacity = |tree: &Tree| {
+            let s = state(tree, list);
+            s.metrics().opacity(s.bar().level[0].current)
+        };
+        // Arrows: 100 - 2*2 - 2*4 = 88 lane; the thumb 88*100/400 = 22 -> the 32 minimum.
+        let v = thumbs(&tree, list)[0].unwrap();
+        assert_eq!(v.thumb, Rect::new(194.0, 6.0, 198.0, 38.0));
+        move_to(&mut tree, list, 196.0, 20.0, t0);
+        tree.tick_all(t0 + ms(200));
+        assert_eq!(opacity(&tree), 0.5);
+        press(&mut tree, list, 196.0, 20.0, t0 + ms(300));
+        tree.tick_all(t0 + ms(500));
+        assert_eq!(opacity(&tree), 0.25);
+        move_to(&mut tree, list, 196.0, 20.0 + 26.0, t0 + ms(600));
+        // 26 of the 56 of travel over the 300 of range.
+        assert!((offsets(&tree, list).1 - 26.0 * 300.0 / 56.0).abs() < 1e-9);
+        release(&mut tree, list, 196.0, 46.0, t0 + ms(700));
+        // The lane pages, the arrow steps.
+        let (mut tree, list) = {
+            let (t, l) = list_with_page();
+            (t, l)
+        };
+        press(&mut tree, list, 196.0, 80.0, t0);
+        assert_eq!(offsets(&tree, list).1, 90.0);
+        release(&mut tree, list, 196.0, 80.0, t0);
+        press(&mut tree, list, 196.0, 96.0, t0);
+        assert_eq!(
+            offsets(&tree, list).1,
+            130.0,
+            "an arrow: scrollbar_arrow_step"
+        );
+    }
+
+    fn list_with_page() -> (Tree, NodeId) {
+        list(&[
+            choice(Prop::LaneClick, "page"),
+            choice(Prop::Arrows, "both"),
+        ])
+    }
+
+    #[test]
+    fn what_a_property_reads_is_the_value_in_force() {
+        let (tree, view, _) = both(&[num(Prop::Radius, 1.5), choice(Prop::Show, "always")]);
+        let s = state(&tree, view);
+        let get = |prop| s.bar().get(prop, s.defaults());
+        assert_eq!(get(Prop::Radius), Some(Value::Number(1.5)));
+        assert_eq!(get(Prop::Width), Some(Value::Number(8.0)));
+        assert_eq!(get(Prop::Show), Some(Value::Choice(1)));
+        assert_eq!(get(Prop::SideV), Some(Value::Choice(0)), "end, the default");
+        assert_eq!(get(Prop::Fill), None, "a colour reads what was set");
+        assert_eq!(
+            get(Prop::FadeEasing),
+            Some(Value::Easing(Easing::from_name("standard").unwrap()))
+        );
     }
 }
