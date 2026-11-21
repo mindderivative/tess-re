@@ -380,6 +380,9 @@ class Node:
         `event.property` and `event.finished`), `submit` (Enter in a single-line
         text input), `compose_start`/`compose_update`/`compose_end` (an IME
         composition) and `caret_move` (a text input's caret moved).
+        (0.6.11) Also `terminal_escape` (a focused terminal's `escape_chord` was
+        pressed; `event.key` is the chord, `event.related_target` the node
+        focus moved to).
         (0.6.7) Also `overwrite_change` (the user toggled a text input's overwrite
         mode with Insert; `event.old_value` and `event.new_value`).
         (0.5.7) Also `layout` (the node's laid-out size changed, or it was
@@ -491,7 +494,10 @@ class Window:
         canvas, `item_count`, `materialize`, and one of
         `item_extent`/`size_hint` for a virtual list, and `shell`, `cols`,
         `rows` for a terminal (which also takes `scrollback_lines`, at
-        creation only). An svg also takes `svg_color` (what `currentColor`
+        creation only, and (0.6.11) `escape_chord`, default
+        `"ctrl+shift+escape"`, and `escape_chord_reverse`, default `None`:
+        the chords that leave a focused terminal without sending the key to
+        the shell). An svg also takes `svg_color` (what `currentColor`
         is) and `svg_images` (`{href: (rgba, width, height)}`, the raster
         pictures the document refers to: the framework decodes them, the
         engine never does). (0.5.10) `svg_time` is the seconds into the

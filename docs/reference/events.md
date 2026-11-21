@@ -43,6 +43,7 @@ listing the valid ones.
 | `compose_start`, `compose_update`, `compose_end` | An IME composition began, changed or ended in a text input; `text` is the preedit text and `preedit_cursor` the IME's cursor range. The commit follows as `input` and `change` (0.5.6) | no |
 | `caret_move` | A text input's caret moved or its text changed by a key, click or drag; `caret` is its rectangle and `inserted` the bytes an edit inserted. Not for `set` (0.5.6) | no |
 | `overwrite_change` | The user toggled a text input's overwrite mode with the Insert key; `old_value` and `new_value` are the modes. Not for `set(overwrite=...)` (0.6.7) | no |
+| `terminal_escape` | A focused terminal's `escape_chord` or `escape_chord_reverse` was pressed: the key was not sent to the shell and focus moved on; `key` is the chord (`"ctrl+shift+escape"`), `related_target` the node that took focus (0.6.11) | yes |
 | `layout` | The node's laid-out size changed, or it was laid out for the first time, by any cause (a `set`, a parent's resize, a calc size, new text); `width`/`height` are the new size and `old_value`/`new_value` the `(width, height)` before (`None` the first time) and after. Only a node with a listener is watched; once a frame (0.5.7) | no |
 | `dismiss` | An outside press or Escape asked a [layer](layers.md) to close | no |
 | `a11y_action` | An assistive technology requested `increment`, `decrement`, `expand`, `collapse`, `scroll_into_view`, or `set_value` (its activate and focus requests arrive as `click` and `focus`) | yes |
@@ -221,12 +222,12 @@ hardware; the Windows and macOS code is compiled for those targets and untested.
 | `delta_x`, `delta_y` | (also) `pan`, `pinch` — how far the point (a pan's finger, a pinch's midpoint) moved since the last event |
 | `total_x`, `total_y` | `pan`, `pinch` — how far it has moved in all |
 | `velocity_x`, `velocity_y` | `pan` when it ends — the speed the finger lifted at, in pixels a second |
-| `key`, `repeat` | `key_down`, `key_up` |
+| `key`, `repeat` | `key_down`, `key_up` (`terminal_escape`: `key` is the chord) |
 | `shift`, `ctrl`, `alt`, `meta` | pointer, wheel, key, and click events |
 | `text` | `input` |
 | `old_value`, `new_value` | `change` — the text; `scroll` — the offset of the view's main axis, which is its own on a `"vertical"` or `"horizontal"` view and the vertical one on a `"both"` view; `layout` — the `(width, height)` size before (`None` the first time) and after |
 | `action`, `value` | `a11y_action` |
-| `related_target` | `focus`, `unfocus` — the node on the other side of the move |
+| `related_target` | `focus`, `unfocus` — the node on the other side of the move; `terminal_escape` — the node that took focus |
 | `focus_visible` | `focus` — whether focus arrived by keyboard |
 | `width`, `height` / `dark` / `scale_factor` | `resize` / `color_scheme` / `scale_factor` (and `layout` on a node: its new size) |
 | `reduced_motion` / `high_contrast` | `reduced_motion` / `high_contrast` — the new preference |

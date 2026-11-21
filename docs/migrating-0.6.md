@@ -436,3 +436,10 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `tooltip` and `scrollbar`. One behaviour change: a node with `role="alert"` and no `live` is now an assertive live
   region (AccessKit gave it no politeness; a reader may now interrupt for it), and `role="status"` is polite; set `live`
   to override. Nothing else to migrate. See [Accessibility](guide/accessibility.md#roles).
+- **`escape_chord`, `escape_chord_reverse` on `terminal`, and the `terminal_escape` event (new; UXREQ-006, WCAG 2.1.2).**
+  A focused terminal sent every key to the shell, so a keyboard user could not leave it. `escape_chord` (default
+  `"ctrl+shift+escape"`; `None` disables) is checked before the key reaches the shell: the key is not sent, focus moves to
+  the next focusable node, `terminal_escape` fires (`key` the chord, `related_target` the new focus) and `focus_visible`
+  is on. `escape_chord_reverse` (default `None`) moves backward. Chords are `ctrl`/`shift`/`alt`/`meta` plus one key, matched
+  exactly; a bad one raises `ValueError`. Behaviour change: Ctrl+Shift+Escape no longer reaches a shell (set
+  `escape_chord=None` to keep it). See [Text](guide/text.md#terminal).

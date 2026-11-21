@@ -419,6 +419,8 @@ viewport) are the spec's.
 | `cols`, `rows` | The grid size, 1–1000 each; the terminal's box follows its grid and font |
 | `selection` | `(start_row, start_col, end_row, end_col)`, or `None` |
 | `shell`, `scrollback_lines` | Given to `create` only |
+| `escape_chord` | (0.6.11) The chord that leaves a focused terminal without being sent to the shell, moving focus to the next focusable node: a string of `ctrl`/`shift`/`alt`/`meta` and one key joined by `+` (`"ctrl+shift+escape"`, `"ctrl+alt+tab"`; matched exactly), or `None` for none. Default `"ctrl+shift+escape"`. Reads back normalized. Fires `terminal_escape`. A malformed chord raises `ValueError` listing the format. See [Text](../guide/text.md#terminal) |
+| `escape_chord_reverse` | (0.6.11) The same, moving focus to the previous focusable node. Default `None` |
 | `text` | Read-only: the visible grid, one line per row, trailing blanks trimmed |
 
 Plus `font_size` and the `palette` on

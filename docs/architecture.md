@@ -96,6 +96,7 @@ spec. Properties added under this rule so far (0.6.11):
 | `fill=None` (`text`, `text_input`), `palette` `foreground`/`cursor`/`selection` `None` | the scheme's colour | [Properties](reference/properties.md#text) |
 | `letter_spacing`, `line_height` (now on `text_input` too) | `0`, `None` (the font's own) | [Text](reference/properties.md#text) |
 | `Window.set_defaults` / `App.set_defaults` (`kind` or `"*"`, any `create` property) | none set: the engine's own defaults; read at node creation, never per frame | [Defaults per kind](reference/properties.md#defaults-per-kind-0611) |
+| `escape_chord`, `escape_chord_reverse` (`terminal`; a chord string or `None`) | `"ctrl+shift+escape"`, `None`: leaves a focused terminal toward the next/previous node without sending the key to the shell (WCAG 2.1.2); fires `terminal_escape` | [Terminal](reference/properties.md#terminal) |
 
 **Scrollbar and scroll feel (0.6.11, P1).** A `scroll_view` and a `virtual_list` share one scrollbar: one table of
 properties (`engine_core::ScrollProp`), one geometry (`ScrollbarMetrics::thumbs`), one hit test, hover, drag and fade

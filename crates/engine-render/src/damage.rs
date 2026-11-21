@@ -2258,6 +2258,9 @@ fn terminal_fingerprint(h: &mut impl Hasher, state: &TerminalState) {
         selection_start,
         selection_end,
         palette,
+        // Not painted.
+        escape_chord: _,
+        escape_chord_reverse: _,
     } = state;
     cols.hash(h);
     rows.hash(h);

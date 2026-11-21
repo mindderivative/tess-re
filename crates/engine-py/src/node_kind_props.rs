@@ -16,7 +16,7 @@ use crate::node_layout::lookup;
 use crate::node_props::{color_to_py, parse_color};
 
 /// Every kind-specific property this module handles, in error order.
-pub(crate) const KIND_PROPS: [&str; 41] = [
+pub(crate) const KIND_PROPS: [&str; 43] = [
     "text",
     "font_family",
     "font_weight",
@@ -50,6 +50,8 @@ pub(crate) const KIND_PROPS: [&str; 41] = [
     "scroll_offset_x",
     "cols",
     "rows",
+    "escape_chord",
+    "escape_chord_reverse",
     "item_count",
     "item_extent",
     "svg",
@@ -410,6 +412,26 @@ fn parse_known(
     props: &Bound<'_, PyDict>,
 ) -> PyResult<KindChange> {
     match name {
+        "escape_chord" | "escape_chord_reverse" => {
+            let chord = if value.is_none() {
+                None
+            } else {
+                let text: String = value.extract().map_err(|_| {
+                    invalid(name, "a chord string like \"ctrl+shift+escape\", or None")
+                })?;
+                Some(engine_core::KeyChord::parse(&text).map_err(PyValueError::new_err)?)
+            };
+            let forward = name == "escape_chord";
+            change(move |node| {
+                if let NodeKind::Terminal(state) = &mut node.kind {
+                    if forward {
+                        state.escape_chord = chord;
+                    } else {
+                        state.escape_chord_reverse = chord;
+                    }
+                }
+            })
+        }
         "svg_size" | "svg_duration" => Err(PyValueError::new_err(format!(
             "node property `{name}` is read-only"
         ))),
@@ -1241,6 +1263,15 @@ fn read_known(name: &str, kind: &NodeKind, py: Python<'_>) -> PyResult<Py<PyAny>
             engine_core::ItemExtent::Fixed(extent) => to_py(extent, py),
             engine_core::ItemExtent::Variable => Ok(py.None()),
         },
+        ("escape_chord", NodeKind::Terminal(s)) => {
+            to_py(s.escape_chord.as_ref().map(engine_core::KeyChord::name), py)
+        }
+        ("escape_chord_reverse", NodeKind::Terminal(s)) => to_py(
+            s.escape_chord_reverse
+                .as_ref()
+                .map(engine_core::KeyChord::name),
+            py,
+        ),
         ("cols", NodeKind::Terminal(s)) => to_py(s.cols, py),
         ("rows", NodeKind::Terminal(s)) => to_py(s.rows, py),
         _ => unreachable!("read_kind_prop checks the kind first"),

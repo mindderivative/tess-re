@@ -432,6 +432,126 @@ pub(crate) fn process_input(
     event: &InputEvent,
     py: Python<'_>,
 ) -> DispatchOutcome {
+    if let Some(outcome) = terminal_escape(ctx, io, root, event, py) {
+        return outcome;
+    }
+    process_input_inner(ctx, io, root, event, true, py)
+}
+
+thread_local! {
+    /// Set when a terminal's escape chord was taken: the events the same key
+    /// press goes on to produce (its engine key, its control byte) are dropped,
+    /// not sent to the shell. Cleared once one is dropped, or by the next key press or click.
+    static ESCAPE_SWALLOW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// 0.6.11 (UXREQ-006, WCAG 2.1.2): while a terminal has focus, its
+/// `escape_chord` (or `escape_chord_reverse`) leaves it -- focus moves to the
+/// next (or previous) focusable node, `terminal_escape` fires on the terminal,
+/// and the key reaches the shell never. The chord is checked before the PTY
+/// claims keys. `Some` when `event` was consumed by it.
+fn terminal_escape(
+    ctx: &NodeContext<'_>,
+    io: &WindowIo<'_>,
+    root: NodeId,
+    event: &InputEvent,
+    py: Python<'_>,
+) -> Option<DispatchOutcome> {
+    match event {
+        InputEvent::Key {
+            name,
+            pressed: true,
+            ..
+        } => {
+            ESCAPE_SWALLOW.with(|s| s.set(false));
+            let held = listeners::modifiers();
+            let (terminal, chord, reverse) = {
+                let tree = ctx.tree.borrow();
+                let focused = tree.focused()?;
+                let terminal = tree.ancestors(focused).find(|&id| {
+                    matches!(tree.get(id).map(|n| &n.kind), Some(NodeKind::Terminal(_)))
+                })?;
+                let Some(NodeKind::Terminal(state)) = tree.get(terminal).map(|n| &n.kind) else {
+                    return None;
+                };
+                if let Some(c) = state
+                    .escape_chord
+                    .as_ref()
+                    .filter(|c| c.matches(name, held))
+                {
+                    (terminal, c.name(), false)
+                } else {
+                    let c = state
+                        .escape_chord_reverse
+                        .as_ref()
+                        .filter(|c| c.matches(name, held))?;
+                    (terminal, c.name(), true)
+                }
+            };
+            ESCAPE_SWALLOW.with(|s| s.set(true));
+            // The chord is a keyboard act, though it carries Ctrl: focus_visible is on.
+            listeners::set_keyboard_modality(true);
+            let outcome = process_input_inner(
+                ctx,
+                io,
+                root,
+                &InputEvent::KeyPressed {
+                    key: engine_core::Key::Tab,
+                    shift: reverse,
+                },
+                false,
+                py,
+            );
+            let moved_to = match &outcome {
+                DispatchOutcome::FocusChanged { new, .. } => *new,
+                _ => None,
+            };
+            listeners::deliver(
+                ctx,
+                py,
+                listeners::EventType::TerminalEscape,
+                terminal,
+                None,
+                |e| {
+                    e.key = Some(chord);
+                    if let Some(node) = moved_to {
+                        e.related_target = crate::event::Event::build_node(py, node, ctx).ok();
+                    }
+                },
+            );
+            Some(outcome)
+        }
+        InputEvent::KeyPressed { .. }
+        | InputEvent::ControlChar(_)
+        | InputEvent::Copy
+        | InputEvent::Cut
+        | InputEvent::PasteRequested
+        | InputEvent::TerminalCopyRequested
+        | InputEvent::TextInput(_)
+            if ESCAPE_SWALLOW.with(|s| s.get()) =>
+        {
+            ESCAPE_SWALLOW.with(|s| s.set(false));
+            Some(DispatchOutcome::None)
+        }
+        // Anything else (a click, a wheel) is a new act: the swallow ends.
+        InputEvent::Key { .. }
+        | InputEvent::KeyReleased { .. }
+        | InputEvent::ModifiersChanged(_) => None,
+        _ => {
+            ESCAPE_SWALLOW.with(|s| s.set(false));
+            None
+        }
+    }
+}
+
+fn process_input_inner(
+    ctx: &NodeContext<'_>,
+    io: &WindowIo<'_>,
+    root: NodeId,
+    event: &InputEvent,
+    claim_terminal: bool,
+    py: Python<'_>,
+) -> DispatchOutcome {
     // 0.5.4 (#113): fingers and trackpad pinches have a pipeline of their own,
     // which feeds the pointer events back through this one.
     if matches!(
@@ -451,7 +571,7 @@ pub(crate) fn process_input(
         crate::files::queue(io, event);
         return DispatchOutcome::None;
     }
-    if send_to_focused_terminal(ctx, io, event) {
+    if claim_terminal && send_to_focused_terminal(ctx, io, event) {
         return DispatchOutcome::None;
     }
     if resize_from_border(ctx, io, event) {
