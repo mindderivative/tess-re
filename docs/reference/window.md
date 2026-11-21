@@ -719,7 +719,13 @@ requests on those platforms for the first frame to be drawn. `background` is a c
 before the first present the OS's own default shows for as long as the window is visible without a frame, which is
 exactly what `"on_ready"` avoids.
 
-`LayerWindow(first_present=...)` and `PopupWindow(first_present=...)` take the argument for symmetry: `None` or
-`"immediate"` is accepted, anything else raises `ValueError("... not supported on LayerWindow yet")`, because holding a
-layer surface's first commit has to be reconciled with the compositor's configure handshake. `ready()` on them is a
-no-op. `set(background=...)` works on both (they clear to nothing, see-through, unless a `background` is set).
+`LayerWindow(first_present=..., background=...)` and `PopupWindow(first_present=..., background=...)` (0.6.12) take
+the same arguments and `ready()` works on them. A layer surface and an `xdg_popup` are mapped by the first buffer they
+commit, so holding the first present holds the mapping: until `ready()` (or the deadline) the compositor shows
+nothing, reserves no `exclusive_zone` and gives the surface no pointer or keyboard input. The configure handshake is
+not affected: the layer thread acknowledges every configure before the app hears of it, so the surface has its role and
+its size, and a layout, `size="content"` settling and `set(...)` made meanwhile (the `keyboard` and `input_region` given
+to the constructor included) go to the compositor as usual in buffer-less commits and take effect when the surface maps.
+A deadline counts from the surface's first configure. `background` is a constructor argument too; a layer surface or
+popup clears to nothing (see-through) unless it is set. See [layer-window.md](layer-window.md#first-present-and-ready)
+for the popup case (grab, a parent that closes while the popup is held).

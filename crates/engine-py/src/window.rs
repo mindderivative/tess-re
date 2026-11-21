@@ -443,18 +443,10 @@ impl PyWindow {
     ) -> PyResult<Self> {
         let window = Self::construct(width, height, title, decorations, PADDING, GAP)?;
         window.take_scheme(scheme, "Window")?;
-        if let Some(mode) = first_present.filter(|v| !v.is_none()) {
-            window
-                .handles
-                .first_present
-                .set_mode(crate::first_present::Mode::parse(mode)?);
-        }
-        if let Some(color) = background {
-            window
-                .handles
-                .first_present
-                .set_background(crate::first_present::FirstPresent::parse_background(color)?);
-        }
+        window
+            .handles
+            .first_present
+            .configure(first_present, background)?;
         Ok(window)
     }
 

@@ -507,8 +507,8 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   lays out and runs timers but draws and commits nothing, so the user never sees an unfinished first frame, and on
   macOS and Windows the OS's default background cannot flash the wrong light or dark (UX spec AC-TH-7, AC-TH-8). It is
   given to the constructor only; `set(first_present=...)` raises `ValueError`. `ready()` is a no-op on a window that
-  presents immediately and after the first call. `LayerWindow` and `PopupWindow` take `first_present` but only
-  `"immediate"` (anything else raises `ValueError`, "not supported on LayerWindow yet"). Verified on Wayland (sway) only;
+  presents immediately and after the first call. `LayerWindow` and `PopupWindow` took `first_present` in 0.6.11 but only
+  `"immediate"` (anything else raised `ValueError`); 0.6.12 lifts that (see `## 0.6.12`). Verified on Wayland (sway) only;
   the X11, macOS and Windows paths (window created hidden, shown after the first present) are written but unverified. See
   [First present and background](reference/window.md#first-present-and-background-0611).
 
@@ -547,3 +547,15 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `StateLayer` (Rust) gained the matching `*_ms`/`*_easing` fields, `active` and `timing(LayerState)`;
   `StateLayer::target` returns `Option<(LayerState, Color)>` and `sync` takes it. See
   [State layers](reference/properties.md#state-layers-0611).
+- **`first_present` and `ready()` on `LayerWindow` and `PopupWindow`, and a `background=` constructor argument on both
+  (new, opt-in; a popup of a closing parent is now told).** In 0.6.11 only a toplevel `Window` could hold its first present;
+  a layer window or popup raised `ValueError` ("not supported on LayerWindow yet") for anything but `"immediate"`. They now
+  take `"on_ready"` or a number of milliseconds (1 to 600000): the surface has its role, size and acknowledged configure but
+  commits no buffer, so the compositor maps it (a bar, a panel, a menu) only at `window.ready()` or the deadline (counted
+  from the first configure), and the user never sees an unfinished first frame. The default is `"immediate"`, unchanged.
+  Settings made before then (`keyboard`, `input_region`, `set(...)`) still reach the compositor and apply when it maps; a held
+  surface reserves no `exclusive_zone` and takes no input until it is mapped. `background=` (`(r, g, b, a)`, default `None`:
+  clear to nothing) is accepted by the constructors; `set(background=...)` already worked. **Behaviour change:** when a layer
+  surface or popup closes (`close()`, the compositor, an output going away), the popups hanging off it now get `closed` with
+  reason `"dismissed"` and are destroyed before it; before, they were left without a notice on a destroyed surface. See
+  [First present and ready](reference/layer-window.md#first-present-and-ready).

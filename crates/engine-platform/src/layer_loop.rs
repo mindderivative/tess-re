@@ -33,6 +33,8 @@ pub(crate) struct PerLayer {
     token: u64,
     /// Its number (the low bits of its `WindowId`).
     id: u64,
+    /// For a popup, the number of the surface it hangs off.
+    parent: Option<u64>,
     controller: LayerController,
     surface: Option<RawPtr>,
     /// Whether the host has built its GPU side (after the first configure).
@@ -91,6 +93,33 @@ where
         }
     }
 
+    /// 0.6.12: a surface is going away, and so is every popup hanging off it (deepest first):
+    /// each gets `closed` with reason `dismissed`, as when the compositor ends a popup because its
+    /// parent went, drops its GPU surface and is destroyed before the parent's `wl_surface`. A
+    /// popup that is still held (`first_present`) was never shown; this ends it the same way.
+    fn dismiss_popups_of(&mut self, parent: u64) {
+        let children: Vec<(WindowId, u64)> = self
+            .layers
+            .iter()
+            .filter(|(_, l)| l.parent == Some(parent))
+            .map(|(wid, l)| (*wid, l.id))
+            .collect();
+        for (wid, id) in children {
+            self.dismiss_popups_of(id);
+            if let Some(layer) = self.layers.remove(&wid) {
+                self.notice(
+                    wid,
+                    layer.token,
+                    LayerNotice::Closed(CloseReason::Dismissed),
+                );
+                if layer.opened {
+                    (self.on_lifecycle)(wid, WindowLifecycle::Closed);
+                }
+                layer.controller.destroy(layer.id);
+            }
+        }
+    }
+
     /// `PlatformEvent::OpenLayer`: starts the layer thread if this is the first, and
     /// asks it for the surface.
     pub(crate) fn open_layer(&mut self, event_loop: &ActiveEventLoop, request: LayerRequest) {
@@ -106,6 +135,7 @@ where
             .as_ref()
             .expect("the host was just started")
             .controller();
+        let parent = request.popup.as_ref().map(|popup| popup.parent);
         match request.popup {
             Some(popup) => controller.create_popup(n, popup),
             None => controller.create(n, request.config),
@@ -115,6 +145,7 @@ where
             PerLayer {
                 token: request.token,
                 id: n,
+                parent,
                 controller,
                 surface: None,
                 opened: false,
@@ -242,6 +273,7 @@ where
             }
             LayerEvent::Closed { id, reason } => {
                 let wid = window_id(id);
+                self.dismiss_popups_of(id);
                 if let Some(layer) = self.layers.remove(&wid) {
                     self.notice(wid, layer.token, LayerNotice::Closed(reason));
                     if layer.opened {
@@ -255,6 +287,7 @@ where
             }
             LayerEvent::Failed { id, message } => {
                 let wid = window_id(id);
+                self.dismiss_popups_of(id);
                 if let Some(layer) = self.layers.remove(&wid) {
                     self.notice(wid, layer.token, LayerNotice::Failed(message));
                     layer.controller.destroy(layer.id);
@@ -357,6 +390,7 @@ where
             layer.needs_frame = layer.animating;
             if layer.max_frames.is_some_and(|max| layer.frame >= max) {
                 let (id, controller) = (layer.id, layer.controller.clone());
+                self.dismiss_popups_of(id);
                 self.layers.remove(&wid);
                 (self.on_lifecycle)(wid, WindowLifecycle::Closed);
                 controller.destroy(id);
@@ -382,8 +416,12 @@ where
             return;
         }
         if (self.on_lifecycle)(wid, WindowLifecycle::CloseRequested)
-            && let Some(layer) = self.layers.remove(&wid)
+            && let Some(id) = self.layers.get(&wid).map(|l| l.id)
         {
+            self.dismiss_popups_of(id);
+            let Some(layer) = self.layers.remove(&wid) else {
+                return;
+            };
             self.notice(wid, layer.token, LayerNotice::Closed(CloseReason::App));
             (self.on_lifecycle)(wid, WindowLifecycle::Closed);
             layer.controller.destroy(layer.id);

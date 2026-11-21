@@ -19,6 +19,13 @@
 //! the first buffer it commits, so holding the present is all it takes. On X11, macOS and Windows
 //! the OS window is also created hidden (`WindowOptions::start_hidden`) and shown right after
 //! the first present (`finish`). Those three are unverified here (only Wayland is testable).
+//!
+//! 0.6.12: `LayerWindow` and `PopupWindow` take the same arguments. Their configure handshake is
+//! settled by the layer thread (it acknowledges every configure before the app hears of it), and the
+//! role-setting commit it makes carries no buffer, so the surface is not mapped until the first
+//! present; a deadline counts from the first configure (when the app's side of the surface is
+//! made, `FirstPresent::opened_now`). Settings made before then (`keyboard`, `input_region`,
+//! `size`) are sent as usual (`LayerState.update_early`) and take effect when the surface maps.
 
 use std::cell::Cell;
 use std::time::{Duration, Instant};
@@ -70,22 +77,6 @@ impl Mode {
                 Ok(Self::After(Duration::from_millis(ms)))
             }
             _ => Err(bad()),
-        }
-    }
-
-    /// A `LayerWindow` or `PopupWindow` takes `first_present` for the signature's sake but only
-    /// `"immediate"` (or `None`): holding a layer surface's first commit would have to settle
-    /// with the compositor's configure handshake, which is not done yet.
-    pub(crate) fn require_immediate(value: Option<&Bound<'_, PyAny>>, what: &str) -> PyResult<()> {
-        match value
-            .filter(|v| !v.is_none())
-            .map(Self::parse)
-            .transpose()?
-        {
-            None | Some(Self::Immediate) => Ok(()),
-            Some(_) => Err(PyValueError::new_err(format!(
-                "first_present other than 'immediate' is not supported on {what} yet"
-            ))),
         }
     }
 
@@ -147,6 +138,22 @@ impl FirstPresent {
 
     pub(crate) fn set_background(&self, color: Option<Color>) {
         self.background.set(color);
+    }
+
+    /// The constructor's `first_present=` and `background=` (both optional, `None` leaves the
+    /// default), for `Window`, `LayerWindow` and `PopupWindow` alike.
+    pub(crate) fn configure(
+        &self,
+        first_present: Option<&Bound<'_, PyAny>>,
+        background: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        if let Some(mode) = first_present.filter(|v| !v.is_none()) {
+            self.set_mode(Mode::parse(mode)?);
+        }
+        if let Some(color) = background {
+            self.set_background(Self::parse_background(color)?);
+        }
+        Ok(())
     }
 
     /// `background=`: `None`, or an `(r, g, b, a)` tuple of 0-255 ints.
