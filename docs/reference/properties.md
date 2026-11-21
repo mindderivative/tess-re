@@ -242,6 +242,57 @@ button = window.create("box", fill=(231, 224, 236, 255), corner_radius=20, focus
 - `get` returns what was set (`None`, the defaults for the rest); a bad colour, a negative or non-numeric duration or an
   unknown easing raises `ValueError` and changes nothing. They are plain node properties, so `create()` and
   `set_defaults` take them like any other.
+## Outline and focus ring (0.6.11)
+
+Every node. A ring drawn **outside** the border box, with a gap between the box and the ring (UXREQ-008): the
+focus ring of the Tesserae UX note "Focus Ring" is `outline_width=3, outline_offset=2` in the role `secondary`.
+It never changes layout, hit testing or the accessibility tree. `stroke_color` and `stroke_width` draw inside the
+box; a shadow with a spread cannot leave a transparent gap; the outline does both. Set, not animated.
+
+| Property | Value | Default |
+| --- | --- | --- |
+| `outline_width` | Pixels, `>= 0`: the ring's thickness. `0` is no outline | `0` |
+| `outline_offset` | Pixels, any sign: the gap between the border box and the ring's inner edge. Negative draws the ring inside the box (the "inward" ring: `outline_offset=-3` with `outline_width=3` hugs the inside of the edge) | `0` |
+| `outline_color` | `(r, g, b, a)` or `None`: `None` is the window scheme's role `secondary` (`Window(scheme=...)`, `scheme_colors`), so an unthemed ring is the specification's | `None` |
+| `outline_gap_color` | `(r, g, b, a)` or `None`: fills the gap between the box and the ring (for a ring on a patterned background, say the surface colour); `None` leaves the gap transparent. Ignored when `outline_offset <= 0` | `None` |
+| `outline_radius` | Pixels `>= 0` or `None`: the corner radius of the ring's **inner** edge (the outer edge is that plus `outline_width`). `None` follows the node: its `corner_radius` (or each of `corner_radii`) plus `outline_offset`, so the ring stays concentric with the box | `None` |
+| `focus_outline_width`, `focus_outline_offset`, `focus_outline_color`, `focus_outline_gap_color`, `focus_outline_radius` | The same five, shown **instead of** the `outline_*` ones while the node has keyboard focus that is visible. A `focus_outline_width` of `0` leaves the `outline_*` ring in force, focused or not | `0`, `0`, `None`, `None`, `None` |
+
+```python
+# The spec's focus ring: 3 px, 2 px off the control, role `secondary`, shown for keyboard focus only.
+button = window.create("box", width=120, height=40, fill=fill, corner_radius=8, focusable=True,
+                        focus_outline_width=3, focus_outline_offset=2)
+# A ring that is always there, 1 px inside the edge, in an own colour, over a surface-coloured gap.
+tag.set(outline_width=2, outline_offset=1, outline_color=(0x67, 0x50, 0xA4, 255),
+        outline_gap_color=(0xFE, 0xF7, 0xFF, 255))
+```
+
+Geometry, for a `w` by `h` box with corner radius `r`: the ring is the area between two rounded rectangles; the inner
+one is the box grown by `outline_offset` on every side with radius `r + outline_offset` (never below 0), the outer
+one is grown a further `outline_width` with radius `r + outline_offset + outline_width`. With `r = 8`, offset 2 and
+width 3 the ring's inner edge is 2 px and its outer edge 5 px outside the box on every side, with corner radii 10 and
+13. A square box (`r = 0`, `outline_offset = 0`) has a square ring; `corner_style="concave"` corners are drawn as
+round ones.
+
+When it shows: `focus_outline_*` applies while the node has keyboard focus and the last interaction was the keyboard
+or an assistive technology (the same `focus_visible` a `focus` event reports, see
+[Events](events.md)); a pointer press that focuses the node hides it, and the next key press shows it again. A
+`text_input` shows it for pointer focus too (the UX specification: pointer users need to see where the caret is); a
+toolkit that draws its own field indicator leaves `focus_outline_width` at 0 on it. The ring changes in the frame
+that focus changes, with no animation.
+
+What it paints over and under: after the node's own paint **and its children** (above both), inside the node's
+`opacity` and `blur` (they act on the node and everything it draws, the ring included), after the node's `mask` and
+its own `clip_children` (neither cuts it), and before the node's later siblings (a later sibling's box covers it).
+`clip_children` of an **ancestor**, a `scroll_view` and a `virtual_list` clip it like any other paint: a focusable
+child at the edge of such a container loses the part of its ring past that edge. There is no property to escape that
+clip (UXREQ-008: "the clip of an ancestor still applies"): give the container content padding of at least
+`outline_offset + outline_width` (5 px for the spec's ring) on the sides where a focusable child can reach its edge, or
+use the inward ring (`focus_outline_offset=-3, focus_outline_width=3`) for a child that must touch the edge.
+
+Cost: a node with an outline widens the area it repaints by the larger of its two rings (`max(offset + width)`,
+whichever state it is in), so a partial redraw stays exact when focus or `outline_*` change; a node with none pays
+nothing.
 
 ## Text
 

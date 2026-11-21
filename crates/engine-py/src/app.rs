@@ -2727,6 +2727,7 @@ impl App {
                         // Assistive-technology navigation shows focus, as
                         // the keyboard does.
                         listeners::set_keyboard_modality(true);
+                        tree.set_focus_visible(true);
                         let transition = tree.set_focus_to(node);
                         drop(tree);
                         if let Some((old, new)) = transition {

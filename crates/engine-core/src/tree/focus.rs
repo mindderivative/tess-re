@@ -8,6 +8,18 @@ impl Tree {
         self.focused
     }
 
+    /// 0.6.11 (UXREQ-008): the outline `id` draws now, if any: its `focus_outline_*` while it has
+    /// keyboard focus that is visible, else its `outline_*`. A text input shows its focus
+    /// outline for pointer focus too (the specification's `Focus Ring`: pointer users need to see
+    /// where the caret is). The colour is resolved against the window's scheme.
+    pub fn outline_of(&self, id: NodeId) -> Option<crate::Outline> {
+        let node = self.nodes.get(id)?;
+        let outlines = node.paint.outline.as_deref()?;
+        let focus_shown = self.focused == Some(id)
+            && (self.focus_visible || matches!(node.kind, NodeKind::TextField(_)));
+        outlines.resolve(focus_shown, &self.scheme)
+    }
+
     /// §11.10: pointer-to-node resolution, reverse paint order (topmost
     /// first -- the last child in `children`-list order paints on top,
     /// §6, so it's tested first here too; this is exactly what naturally

@@ -1492,6 +1492,14 @@ fn local_painted(text: &mut TextRenderer, id: NodeId, node: &Node, w: f64, h: f6
     if reach > 0.0 {
         local = local.inflate(reach, reach);
     }
+    // 0.6.11 (UXREQ-008): the outline ring, in either of its states (the extent may be wider
+    // than what is drawn now, and a focus change then needs no wider rect than this).
+    if let Some(outlines) = &node.paint.outline {
+        let reach = outlines.reach();
+        if reach > 0.0 {
+            local = local.inflate(reach, reach);
+        }
+    }
     for shadow in &node.paint.shadows.current.0 {
         if shadow.color.components[3] <= 0.0 {
             continue;
@@ -1724,6 +1732,31 @@ fn node_fingerprint_with(
         }
     }
     let focused = tree.focused() == Some(id);
+    // 0.6.11 (UXREQ-008): the outline in force (the focus style while focus is shown, its
+    // colour resolved against the scheme), so a focus or scheme change repaints the node.
+    match tree.outline_of(id) {
+        None => 0u8.hash(h),
+        Some(outline) => {
+            1u8.hash(h);
+            num(h, outline.width);
+            num(h, outline.offset);
+            color(h, outline.color);
+            match outline.gap_color {
+                None => 0u8.hash(h),
+                Some(gap) => {
+                    1u8.hash(h);
+                    color(h, gap);
+                }
+            }
+            match outline.radius {
+                None => 0u8.hash(h),
+                Some(radius) => {
+                    1u8.hash(h);
+                    num(h, radius);
+                }
+            }
+        }
+    }
     // 0.6.11: these kinds paint colours of the window's scheme where they have none of their
     // own, so a new scheme is a change to them.
     if matches!(
@@ -1788,7 +1821,14 @@ fn paint_fingerprint(h: &mut impl Hasher, paint: &PaintProperties) {
         mask,
         scheme_fill,
         state_layer,
+        outline,
     } = paint;
+    // 0.6.11 (UXREQ-008): how far the ring can reach is part of the painted extent; the style
+    // in force is hashed resolved in `node_fingerprint_with`, as which one it is depends on focus.
+    num(
+        h,
+        outline.as_deref().map_or(0.0, engine_core::Outlines::reach),
+    );
     scheme_fill.hash(h);
     // 0.6.11 (P13): what the state layer shows now, fading included.
     match state_layer

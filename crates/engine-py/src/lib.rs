@@ -33,6 +33,7 @@ mod node_handles;
 mod node_kind_props;
 mod node_layout;
 mod node_props;
+mod outline_props;
 mod outputs;
 mod popup_window;
 mod scale;

@@ -62,6 +62,12 @@ impl Tree {
         if self.focus_visible != visible {
             self.focus_visible = visible;
             self.note_state_node(self.focused);
+            // 0.6.11 (UXREQ-008): the focused node's `focus_outline_*` follows the modality, so
+            // it repaints too (a node is changed when it is touched).
+            self.dirty = true;
+            if let Some(focused) = self.focused {
+                self.nodes.get_mut(focused);
+            }
         }
     }
 

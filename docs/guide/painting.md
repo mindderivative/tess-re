@@ -55,6 +55,31 @@ fillet = window.create("box", width=12, height=12, fill=ink,
   `join.set(shader=shape, hit_path="M0,0 H100 V30 H30 V100 H0 Z")`. It is set, not animated; a
   `path` node uses `hit_shape` instead.
 
+## Outline and focus ring (0.6.11)
+
+`stroke_color` and `stroke_width` draw inside the box, and two shadows cannot make a ring with a transparent gap. The
+`outline_*` properties draw a ring **outside** the box instead: `outline_width` thick, `outline_offset` away from the
+border box, in `outline_color` (default: the window scheme's `secondary`), following the corner radius.
+
+```python
+button = window.create("box", width=120, height=40, fill=fill, corner_radius=8, focusable=True,
+                       # Shown only for keyboard focus; 3 px wide, 2 px off the control.
+                       focus_outline_width=3, focus_outline_offset=2)
+```
+
+Tab to the button and the ring appears in the same frame; click it with the mouse and it does not. That is the
+`focus_visible` of a `focus` event (see [Events and input](events-and-input.md)) applied by the engine, so a toolkit
+sets the three numbers once (on every focusable node it creates, or through its defaults) and runs no code on focus.
+
+- The gap between the box and the ring is transparent; `outline_gap_color` fills it (the surface colour, say).
+- `outline_offset` may be negative: the ring then sits inside the box, which is how a control that touches the edge
+  of a clipping container keeps a whole ring.
+- The ring is above the node's own paint and its children, and no layout, hit test or accessibility node follows it.
+- A clipping ancestor (`clip_children`, a `scroll_view`, a `virtual_list`) cuts the ring where it cuts everything
+  else: give the container padding of at least `outline_offset + outline_width`, or use the inward ring.
+
+Every property and the exact geometry: [Outline and focus ring](../reference/properties.md#outline-and-focus-ring-0611).
+
 ## Shadows
 
 `shadows` is a list of `(color, offset_x, offset_y, blur, spread)` —

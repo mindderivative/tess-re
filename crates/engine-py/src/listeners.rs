@@ -69,6 +69,12 @@ pub(crate) fn note_input_modality(event: &InputEvent) {
     set_keyboard_modality(keyboard);
 }
 
+/// Whether the last interaction was the keyboard (or an assistive technology): what a `focus`
+/// event reports as `focus_visible`, and what `Tree::set_focus_visible` is given.
+pub(crate) fn keyboard_modality() -> bool {
+    KEYBOARD_MODALITY.with(Cell::get)
+}
+
 pub(crate) fn set_keyboard_modality(keyboard: bool) {
     KEYBOARD_MODALITY.with(|cell| cell.set(keyboard));
 }

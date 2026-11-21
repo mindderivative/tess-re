@@ -28,6 +28,7 @@ mod geometry_cache;
 mod gpu_timer;
 mod gpu_watch;
 mod image_cache;
+mod outline;
 mod persistent_target;
 mod present;
 mod profile;
@@ -579,6 +580,20 @@ struct Painter<'a> {
 }
 
 impl Painter<'_> {
+    /// 0.6.11 (UXREQ-008): `v`'s outline, if it draws one now.
+    fn paint_outline(&mut self, v: &walk::Visit<'_>) {
+        if let Some(outline) = self.tree.outline_of(v.id) {
+            outline::paint(
+                &outline,
+                v.w,
+                v.h,
+                corner_radii(v.node),
+                v.composed,
+                self.scene,
+            );
+        }
+    }
+
     /// 0.5.4 (#110): frosted glass. Paints, inside `v`'s box, everything behind
     /// it blurred by `sigma`: the part of the tree that paints before `v`,
     /// drawn again inside a blur layer clipped to the box. The nested walk
@@ -767,6 +782,9 @@ impl<'t> walk::Visitor<'t> for Painter<'_> {
             if mask.is_some() {
                 self.scene.pop_layer();
             }
+            if draw_self {
+                self.paint_outline(v);
+            }
             if layered {
                 self.scene.pop_layer();
             }
@@ -861,6 +879,11 @@ impl<'t> walk::Visitor<'t> for Painter<'_> {
         }
         if masked {
             self.scene.pop_layer();
+        }
+        // 0.6.11 (UXREQ-008): the outline ring, above the node's paint and its children, outside
+        // its own clip and mask, inside its opacity.
+        if drew && self.effect_root != Some(v.id) {
+            self.paint_outline(v);
         }
         if layered {
             self.scene.pop_layer();
