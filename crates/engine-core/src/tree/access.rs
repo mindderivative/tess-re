@@ -177,6 +177,19 @@ impl Tree {
         true
     }
 
+    /// 0.6.11 (UXREQ-003): the index of a materialised row of a `virtual_list`; the rows the list
+    /// has not built are still part of its `item_count`.
+    fn virtual_row_index(&self, id: NodeId) -> Option<usize> {
+        let parent = self.nodes.get(self.nodes.get(id)?.parent?)?;
+        let NodeKind::VirtualList(list) = &parent.kind else {
+            return None;
+        };
+        list.materialized
+            .iter()
+            .find(|&(_, &row)| row == id)
+            .map(|(&index, _)| index)
+    }
+
     pub(super) fn collect_access_nodes(
         &self,
         id: NodeId,
@@ -232,7 +245,7 @@ impl Tree {
             access_node.set_numeric_value_step(step);
         }
         if let Some(checked) = access.checked {
-            access_node.set_toggled(checked.into());
+            access_node.set_toggled(checked);
         }
         // 0.5.6 (#160): `pressed` wins over `checked` for the same slot.
         if let Some(pressed) = access.pressed {
@@ -283,8 +296,36 @@ impl Tree {
         if let Some(level) = access.level {
             access_node.set_level(level);
         }
-        if let Some(live) = access.live {
-            access_node.set_live(live);
+        // A status is a polite live region and an alert an assertive one, unless the app says
+        // otherwise (AccessKit and AT-SPI derive no politeness from the role).
+        match (access.live, access.role) {
+            (Some(live), _) => access_node.set_live(live),
+            (None, accesskit::Role::Status) => access_node.set_live(accesskit::Live::Polite),
+            (None, accesskit::Role::Alert) => access_node.set_live(accesskit::Live::Assertive),
+            (None, _) => {}
+        }
+        // 0.6.11 (UXREQ-003): an explicit value wins; a virtual list says its `item_count` and
+        // its built rows their index. AccessKit keeps the size on the container (a reader takes
+        // it from the nearest ancestor that has one) and the position on the item, zero-based.
+        let derived_size = match &node.kind {
+            NodeKind::VirtualList(list) => Some(list.item_count),
+            _ => None,
+        };
+        if let Some(size) = access.set_size.or(derived_size) {
+            access_node.set_size_of_set(size);
+        }
+        let position = match access.pos_in_set {
+            Some(pos) => Some(pos - 1),
+            None => self.virtual_row_index(id),
+        };
+        if let Some(position) = position {
+            access_node.set_position_in_set(position);
+        }
+        if let Some(orientation) = access.orientation {
+            access_node.set_orientation(orientation);
+        }
+        if access.modal {
+            access_node.set_modal();
         }
         if access.hidden {
             access_node.set_hidden();

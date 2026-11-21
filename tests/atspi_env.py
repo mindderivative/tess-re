@@ -155,6 +155,17 @@ class AtspiEnvironment:
         data = self.call(destination, path, "org.a11y.atspi.Accessible", "GetRole")
         return data[0] if data else None
 
+    def states(self, destination, path):
+        """The set of `ATSPI_STATE_*` numbers that are on (`GetState` is two 32-bit words)."""
+        data = self.call(destination, path, "org.a11y.atspi.Accessible", "GetState")
+        words = data[0] if data else []
+        return {32 * i + bit for i, word in enumerate(words) for bit in range(32) if word >> bit & 1}
+
+    def attributes(self, destination, path):
+        """`{name: value}` of the node's AT-SPI attributes (`posinset`, `setsize`, ...)."""
+        data = self.call(destination, path, "org.a11y.atspi.Accessible", "GetAttributes")
+        return dict(data[0]) if data else {}
+
     def name(self, destination, path):
         data = self.call(destination, path, "org.freedesktop.DBus.Properties", "Get",
                          "ss", "org.a11y.atspi.Accessible", "Name")

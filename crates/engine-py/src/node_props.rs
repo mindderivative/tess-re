@@ -26,7 +26,7 @@ use crate::node_layout::{LAYOUT_PROPS, StyleEdit, parse_layout, read_layout};
 
 /// Every property `set` accepts besides the layout ones
 /// (`node_layout::LAYOUT_PROPS`), in the order its error lists them.
-const SETTABLE: [&str; 74] = [
+const SETTABLE: [&str; 78] = [
     // 0.5.7 (#179): placed against another node.
     "anchor",
     "placement",
@@ -87,6 +87,10 @@ const SETTABLE: [&str; 74] = [
     "live",
     "a11y_hidden",
     "pressed",
+    "set_size",
+    "pos_in_set",
+    "a11y_orientation",
+    "modal",
     "invalid",
     "busy",
     "current",
@@ -105,7 +109,7 @@ const SETTABLE: [&str; 74] = [
 ];
 
 /// The M93 role vocabulary.
-const ROLES: [(&str, Role); 24] = [
+const ROLES: [(&str, Role); 42] = [
     ("button", Role::Button),
     ("checkbox", Role::CheckBox),
     ("radio", Role::RadioButton),
@@ -132,6 +136,30 @@ const ROLES: [(&str, Role); 24] = [
     // 0.5.6 (#160): AccessKit has no separator role; a splitter is the one the
     // platforms expose as a separator (AT-SPI) or separator control (UIA).
     ("separator", Role::Splitter),
+    // 0.6.11 (UXREQ-004): the next 18 names; `option` is a listbox option (a menu's is `menuitem`).
+    ("status", Role::Status),
+    ("spinbutton", Role::SpinButton),
+    ("radiogroup", Role::RadioGroup),
+    ("option", Role::ListBoxOption),
+    ("listbox", Role::ListBox),
+    ("toolbar", Role::Toolbar),
+    ("navigation", Role::Navigation),
+    ("complementary", Role::Complementary),
+    ("region", Role::Region),
+    ("grid", Role::Grid),
+    ("row", Role::Row),
+    ("gridcell", Role::GridCell),
+    ("columnheader", Role::ColumnHeader),
+    ("rowheader", Role::RowHeader),
+    ("searchbox", Role::SearchInput),
+    ("combobox", Role::ComboBox),
+    ("tooltip", Role::Tooltip),
+    ("scrollbar", Role::ScrollBar),
+];
+
+const ORIENTATIONS: [(&str, engine_core::Orientation); 2] = [
+    ("horizontal", engine_core::Orientation::Horizontal),
+    ("vertical", engine_core::Orientation::Vertical),
 ];
 
 const CURRENT: [(&str, engine_core::AriaCurrent); 5] = [
@@ -177,7 +205,7 @@ pub(crate) enum Change {
     ValueMin(Option<f64>),
     ValueMax(Option<f64>),
     ValueStep(Option<f64>),
-    Checked(Option<bool>),
+    Checked(Option<engine_core::Toggled>),
     Selected(Option<bool>),
     Expanded(Option<bool>),
     Disabled(bool),
@@ -186,6 +214,10 @@ pub(crate) enum Change {
     A11yHidden(bool),
     /// 0.5.6 (#160): the accessibility states a screen reader hears about.
     Pressed(Option<engine_core::Toggled>),
+    SetSize(Option<usize>),
+    PosInSet(Option<usize>),
+    Orientation(Option<engine_core::Orientation>),
+    Modal(bool),
     Invalid(bool),
     Busy(bool),
     Current(Option<engine_core::AriaCurrent>),
@@ -862,6 +894,49 @@ fn boolean(value: &Bound<'_, PyAny>, name: &str) -> PyResult<bool> {
     value.extract::<bool>()
 }
 
+/// `True`, `False`, `"mixed"` or `None`.
+fn toggled(value: &Bound<'_, PyAny>, name: &str) -> PyResult<Option<engine_core::Toggled>> {
+    if value.is_none() {
+        Ok(None)
+    } else if value.is_instance_of::<pyo3::types::PyBool>() {
+        Ok(Some(if value.extract::<bool>()? {
+            engine_core::Toggled::True
+        } else {
+            engine_core::Toggled::False
+        }))
+    } else if value.extract::<String>().is_ok_and(|s| s == "mixed") {
+        Ok(Some(engine_core::Toggled::Mixed))
+    } else {
+        Err(invalid(name, "True, False, \"mixed\", or None"))
+    }
+}
+
+/// A positive int or `None` (`set_size`, `pos_in_set`).
+fn positive_or_none(value: &Bound<'_, PyAny>, name: &str) -> PyResult<Option<usize>> {
+    const WANT: &str = "a positive int or None";
+    if value.is_none() {
+        return Ok(None);
+    }
+    if value.is_instance_of::<pyo3::types::PyBool>() {
+        return Err(invalid(name, WANT));
+    }
+    match value.extract::<usize>() {
+        Ok(n) if n > 0 => Ok(Some(n)),
+        _ => Err(invalid(name, WANT)),
+    }
+}
+
+fn toggled_object(py: Python<'_>, state: Option<engine_core::Toggled>) -> PyResult<Py<PyAny>> {
+    Ok(match state {
+        None => py.None(),
+        Some(engine_core::Toggled::True) => true.into_pyobject(py)?.to_owned().into_any().unbind(),
+        Some(engine_core::Toggled::False) => {
+            false.into_pyobject(py)?.to_owned().into_any().unbind()
+        }
+        Some(engine_core::Toggled::Mixed) => "mixed".into_pyobject(py)?.into_any().unbind(),
+    })
+}
+
 fn optional_bool(value: &Bound<'_, PyAny>, name: &str) -> PyResult<Option<bool>> {
     if value.is_none() {
         return Ok(None);
@@ -1078,7 +1153,24 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
         "value_min" => Change::ValueMin(optional(value, name, "a number or None")?),
         "value_max" => Change::ValueMax(optional(value, name, "a number or None")?),
         "value_step" => Change::ValueStep(optional(value, name, "a number or None")?),
-        "checked" => Change::Checked(optional_bool(value, name)?),
+        "checked" => Change::Checked(toggled(value, name)?),
+        "set_size" => Change::SetSize(positive_or_none(value, name)?),
+        "pos_in_set" => Change::PosInSet(positive_or_none(value, name)?),
+        "a11y_orientation" => {
+            let text: Option<String> =
+                optional(value, name, "\"horizontal\", \"vertical\", or None")?;
+            Change::Orientation(match text {
+                None => None,
+                Some(text) => Some(
+                    ORIENTATIONS
+                        .iter()
+                        .find(|(n, _)| *n == text)
+                        .map(|(_, o)| *o)
+                        .ok_or_else(|| invalid(name, "\"horizontal\", \"vertical\", or None"))?,
+                ),
+            })
+        }
+        "modal" => Change::Modal(boolean(value, name)?),
         "selected" => Change::Selected(optional_bool(value, name)?),
         "expanded" => Change::Expanded(optional_bool(value, name)?),
         "disabled" => Change::Disabled(boolean(value, name)?),
@@ -1102,19 +1194,7 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
             })
         }
         "a11y_hidden" => Change::A11yHidden(boolean(value, name)?),
-        "pressed" => Change::Pressed(if value.is_none() {
-            None
-        } else if value.is_instance_of::<pyo3::types::PyBool>() {
-            Some(if value.extract::<bool>()? {
-                engine_core::Toggled::True
-            } else {
-                engine_core::Toggled::False
-            })
-        } else if value.extract::<String>().is_ok_and(|s| s == "mixed") {
-            Some(engine_core::Toggled::Mixed)
-        } else {
-            return Err(invalid(name, "True, False, \"mixed\", or None"));
-        }),
+        "pressed" => Change::Pressed(toggled(value, name)?),
         "invalid" => Change::Invalid(boolean(value, name)?),
         "busy" => Change::Busy(boolean(value, name)?),
         "current" => Change::Current(if value.is_none() {
@@ -1835,7 +1915,7 @@ impl Node {
                 "value_min" => access.value_min.into_pyobject(py)?.into_any().unbind(),
                 "value_max" => access.value_max.into_pyobject(py)?.into_any().unbind(),
                 "value_step" => access.value_step.into_pyobject(py)?.into_any().unbind(),
-                "checked" => access.checked.into_pyobject(py)?.into_any().unbind(),
+                "checked" => toggled_object(py, access.checked)?,
                 "selected" => access.selected.into_pyobject(py)?.into_any().unbind(),
                 "expanded" => access.expanded.into_pyobject(py)?.into_any().unbind(),
                 "disabled" => any(access
@@ -1853,16 +1933,17 @@ impl Node {
                     .into_any()
                     .unbind(),
                 "a11y_hidden" => any(access.hidden.into_pyobject(py)?.to_owned().into_any()),
-                "pressed" => match access.pressed {
-                    None => py.None(),
-                    Some(engine_core::Toggled::True) => {
-                        any(true.into_pyobject(py)?.to_owned().into_any())
-                    }
-                    Some(engine_core::Toggled::False) => {
-                        any(false.into_pyobject(py)?.to_owned().into_any())
-                    }
-                    Some(engine_core::Toggled::Mixed) => any("mixed".into_pyobject(py)?.into_any()),
-                },
+                "pressed" => toggled_object(py, access.pressed)?,
+                "set_size" => access.set_size.into_pyobject(py)?.into_any().unbind(),
+                "pos_in_set" => access.pos_in_set.into_pyobject(py)?.into_any().unbind(),
+                "a11y_orientation" => ORIENTATIONS
+                    .iter()
+                    .find(|(_, o)| Some(*o) == access.orientation)
+                    .map(|(n, _)| *n)
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+                "modal" => any(access.modal.into_pyobject(py)?.to_owned().into_any()),
                 "invalid" => any(access.invalid.into_pyobject(py)?.to_owned().into_any()),
                 "busy" => any(access.busy.into_pyobject(py)?.to_owned().into_any()),
                 "current" => match access.current {
@@ -2367,6 +2448,10 @@ impl Node {
                 Change::Live(live) => access.live = live,
                 Change::A11yHidden(hidden) => access.hidden = hidden,
                 Change::Pressed(pressed) => access.pressed = pressed,
+                Change::SetSize(size) => access.set_size = size,
+                Change::PosInSet(pos) => access.pos_in_set = pos,
+                Change::Orientation(o) => access.orientation = o,
+                Change::Modal(modal) => access.modal = modal,
                 Change::Invalid(invalid) => access.invalid = invalid,
                 Change::Busy(busy) => access.busy = busy,
                 Change::Current(current) => access.current = current,

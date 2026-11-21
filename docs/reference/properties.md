@@ -364,6 +364,23 @@ viewport) are the spec's.
 Plus `font_size` and the `palette` on
 [Paint, Paths, and Animation](paint.md#text-inputs-scroll-views-and-terminals).
 
+## Accessibility (0.6.11)
+
+Every node takes these; they change what assistive technology is told, not what is drawn. The full list of
+accessibility properties (`role`, `label`, `checked`, ...) is on [Node](node.md#set-get-and-focus), the guide is
+[Accessibility](../guide/accessibility.md#sets-mixed-orientation-and-modal-0611).
+
+| Property | Type | Default | Unit | Example |
+| --- | --- | --- | --- | --- |
+| `set_size` | positive `int` or `None` | `None` (a `virtual_list` says its `item_count`) | items | `listbox.set(set_size=12)` |
+| `pos_in_set` | positive `int` or `None` | `None` (a `virtual_list` row says its index plus one) | 1-based place | `item.set(pos_in_set=3)` |
+| `checked` | `True`, `False`, `"mixed"`, `None` | `None` | | `parent.set(checked="mixed")` |
+| `a11y_orientation` | `"horizontal"`, `"vertical"`, `None` | `None` (the platform's default for the role) | | `slider.set(a11y_orientation="horizontal")` |
+| `modal` | `bool` | `False` | | `dialog.set(role="dialog", modal=True)` |
+| `role` | 42 names, 18 new: `status`, `spinbutton`, `radiogroup`, `option`, `listbox`, `toolbar`, `navigation`, `complementary`, `region`, `grid`, `row`, `gridcell`, `columnheader`, `rowheader`, `searchbox`, `combobox`, `tooltip`, `scrollbar` | `"none"`-like (unset) | | `box.set(role="status")` |
+
+`status` is a polite live region and `alert` an assertive one unless `live` is set.
+
 ## Read-only
 
 | Property | Value |

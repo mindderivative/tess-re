@@ -18,11 +18,12 @@ thumb.set(role="slider", label="Volume", value=0.4, value_min=0.0,
 
 | Property | Value |
 | --- | --- |
-| `role` | `"button"`, `"checkbox"`, `"radio"`, `"switch"`, `"slider"`, `"progressbar"`, `"link"`, `"textbox"`, `"tab"`, `"tablist"`, `"tabpanel"`, `"menu"`, `"menuitem"`, `"dialog"`, `"alert"`, `"list"`, `"listitem"`, `"tree"`, `"treeitem"`, `"heading"`, `"img"`, `"group"`, `"none"`, `"separator"` (0.5.6; AccessKit has no separator role, so it is a splitter, which AT-SPI and UIA expose as a separator) |
+| `role` | `"button"`, `"checkbox"`, `"radio"`, `"switch"`, `"slider"`, `"progressbar"`, `"link"`, `"textbox"`, `"tab"`, `"tablist"`, `"tabpanel"`, `"menu"`, `"menuitem"`, `"dialog"`, `"alert"`, `"list"`, `"listitem"`, `"tree"`, `"treeitem"`, `"heading"`, `"img"`, `"group"`, `"none"`, `"separator"` (0.5.6; AccessKit has no separator role, so it is a splitter, which AT-SPI and UIA expose as a separator); 0.6.11 adds `"status"`, `"spinbutton"`, `"radiogroup"`, `"option"`, `"listbox"`, `"toolbar"`, `"navigation"`, `"complementary"`, `"region"`, `"grid"`, `"row"`, `"gridcell"`, `"columnheader"`, `"rowheader"`, `"searchbox"`, `"combobox"`, `"tooltip"` and `"scrollbar"` (see [the role table](../guide/accessibility.md#roles)). An unknown name raises `ValueError` listing every valid one |
 | `label` | `str` or `None` — the name assistive technology reads |
 | `value` | `str`, number, or `None` |
 | `value_min`, `value_max`, `value_step` | number or `None` |
-| `checked`, `selected`, `expanded` | `bool` or `None` |
+| `checked` | `True`, `False`, `"mixed"`, or `None` (`"mixed"` since 0.6.11) — a checkbox's state; `pressed` wins over it where both are set |
+| `selected`, `expanded` | `bool` or `None` |
 | `disabled` | `bool` |
 | `pressed` | `True`, `False`, `"mixed"`, or `None` (0.5.6) — a toggle button's state; where both are set, it wins over `checked` |
 | `invalid`, `busy` | `bool` (0.5.6) — the value is not acceptable; the node is updating |
@@ -33,6 +34,9 @@ thumb.set(role="slider", label="Volume", value=0.4, value_min=0.0,
 | `level` | positive `int` or `None` — a heading's level |
 | `live` | `"off"`, `"polite"`, `"assertive"`, or `None` — how changes are announced |
 | `a11y_hidden` | `bool` — hidden from assistive technology |
+| `set_size`, `pos_in_set` | positive `int` or `None`, default `None` (0.6.11) — how many items the set holds (put it on the container: AccessKit and the platforms read it from the nearest ancestor that has one) and this node's 1-based place in it (`"3 of 12"`). A `virtual_list` with none set says its `item_count`, and each built row its index plus one; a value you set wins. `get` returns what you set, not the derived number |
+| `a11y_orientation` | `"horizontal"`, `"vertical"`, or `None`, default `None` (0.6.11; not `orientation`, which a `scroll_view` uses for its scroll axes) — the axis of a slider, scrollbar, separator, toolbar, listbox... |
+| `modal` | `bool`, default `False` (0.6.11) — a `"dialog"` that blocks what is behind it |
 | `focusable` | `bool` — focusable by Tab, click, and `focus()`; a click on a descendant focuses the nearest focusable ancestor |
 | `tab_index` | `int` — positive values come first in Tab order, ascending; then `0` in tree order; negative leaves the node out of Tab order but focusable by click and `focus()` |
 | `cursor` | the pointer shape over the node, inherited by descendants: `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"move"`, `"not_allowed"`, `"wait"`, `"progress"`, `"crosshair"`, `"help"`, `"col_resize"`, `"row_resize"`, `"ew_resize"`, `"ns_resize"`, `"nesw_resize"`, `"nwse_resize"`, `"copy"`, `"cell"`, `"context_menu"`, `"zoom_in"`, `"zoom_out"`, `"all_scroll"`, or `None` |
