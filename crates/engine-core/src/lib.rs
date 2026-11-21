@@ -30,6 +30,7 @@ mod node;
 mod overlay;
 mod path;
 mod path_template;
+mod scrollbar;
 mod shader;
 mod svg;
 mod svg_smil;
@@ -67,6 +68,10 @@ pub use node::{
 pub use overlay::{AnchorBox, OverlayMeta, Placement};
 pub use path::{HitShape, MorphMode, PathData, PathState, fit_transform, trim};
 pub use path_template::PathTemplate;
+pub use scrollbar::{
+    FADE as SCROLLBAR_FADE, PAGE_DELAY, PAGE_FRACTION, PAGE_REPEAT, SCROLLBAR_PROPS, ScrollAxis,
+    ScrollOrientation, ScrollbarMetrics, ScrollbarOverrides, Thumb, WHEEL_NOTCH,
+};
 pub use shader::{
     FRAME_BLOCK_SIZE, Shader, ShaderError, ShaderMode, UniformKind, UniformValue, frame_block,
     shader_animations_pending,
@@ -77,6 +82,6 @@ pub use svg::{
 };
 pub use tree::{
     AccessLine, FIT_CONTENT_SLACK, FieldRows, FocusDirection, KEY_SCROLL_LINE, LayoutAnimError,
-    LayoutChange, RowAnswer, RowQuery, ScrollAlign, TextMeasure, TextPart, Touched, Tree,
-    from_access_id, node_id_as_u64, to_access_id,
+    LayoutChange, RowAnswer, RowQuery, ScrollAlign, ScrollChange, TextMeasure, TextPart, Touched,
+    Tree, from_access_id, node_id_as_u64, to_access_id,
 };

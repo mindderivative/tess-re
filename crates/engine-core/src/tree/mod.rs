@@ -18,9 +18,11 @@ use slotmap::{Key as SlotMapKey, KeyData, SecondaryMap};
 
 use self::nodes::Nodes;
 pub use self::nodes::Touched;
+use taffy::geometry::Point as TaffyPoint;
 use taffy::prelude::{
     AvailableSpace, Layout, Position, Rect as TaffyRect, Size, Style, TaffyTree, auto, length,
 };
+use taffy::style::Overflow;
 
 use crate::access::AccessNodeData;
 use crate::animation::CompletionHandle;
@@ -30,7 +32,7 @@ use crate::canvas::{CustomHitTest, DrawCommand};
 use crate::input::{ChangedValue, DispatchOutcome, InputEvent, Key, PointerButton, ScrollDelta};
 use crate::node::{
     ImageState, Node, NodeId, NodeKind, PaintProperties, SCROLLBAR_GRAB_SLOP, SCROLLBAR_MARGIN,
-    SCROLLBAR_THICKNESS, TextFieldState,
+    SCROLLBAR_THICKNESS, ScrollViewState, TextFieldState,
 };
 #[cfg(test)]
 use crate::node::{ItemExtent, TerminalCell, TerminalState, VirtualListState};
@@ -50,7 +52,7 @@ pub use text_editing::{FieldRows, RowAnswer, RowQuery};
 mod nodes;
 mod region;
 mod scroll;
-pub use scroll::KEY_SCROLL_LINE;
+pub use scroll::{KEY_SCROLL_LINE, ScrollChange};
 mod virtual_scroll;
 pub use virtual_scroll::ScrollAlign;
 #[cfg(test)]
@@ -134,6 +136,12 @@ pub struct Tree {
     /// real OS drag semantics). `update_drag` is what actually branches
     /// on which real kind this is.
     dragging: Option<NodeId>,
+    /// 0.6.11 (UXREQ-001): the thumb the pointer is over (its hit area), if
+    /// any, for the hover opacity. One pointer, so one thumb.
+    scrollbar_hover: Option<(NodeId, crate::scrollbar::ScrollAxis)>,
+    /// 0.6.11: a press holding the lane of a thumb pages again until it is
+    /// released or the thumb reaches the press.
+    page_repeat: Option<scroll::PageRepeat>,
     /// §14 step 13 (§11.3): keyed by the overlay root's own `NodeId` --
     /// metadata only, never the node itself, which already lives in
     /// `nodes` like any other.
@@ -275,6 +283,8 @@ impl Tree {
             hovered: None,
             pressed: None,
             dragging: None,
+            scrollbar_hover: None,
+            page_repeat: None,
             overlays: Vec::new(),
             dismissals: Vec::new(),
             dirty: true,
@@ -857,10 +867,14 @@ impl Tree {
         {
             active = true;
         }
-        if let NodeKind::ScrollView(state) = &mut node.kind
-            && state.scroll.tick(now, completed)
-        {
-            active = true;
+        if let NodeKind::ScrollView(state) = &mut node.kind {
+            // 0.6.11: its other offset and its thumbs' fades, with the main one.
+            let [vertical, horizontal] = &mut state.level;
+            for animated in [&mut state.scroll, &mut state.scroll_x, vertical, horizontal] {
+                if animated.tick(now, completed) {
+                    active = true;
+                }
+            }
         }
         // 0.5.4 (#136): a virtual list's offset animates too (a fling).
         if let NodeKind::VirtualList(state) = &mut node.kind
@@ -1017,6 +1031,7 @@ impl Tree {
         }
         self.animating = still;
         let settling = self.settle_snaps(now);
+        let paging = self.repeat_pages(now);
         for id in layout_changed {
             if let Some(node) = self.nodes.get(id) {
                 let style = node.layout_style.clone();
@@ -1029,6 +1044,7 @@ impl Tree {
         let shader_active = self.tick_shaders(now);
         let any_active = !self.animating.is_empty()
             || settling
+            || paging
             || !self.snap_pending.is_empty()
             || shader_active;
         // M29 Phase 1 (§5, §6): a mid-flight animation is itself a real

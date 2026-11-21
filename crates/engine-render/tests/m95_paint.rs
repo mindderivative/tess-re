@@ -244,7 +244,7 @@ fn a_scroll_view_paints_its_scrollbar_fill_and_width() {
         let (mut tree, root) = scene();
         let mut state = ScrollViewState::new(false);
         state.scrollbar_fill = Some(RED);
-        state.scrollbar_width = 10.0;
+        state.scrollbar.thickness = Some(10.0);
         let view = tree.insert(
             NodeKind::ScrollView(state),
             placed(0.0, 0.0, 100.0, 100.0),

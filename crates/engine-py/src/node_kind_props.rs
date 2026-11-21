@@ -16,7 +16,7 @@ use crate::node_layout::lookup;
 use crate::node_props::{color_to_py, parse_color};
 
 /// Every kind-specific property this module handles, in error order.
-pub(crate) const KIND_PROPS: [&str; 39] = [
+pub(crate) const KIND_PROPS: [&str; 40] = [
     "text",
     "font_family",
     "font_weight",
@@ -46,6 +46,7 @@ pub(crate) const KIND_PROPS: [&str; 39] = [
     "orientation",
     "scroll_snap",
     "scroll_offset",
+    "scroll_offset_x",
     "cols",
     "rows",
     "item_count",
@@ -79,8 +80,9 @@ pub(crate) const WRAP: [(&str, bool); 2] = [("word", true), ("none", false)];
 /// `true` for an ellipsis.
 pub(crate) const OVERFLOW: [(&str, bool); 2] = [("clip", false), ("ellipsis", true)];
 
-/// `true` for horizontal.
-const ORIENTATION: [(&str, bool); 2] = [("horizontal", true), ("vertical", false)];
+/// 0.6.11: `"both"` scrolls on both axes, with the spec scrollbar.
+const ORIENTATION: [(&str, engine_core::ScrollOrientation); 3] =
+    engine_core::ScrollOrientation::ALL;
 
 /// A parsed, validated write to one node.
 pub(crate) struct KindChange {
@@ -368,7 +370,7 @@ fn applies(name: &str) -> (&'static str, fn(&NodeKind) -> bool) {
         "svg" | "svg_size" | "svg_color" | "svg_images" | "svg_time" | "svg_duration" => {
             ("an svg", svg)
         }
-        "orientation" | "scroll_snap" => ("a scroll_view", scroll_view),
+        "orientation" | "scroll_snap" | "scroll_offset_x" => ("a scroll_view", scroll_view),
         "scroll_offset" => ("a scroll_view or virtual_list", scroller),
         "item_count" | "item_extent" => ("a virtual_list", virtual_list),
         _ => ("a terminal", terminal),
@@ -889,10 +891,24 @@ fn parse_known(
             })
         }
         "orientation" => {
-            let horizontal = keyword(&ORIENTATION, value, name)?;
+            let orientation = keyword(&ORIENTATION, value, name)?;
             change(move |node| {
                 if let NodeKind::ScrollView(state) = &mut node.kind {
-                    state.horizontal = horizontal;
+                    state.set_orientation(orientation);
+                }
+            })
+        }
+        // 0.6.11: a `both` view's horizontal offset (0 and never moving on a one-axis view).
+        "scroll_offset_x" => {
+            not_bool(value, name, "a non-negative number")?;
+            let offset: f64 = value
+                .extract()
+                .ok()
+                .filter(|v: &f64| *v >= 0.0 && v.is_finite())
+                .ok_or_else(|| invalid(name, "a non-negative number"))?;
+            change(move |node| {
+                if let NodeKind::ScrollView(state) = &mut node.kind {
+                    state.scroll_x.set_now(offset);
                 }
             })
         }
@@ -1025,7 +1041,7 @@ pub(crate) fn read_kind_prop(
     node: &engine_core::Node,
     py: Python<'_>,
 ) -> Option<PyResult<Py<PyAny>>> {
-    if !KIND_PROPS.contains(&name) || name == "scroll_offset" {
+    if !KIND_PROPS.contains(&name) || name == "scroll_offset" || name == "scroll_offset_x" {
         return None;
     }
     // M100: a terminal's text is its visible grid -- read-only, one line
@@ -1172,7 +1188,9 @@ fn read_known(name: &str, kind: &NodeKind, py: Python<'_>) -> PyResult<Py<PyAny>
             }),
             py,
         ),
-        ("orientation", NodeKind::ScrollView(s)) => to_py(name_of(&ORIENTATION, &s.horizontal), py),
+        ("orientation", NodeKind::ScrollView(s)) => {
+            to_py(name_of(&ORIENTATION, &s.orientation()), py)
+        }
         ("item_count", NodeKind::VirtualList(s)) => to_py(s.item_count, py),
         ("item_extent", NodeKind::VirtualList(s)) => match s.item_extent {
             engine_core::ItemExtent::Fixed(extent) => to_py(extent, py),

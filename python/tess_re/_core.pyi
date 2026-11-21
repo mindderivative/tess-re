@@ -74,10 +74,11 @@ class Event:
     button's press and release make a `click`."""
     old_value: Any | None
     """`"change"`: a text input's text immediately before the edit.
-    `"scroll"` (0.4.2): the scroll view's offset before the change."""
+    `"scroll"` (0.4.2): the scroll view's offset before the change -- its
+    own axis' or, for `orientation="both"` (0.6.11), the vertical one."""
     new_value: Any | None
     """`"change"`: the text immediately after the edit. `"scroll"`: the
-    offset after it."""
+    offset after it (the main axis', see `old_value`)."""
 
     # M94: the M93 target-API fields. Every field but `type` is `None`
     # unless the event has something to say about it.
@@ -91,7 +92,8 @@ class Event:
     ancestor it bubbled to."""
     x: float | None
     """Pointer and wheel events: the pointer's position, local to
-    `current`."""
+    `current`. `"scroll"` (0.6.11): how far the content is scrolled right
+    (`x`) and down (`y`) after the change, on either axis."""
     y: float | None
     window_x: float | None
     """Pointer and wheel events: the pointer's position in the window."""
@@ -245,7 +247,7 @@ class Node:
         `fill`, `stroke_color`, `stroke_width`, `opacity`, `blur`, `backdrop_blur`,
         `corner_radius` (a number or a 4-tuple), `shadows`, the transform
         parts `translate_x`/`translate_y`/`scale`/`rotation_deg` (about `transform_origin`), a
-        scroll view's `scroll_offset`, a path's `data`/`trim_start`/
+        scroll view's `scroll_offset` and (0.6.11) `scroll_offset_x`, a path's `data`/`trim_start`/
         `trim_end`, an svg's `svg_time` (0.5.10), and (0.5.6) the layout properties that hold a length:
         `width`, `height`, `min_*`, `max_*`, `x`, `y`, `padding*`, `margin*`,
         `gap`/`row_gap`/`column_gap` and `flex_basis`, to a number of pixels

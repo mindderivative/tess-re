@@ -607,6 +607,13 @@ impl Tree {
             let NodeKind::ScrollView(state) = &self.nodes[view].kind else {
                 unreachable!("checked by the filter above")
             };
+            // 0.6.11: a `both` view's horizontal range; a one-axis view has none.
+            let max_x = if state.both {
+                self.max_scroll_axis(view, crate::scrollbar::ScrollAxis::Horizontal)
+                    .unwrap_or(0.0)
+            } else {
+                0.0
+            };
             // Real, honest re-clamp on every real layout pass, the
             // identical "content may have shrunk since last frame"
             // discipline pyCopper's own `_clamped_scroll` already
@@ -615,12 +622,60 @@ impl Tree {
             // real scrollable extent must not leave a stale offset
             // pointing past the new real end.
             let clamped = state.scroll.current.clamp(0.0, max_scroll);
+            let clamped_x = state.scroll_x.current.clamp(0.0, max_x);
             // Only when it moved: a write through `&mut self.nodes[view]` counts
             // the scroll view as touched, which re-walks it and its content.
-            if state.scroll.current != clamped
+            if (state.scroll.current != clamped || state.scroll_x.current != clamped_x)
                 && let NodeKind::ScrollView(state) = &mut self.nodes[view].kind
             {
                 state.scroll.current = clamped;
+                state.scroll_x.current = clamped_x;
+            }
+
+            // 0.6.11 (UXREQ-001): the gutter. An axis of a `both` view that
+            // overflows, as measured by the last layout, has its thumb at the
+            // end edge, and what is laid out in the view stays clear of it:
+            // `Overflow::Scroll` on that side makes taffy reserve
+            // `scrollbar_width` (the gutter) there, so a content box sized by
+            // percent or inset ends before the thumb, as it would with end padding.
+            // A box with a size of its own is the author's: it keeps it.
+            let NodeKind::ScrollView(state) = &self.nodes[view].kind else {
+                unreachable!("checked by the filter above")
+            };
+            let (overflow, scrollbar_width) = match (state.both, self.scroll_view_boxes(view)) {
+                (true, Some((size, content))) => {
+                    let over = state.overflows(size, content);
+                    let side = |on: bool| {
+                        if on {
+                            Overflow::Scroll
+                        } else {
+                            Overflow::Visible
+                        }
+                    };
+                    (
+                        TaffyPoint {
+                            x: side(over[crate::scrollbar::ScrollAxis::Horizontal.index()]),
+                            y: side(over[crate::scrollbar::ScrollAxis::Vertical.index()]),
+                        },
+                        state.metrics().gutter as f32,
+                    )
+                }
+                _ => (
+                    TaffyPoint {
+                        x: Overflow::Visible,
+                        y: Overflow::Visible,
+                    },
+                    0.0,
+                ),
+            };
+            let mut view_style = self.nodes[view].layout_style.clone();
+            if view_style.overflow != overflow
+                || (view_style.scrollbar_width - scrollbar_width).abs() > f32::EPSILON
+            {
+                view_style.overflow = overflow;
+                view_style.scrollbar_width = scrollbar_width;
+                self.set_layout_style(view, view_style);
+                changed = true;
             }
 
             // 0.5.4 (#105): the offset is no longer baked into the child's
@@ -757,12 +812,8 @@ impl Tree {
         };
         let (mut dx, mut dy) = match self.nodes.get(parent).map(|n| &n.kind) {
             Some(NodeKind::ScrollView(state)) => {
-                let offset = state.scroll.current;
-                if state.horizontal {
-                    (-offset, 0.0)
-                } else {
-                    (0.0, -offset)
-                }
+                let (x, y) = state.offsets();
+                (-x, -y)
             }
             Some(NodeKind::VirtualList(state)) => (0.0, -state.scroll_offset.current),
             _ => (0.0, 0.0),

@@ -1876,21 +1876,22 @@ fn paint_svg_shape(
 }
 
 /// M38 Phase 6 (§5, §7, §11.7): a real `ScrollView`'s own real
-/// scrollbar thumb -- paints only when there is genuinely something to
-/// scroll (`content_extent > viewport_extent`, the identical real
+/// scrollbar thumbs -- one for each axis with something to scroll
+/// (`content_extent > viewport_extent`, the identical real
 /// `self.scrollable` gate pyCopper's own `paint_foreground` already
-/// uses), reading `ScrollViewState::thumb_geometry`'s own real,
-/// shared geometry (the identical values `Tree::grabs_scroll_view_
-/// thumb`/`update_scroll_view_thumb_drag` already compute, so paint
-/// and hit-testing/dragging can never drift). Painted in the view's
-/// `scrollbar_fill`, or `DEFAULT_SCROLLBAR_FILL` when it sets none.
-/// Uncached (no
+/// uses; 0.6.11: a `both` view has up to two), reading
+/// `ScrollViewState::thumbs`' own real, shared geometry (the identical
+/// values `Tree::grabs_scroll_view_thumb`/`update_scroll_view_thumb_drag`
+/// and the damage walk compute, so paint and hit-testing/dragging can
+/// never drift). Painted in the view's `scrollbar_fill`, or the default
+/// colour when it sets none, at the thumb's opacity (`thumb_opacity`: rest,
+/// hover or drag, in between while it fades). Uncached (no
 /// `GeometryCache` entry): the thumb's own position changes on every
 /// real scroll tick, so a per-frame cache would rarely hit anyway,
-/// and it's a genuinely small shape (`SCROLLBAR_THICKNESS` = 4px
-/// wide) -- not worth the bookkeeping this catalog's own established
-/// "cache only where it measurably helps" discipline (M34 Phase 1's
-/// own real benchmark) already requires justifying.
+/// and it's a genuinely small shape -- not worth the bookkeeping this
+/// catalog's own established "cache only where it measurably helps"
+/// discipline (M34 Phase 1's own real benchmark) already requires
+/// justifying.
 fn paint_scroll_view_thumb(
     tree: &Tree,
     view: NodeId,
@@ -1907,37 +1908,34 @@ fn paint_scroll_view_thumb(
         return;
     };
     let child_layout = tree.layout(child);
-    let (viewport_extent, content_extent) = if state.horizontal {
-        (viewport_w, f64::from(child_layout.size.width))
+    let content = (
+        f64::from(child_layout.size.width),
+        f64::from(child_layout.size.height),
+    );
+    let thumbs = state.thumbs((viewport_w, viewport_h), content, state.offsets());
+    // The spec's thumb is the role colour, opaque, shown at its opacity; the
+    // one-axis view's default carries its own alpha.
+    let base = state.scrollbar_fill.unwrap_or(if state.both {
+        DEFAULT_THUMB_COLOR
     } else {
-        (viewport_h, f64::from(child_layout.size.height))
-    };
-    if content_extent <= viewport_extent {
-        return;
+        DEFAULT_SCROLLBAR_FILL
+    });
+    for thumb in thumbs.iter().flatten() {
+        let opacity = state.thumb_opacity(thumb.axis);
+        let color = if opacity == 1.0 {
+            base
+        } else {
+            base.multiply_alpha(opacity as f32)
+        };
+        let rect = thumb.thumb;
+        // A `both` view's thumb is a pill (radius `full`); the one-axis view's keeps its 2.
+        let radius = if state.both {
+            rect.width().min(rect.height()) / 2.0
+        } else {
+            SCROLLBAR_THUMB_RADIUS
+        };
+        fill_scrollbar_thumb(rect, color, radius, composed, scene);
     }
-    let (track, thumb, along) = state.thumb_geometry(viewport_extent, content_extent);
-    if track <= 0.0 {
-        return;
-    }
-
-    let thickness = state.scrollbar_width;
-    let (x, y, w, h) = if state.horizontal {
-        (
-            along,
-            viewport_h - thickness - SCROLLBAR_MARGIN,
-            thumb,
-            thickness,
-        )
-    } else {
-        (
-            viewport_w - thickness - SCROLLBAR_MARGIN,
-            along,
-            thickness,
-            thumb,
-        )
-    };
-    let color = state.scrollbar_fill.unwrap_or(DEFAULT_SCROLLBAR_FILL);
-    fill_scrollbar_thumb(x, y, w, h, color, composed, scene);
 }
 
 /// M47 (§5, §7, §11.7): a real `VirtualList`'s own real scrollbar
@@ -1964,13 +1962,19 @@ fn paint_virtual_list_thumb(
     if track <= 0.0 {
         return;
     }
-    let (x, y, w, h) = (
+    let thumb = peniko::kurbo::Rect::new(
         viewport_w - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN,
         along,
-        SCROLLBAR_THICKNESS,
-        thumb,
+        viewport_w - SCROLLBAR_MARGIN,
+        along + thumb,
     );
-    fill_scrollbar_thumb(x, y, w, h, DEFAULT_SCROLLBAR_FILL, composed, scene);
+    fill_scrollbar_thumb(
+        thumb,
+        DEFAULT_SCROLLBAR_FILL,
+        SCROLLBAR_THUMB_RADIUS,
+        composed,
+        scene,
+    );
 }
 
 /// M47 (§5, §7, §11.7): the real geometry-to-pixels fill both `paint_
@@ -1983,18 +1987,20 @@ fn paint_virtual_list_thumb(
 /// MD3's `outline_variant` at 55%.
 const DEFAULT_SCROLLBAR_FILL: Color = Color::from_rgba8(0xCA, 0xC4, 0xD0, 0x8C);
 
+/// 0.6.11: the thumb colour of a `both` view when it sets no `scrollbar_fill`:
+/// the role `on_surface_variant`, opaque; its opacity is the thumb's.
+const DEFAULT_THUMB_COLOR: Color = Color::from_rgba8(0xCA, 0xC4, 0xD0, 0xFF);
+
 fn fill_scrollbar_thumb(
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
+    rect: peniko::kurbo::Rect,
     color: Color,
+    radius: f64,
     composed: Affine,
     scene: &mut Scene,
 ) {
     scene.set_transform(composed);
     scene.set_paint(color);
-    scene.fill_path(&RoundedRect::new(x, y, x + w, y + h, SCROLLBAR_THUMB_RADIUS).to_path(0.1));
+    scene.fill_path(&RoundedRect::new(rect.x0, rect.y0, rect.x1, rect.y1, radius).to_path(0.1));
 }
 
 /// M38 Phase 6 (§5, §7, §11.7): pure-paint scrollbar tokens -- ported

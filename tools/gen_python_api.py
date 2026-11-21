@@ -155,7 +155,8 @@ NODE_PROPERTIES = [
         ("`draw`", "`draw(painter)`", "A canvas's drawing callback."),
     ]),
     ("Scrolling, lists and terminals", [
-        ("`orientation`, `scroll_offset`, `scrollbar_fill`, `scrollbar_width`", "—", "A scroll view's direction, position and bar."),
+        ("`orientation`, `scroll_offset`, `scroll_offset_x`, `scrollbar_fill`, `scrollbar_width`", "—", "A scroll view's direction (`\"vertical\"`, `\"horizontal\"` or, 0.6.11, `\"both\"`), positions and bar."),
+        ("`scrollbar_hit_width`, `scrollbar_margin`, `scrollbar_min_length`, `scrollbar_gutter`, `scrollbar_corner`, `scrollbar_opacity`, `scrollbar_opacity_hover`, `scrollbar_opacity_drag`", "number or `None`", "The rest of a scroll view's scrollbar (0.6.11); the defaults of a `\"both\"` view are the Tesserae UX spec's."),
         ("`item_count`, `item_extent`, `size_hint`, `materialize`", "—", "A virtual list's rows."),
         ("`cols`, `rows`, `shell`, `scrollback_lines`, `palette`", "—", "A terminal's grid, process and colors."),
     ]),

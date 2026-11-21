@@ -160,7 +160,7 @@ impl Tree {
 
     /// `take_scroll_changes` for virtual lists: `(list, old, new)` for each
     /// whose offset differs from the one last reported.
-    pub(super) fn take_virtual_list_scroll_changes(&mut self) -> Vec<(NodeId, f64, f64)> {
+    pub(super) fn take_virtual_list_scroll_changes(&mut self) -> Vec<ScrollChange> {
         if self.virtual_list_count == 0 {
             return Vec::new();
         }
@@ -176,7 +176,13 @@ impl Tree {
         let mut changes = Vec::with_capacity(moved.len());
         for id in moved {
             if let NodeKind::VirtualList(state) = &mut self.nodes[id].kind {
-                changes.push((id, state.reported, state.scroll_offset.current));
+                changes.push(ScrollChange {
+                    view: id,
+                    old: state.reported,
+                    new: state.scroll_offset.current,
+                    x: 0.0,
+                    y: state.scroll_offset.current,
+                });
                 state.reported = state.scroll_offset.current;
             }
         }
@@ -488,9 +494,27 @@ mod tests {
         let (mut tree, list) = fixed();
         assert!(tree.take_scroll_changes().is_empty());
         tree.scroll_by_key(list, Key::ArrowDown);
-        assert_eq!(tree.take_scroll_changes(), vec![(list, 0.0, 40.0)]);
+        assert_eq!(
+            tree.take_scroll_changes(),
+            vec![ScrollChange {
+                view: list,
+                old: 0.0,
+                new: 40.0,
+                x: 0.0,
+                y: 40.0
+            }]
+        );
         assert!(tree.take_scroll_changes().is_empty());
         tree.scroll_virtual_list_by(list, 10.0);
-        assert_eq!(tree.take_scroll_changes(), vec![(list, 40.0, 50.0)]);
+        assert_eq!(
+            tree.take_scroll_changes(),
+            vec![ScrollChange {
+                view: list,
+                old: 40.0,
+                new: 50.0,
+                x: 0.0,
+                y: 50.0
+            }]
+        );
     }
 }

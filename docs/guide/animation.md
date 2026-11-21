@@ -19,7 +19,7 @@ card.animate("translate_y", -24, 300, easing=(0.3, 0.0, 0.8, 0.15),
 | `corner_radius` | a number, or a 4-tuple of corners |
 | `shadows` | a list of shadows; lists of different lengths fade the extra shadows in or out |
 | `translate_x`, `translate_y`, `scale`, `rotation_deg` | a number — each part animates on its own |
-| `scroll_offset` | a scroll view's offset, in pixels |
+| `scroll_offset`, `scroll_offset_x` | a scroll view's offset, in pixels; `scroll_offset_x` is a `"both"` view's horizontal one (0.6.11) |
 | `data`, `trim_start`, `trim_end` | a path's shape and stroke trim |
 | `svg_time` | an svg's seconds into its SMIL animation (0.5.10) |
 

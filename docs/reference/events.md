@@ -37,7 +37,7 @@ listing the valid ones.
 | `input` | Committed text arrives for the focused text field | yes |
 | `focus`, `unfocus` | A node gains or loses keyboard focus | yes |
 | `change` | A text field's text was changed by the user | no |
-| `scroll` | A scroll view's or (0.6.11) virtual list's offset changed, by any cause: wheel, keys, `scroll_into_view`, focus, `set`, or an animation, once a frame (0.4.2) | no |
+| `scroll` | A scroll view's or (0.6.11) virtual list's offset changed, by any cause: wheel, keys, `scroll_into_view`, focus, `set`, a thumb drag or page, or an animation, once a frame (0.4.2); on either axis of a `"both"` view, with `x` and `y` the offsets after it (0.6.11) | no |
 | `animation_end` | An animation on the node ended: it ran to its end (`finished` is `True`), or it was replaced by another animation of the same property, or the property was set or `stop_animation`ped (`finished` is `False`); `property` names it. Delivered in the frame after, and after any `on_complete` callback (0.5.6) | no |
 | `submit` | Enter in a single-line text input (0.5.6) | no |
 | `compose_start`, `compose_update`, `compose_end` | An IME composition began, changed or ended in a text input; `text` is the preedit text and `preedit_cursor` the IME's cursor range. The commit follows as `input` and `change` (0.5.6) | no |
@@ -200,7 +200,7 @@ hardware; the Windows and macOS code is compiled for those targets and untested.
 | `type` | every event |
 | `target` | every node event — where it happened |
 | `current` | node listener events — the node whose listener is running |
-| `x`, `y` | pointer and wheel events — local to `current` |
+| `x`, `y` | pointer and wheel events — local to `current`; `scroll` — how far the content is scrolled right and down after the change (0.6.11) |
 | `window_x`, `window_y` | pointer and wheel events — in the window |
 | `button` | pointer events and pointer clicks — `"primary"`, `"secondary"`, `"middle"`, or the mouse's side buttons `"back"` and `"forward"` (0.4.1; they make no `click`) |
 | `delta_x`, `delta_y` | `wheel` — pixels, positive scrolling right and down; with Shift held, a wheel with no horizontal part arrives as `delta_x` (0.4.3) |
@@ -216,7 +216,7 @@ hardware; the Windows and macOS code is compiled for those targets and untested.
 | `key`, `repeat` | `key_down`, `key_up` |
 | `shift`, `ctrl`, `alt`, `meta` | pointer, wheel, key, and click events |
 | `text` | `input` |
-| `old_value`, `new_value` | `change` — the text; `scroll` — the offset; `layout` — the `(width, height)` size before (`None` the first time) and after |
+| `old_value`, `new_value` | `change` — the text; `scroll` — the offset of the view's main axis, which is its own on a `"vertical"` or `"horizontal"` view and the vertical one on a `"both"` view; `layout` — the `(width, height)` size before (`None` the first time) and after |
 | `action`, `value` | `a11y_action` |
 | `related_target` | `focus`, `unfocus` — the node on the other side of the move |
 | `focus_visible` | `focus` — whether focus arrived by keyboard |

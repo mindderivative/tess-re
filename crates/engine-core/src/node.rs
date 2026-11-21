@@ -412,15 +412,24 @@ impl SnapAlign {
 }
 
 pub struct ScrollViewState {
+    /// The offset along the view's main axis: its own axis for `vertical` and
+    /// `horizontal`, the vertical offset for `both`.
     pub scroll: Animated<f64>,
+    /// 0.6.11 (UXREQ-001): the horizontal offset of a `both` view
+    /// (`scroll_offset_x`). Always 0 on a one-axis view, where layout clamps it
+    /// to a range of nothing.
+    pub scroll_x: Animated<f64>,
     /// 0.5.6 (#166): when set, the view settles on the item nearest the
     /// alignment once the user stops scrolling it. `None` is free scrolling.
     pub snap: Option<SnapAlign>,
     /// `false` (the default) scrolls vertically; `true` scrolls
-    /// horizontally. Never both at once -- the identical real
-    /// single-axis scope pyCopper's own `ScrollViewElement.axis`
-    /// already settled on, not a limitation this phase introduces.
+    /// horizontally. A `both` view has this `false` and `both` set: the main
+    /// axis (`scroll`) is vertical, everything that knows only one axis
+    /// treats it as vertical. See `ScrollOrientation`.
     pub horizontal: bool,
+    /// 0.6.11 (UXREQ-001): the view scrolls on both axes, with the spec
+    /// scrollbar (see `scrollbar.rs`).
+    pub both: bool,
     /// M38 Phase 6 (§5, §7, §11.7): `Some((pointer_coord, scroll_at_
     /// start))`, set the instant a real thumb drag begins and cleared
     /// when it ends -- `Tree::update_scroll_view_thumb_drag`'s own
@@ -435,26 +444,40 @@ pub struct ScrollViewState {
     /// to the kind, `Tree.dragging` alone only ever names *which* node
     /// is being dragged.
     pub thumb_drag_anchor: Option<(f64, f64)>,
+    /// 0.6.11: which thumb of a `both` view the drag in progress holds.
+    pub thumb_drag_axis: crate::scrollbar::ScrollAxis,
     /// M95: the scrollbar thumb's color; `None` paints the default.
     pub scrollbar_fill: Option<Color>,
-    /// M95: the scrollbar thumb's thickness -- painted and hit-tested.
-    pub scrollbar_width: f64,
+    /// 0.6.11: the scrollbar's measures and opacities the user set; the rest
+    /// follow the orientation (`ScrollViewState::metrics`).
+    pub scrollbar: crate::scrollbar::ScrollbarOverrides,
+    /// 0.6.11: how emphasised each thumb is, `[vertical, horizontal]`: 0 at
+    /// rest, 1 with the pointer over its hit area, 2 while dragged. Animated
+    /// over `scrollbar::FADE`; the thumb's opacity is read off it.
+    pub level: [Animated<f64>; 2],
     /// 0.4.2 M12 (issue #24): the offset last reported as a `scroll`
     /// event. `Tree::take_scroll_changes` compares `scroll` with it, so a
     /// change is noticed whatever made it.
     pub reported: f64,
+    /// 0.6.11: the same for `scroll_x`.
+    pub reported_x: f64,
 }
 
 impl ScrollViewState {
     pub fn new(horizontal: bool) -> Self {
         Self {
             scroll: Animated::new(0.0),
+            scroll_x: Animated::new(0.0),
             snap: None,
             horizontal,
+            both: false,
             thumb_drag_anchor: None,
+            thumb_drag_axis: crate::scrollbar::ScrollAxis::Vertical,
             scrollbar_fill: None,
-            scrollbar_width: SCROLLBAR_THICKNESS,
+            scrollbar: crate::scrollbar::ScrollbarOverrides::default(),
+            level: [Animated::new(0.0), Animated::new(0.0)],
             reported: 0.0,
+            reported_x: 0.0,
         }
     }
 
@@ -476,31 +499,21 @@ impl ScrollViewState {
     }
 
     /// `thumb_geometry` as it would be at scroll offset `offset` (0.5.4, #126:
-    /// where the thumb was, for a frame that moved it).
+    /// where the thumb was, for a frame that moved it). The lane is the whole
+    /// extent less the margins; `thumbs` is what shortens it for the corner.
     pub fn thumb_geometry_at(
         &self,
         viewport_extent: f64,
         content_extent: f64,
         offset: f64,
     ) -> (f64, f64, f64) {
-        let track = viewport_extent - SCROLLBAR_MARGIN * 2.0;
-        if track <= 0.0 {
-            return (0.0, 0.0, 0.0);
-        }
-        let max_scroll = (content_extent - viewport_extent).max(0.0);
-        let thumb = if content_extent > 0.0 {
-            (track * (viewport_extent / content_extent)).max(SCROLLBAR_MIN_LENGTH)
-        } else {
-            track
-        };
-        let thumb = thumb.min(track);
-        let progress = if max_scroll > 0.0 {
-            offset / max_scroll
-        } else {
-            0.0
-        };
-        let along = SCROLLBAR_MARGIN + (track - thumb) * progress;
-        (track, thumb, along)
+        crate::scrollbar::axis_geometry(
+            &self.metrics(),
+            viewport_extent,
+            content_extent,
+            offset,
+            0.0,
+        )
     }
 }
 

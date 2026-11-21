@@ -231,9 +231,33 @@ Plus the colors on [Paint, Paths, and Animation](paint.md#text-inputs-scroll-vie
 
 | Property | Value |
 | --- | --- |
-| `orientation` | `"vertical"` or `"horizontal"`. A view scrolls along one axis; `scroll_offset` on a vertical view is its vertical offset, and a sideways strip needs `orientation="horizontal"` (chosen on the scroll view, not by its content's `flex_direction`) |
+| `orientation` | `"vertical"` (default), `"horizontal"` or (0.6.11) `"both"`. A `"vertical"` or `"horizontal"` view scrolls along one axis; `scroll_offset` on a vertical view is its vertical offset, and a sideways strip needs `orientation="horizontal"` (chosen on the scroll view, not by its content's `flex_direction`). A `"both"` view scrolls along both and has the scrollbar of the Tesserae UX spec "Scrollbar and Scroll Container" (see [Scrollbar](#scrollbar-0611)); its `scroll_offset` stays the vertical offset |
 | `scroll_snap` | (0.5.6) `"none"` (default), `"start"`, `"center"` or `"end"`: when the user stops scrolling, the view settles on the item nearest that alignment. See [Scrolling](../guide/nodes-and-layout.md#scrolling) |
-| `scroll_offset` | Pixels scrolled; on a scroll view or (0.5.6) a virtual list; any other node raises `ValueError` (animatable, so a carousel can ease to a snap point). `set` and `animate` clamp it to the view's range at once — past the end reads back as the end (0.4.3); an offset given to `create`, before the content is attached, is clamped at the first layout |
+| `scroll_offset` | Pixels scrolled; on a scroll view or (0.5.6) a virtual list; any other node raises `ValueError` (animatable, so a carousel can ease to a snap point). `set` and `animate` clamp it to the view's range at once — past the end reads back as the end (0.4.3); an offset given to `create`, before the content is attached, is clamped at the first layout. On a `"both"` view it is the vertical offset |
+| `scroll_offset_x` | (0.6.11) Pixels scrolled to the right, on a scroll view; settable, readable and animatable like `scroll_offset`, and clamped the same way. Only a `"both"` view has a horizontal range: on a `"vertical"` or `"horizontal"` view it is always `0` (a horizontal view's offset is `scroll_offset`) |
+
+### Scrollbar (0.6.11)
+
+The thumb of every scroll view is the existing `scrollbar_fill` and `scrollbar_width`, plus the properties below. A
+`"both"` view takes the numbers of the Tesserae UX note "Scrollbar and Scroll Container" as its defaults; a
+`"vertical"` or `"horizontal"` view keeps the scrollbar it had before (the default of its column), so nothing changes for
+it unless you set a property. Each takes a number, or `None` for the default, and reads back the value in force.
+
+| Property | Default, `"both"` | Default, one axis | Meaning |
+| --- | --- | --- | --- |
+| `scrollbar_fill` | the role `on_surface_variant`, `#CAC4D0`, opaque | `#CAC4D0` at 55% | The thumb's colour; its own alpha is multiplied by the opacity below |
+| `scrollbar_width` | 8 | 4 | The thumb's thickness, across its axis (a `"both"` thumb is a pill) |
+| `scrollbar_hit_width` | 12 | the thickness plus 12 | The pointer-sensitive strip across the axis, centred on the thumb: a press in it grabs the thumb, a press along the lane outside the thumb pages |
+| `scrollbar_margin` | 2 | 2 | Between the thumb and the view's edge, and the thumb's end and the lane's end |
+| `scrollbar_min_length` | 32 | 32 | The shortest the thumb gets, along its axis |
+| `scrollbar_gutter` | 12 | 0 | What an overflowing axis reserves at its end edge ([how](../guide/nodes-and-layout.md#two-axes-0611)); only a `"both"` view reserves any |
+| `scrollbar_corner` | 12 | 0 | How far each lane stops short of the end when the other axis overflows too, so the thumbs never meet |
+| `scrollbar_opacity` | 0.60 | 1.0 | The thumb's opacity at rest |
+| `scrollbar_opacity_hover` | 0.80 | = rest | …with the pointer in the thumb's hit area |
+| `scrollbar_opacity_drag` | 1.0 | = rest | …while the thumb is dragged |
+
+Setting `scrollbar_opacity` (or the thickness, minimum length or margin) on a one-axis view works as it does on a
+`"both"` one; the hover and drag opacity, the lane click, the corner and the gutter are the `"both"` view's.
 
 ## Virtual list
 
