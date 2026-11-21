@@ -436,3 +436,20 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `tooltip` and `scrollbar`. One behaviour change: a node with `role="alert"` and no `live` is now an assertive live
   region (AccessKit gave it no politeness; a reader may now interrupt for it), and `role="status"` is polite; set `live`
   to override. Nothing else to migrate. See [Accessibility](guide/accessibility.md#roles).
+- **`Window(first_present=...)` and `window.ready()` (P5, new, opt-in).** `first_present` is `"immediate"` (the default,
+  as before), `"on_ready"` (the first frame is presented only after the app calls `window.ready()`) or a number of
+  milliseconds (`"on_ready"` with a deadline, counted from when the OS window was made). While it is held the engine
+  lays out and runs timers but draws and commits nothing, so the user never sees an unfinished first frame, and on
+  macOS and Windows the OS's default background cannot flash the wrong light or dark (UX spec AC-TH-7, AC-TH-8). It is
+  given to the constructor only; `set(first_present=...)` raises `ValueError`. `ready()` is a no-op on a window that
+  presents immediately and after the first call. `LayerWindow` and `PopupWindow` take `first_present` but only
+  `"immediate"` (anything else raises `ValueError`, "not supported on LayerWindow yet"). Verified on Wayland (sway) only;
+  the X11, macOS and Windows paths (window created hidden, shown after the first present) are written but unverified. See
+  [First present and background](reference/window.md#first-present-and-background-0611).
+- **`Window(background=...)` / `set(background=...)` (P5, new; changes what unpainted pixels look like).** The colour every
+  frame is cleared to before the scene paints, an `(r, g, b, a)` tuple, or `None`, the default. **`None` is now the window
+  scheme's `surface` role** (`#FEF7FF` light, `#141218` dark) for an ordinary window: before, pixels no node painted
+  were cleared to transparent, which an opaque surface shows as black, so an app that never painted a root background had a
+  black window and now has the scheme's surface. A see-through window (`transparent=True`), a `LayerWindow` and a
+  `PopupWindow` still clear to nothing unless `background` is given. An app that paints its own root background sees no
+  change; to keep the old black, `window.set(background=(0, 0, 0, 255))`.

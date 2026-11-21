@@ -345,6 +345,11 @@ pub struct WindowOptions {
     pub resizable: bool,
     /// 0.5.6 (#159): keep the window off the taskbar (Windows only).
     pub skip_taskbar: bool,
+    /// 0.6.11 (P5): leave the window hidden after it is made; the host shows it
+    /// (`Window::set_visible(true)`) once its first frame is presented, so the OS never shows
+    /// its own background first (X11, macOS, Windows). A no-op on Wayland, where a surface is
+    /// mapped by the first buffer it commits and `winit`'s `set_visible` does nothing.
+    pub start_hidden: bool,
 }
 
 impl Default for WindowOptions {
@@ -362,6 +367,7 @@ impl Default for WindowOptions {
             always_on_top: false,
             resizable: true,
             skip_taskbar: false,
+            start_hidden: false,
         }
     }
 }
@@ -1132,7 +1138,11 @@ where
                     // Not every platform can; the property reports it on `set`.
                     let _ = window.set_cursor_hittest(false);
                 }
-                window.set_visible(true);
+                // 0.6.11 (P5): a window whose first present is held stays hidden; the host shows
+                // it after that present.
+                if !options.start_hidden {
+                    window.set_visible(true);
+                }
                 window.request_redraw();
                 let id = window.id();
                 let window = Arc::new(window);

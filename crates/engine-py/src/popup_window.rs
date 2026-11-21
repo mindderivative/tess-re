@@ -132,7 +132,8 @@ impl PyPopupWindow {
         grab = true,
         geometry = None,
         input_region = None,
-        scheme = None
+        scheme = None,
+        first_present = None
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -147,7 +148,9 @@ impl PyPopupWindow {
         geometry: Option<&Bound<'_, PyAny>>,
         input_region: Option<&Bound<'_, PyAny>>,
         scheme: Option<&Bound<'_, PyAny>>,
+        first_present: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
+        crate::first_present::Mode::require_immediate(first_present, "PopupWindow")?;
         match availability() {
             Availability::Unsupported(why) => return Err(UnsupportedPlatform::new_err(why)),
             Availability::Supported | Availability::Headless => {}

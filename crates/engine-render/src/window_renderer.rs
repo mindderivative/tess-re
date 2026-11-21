@@ -236,6 +236,14 @@ impl WindowRenderer {
         self.tracker.set_scroll_blit_min_nodes(nodes);
     }
 
+    /// 0.6.11 (P5): the colour every frame is cleared to before the scene paints over it
+    /// (default transparent). A change redraws the next frame in full.
+    pub fn set_backdrop(&mut self, color: Color) {
+        if self.frame_renderer.set_backdrop(color) {
+            self.tracker.reset();
+        }
+    }
+
     /// Draws text from the glyph cache (see `TextRenderer::set_glyph_cache`).
     pub fn set_glyph_cache(&mut self, on: bool) {
         if self.text.glyph_cache() != on {
