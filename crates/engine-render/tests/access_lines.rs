@@ -60,6 +60,7 @@ fn lines_of(tree: &Tree, id: NodeId, width: f32) -> Vec<engine_core::AccessLine>
         y: 0.0,
         max_width: width,
         color: Color::TRANSPARENT,
+        box_height: None,
     };
     TextRenderer::new().access_lines(id, state, at)
 }

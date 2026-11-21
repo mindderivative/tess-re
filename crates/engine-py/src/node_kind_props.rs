@@ -25,6 +25,7 @@ pub(crate) const KIND_PROPS: [&str; 40] = [
     "text_align",
     "font_style",
     "letter_spacing",
+    "vertical_align",
     "wrap",
     "max_lines",
     "overflow",
@@ -359,8 +360,9 @@ fn applies(name: &str) -> (&'static str, fn(&NodeKind) -> bool) {
     match name {
         "text" | "font_family" | "font_weight" => ("a text or text_input", text_like),
         "font_size" => ("a text, text_input, or terminal", sized_text),
-        "line_height" | "text_align" | "font_style" | "letter_spacing" | "max_lines" | "spans"
-        | "selectable" => ("a text", text),
+        "text_align" | "font_style" | "max_lines" | "spans" | "selectable" => ("a text", text),
+        // 0.6.11 (P3): a text input takes these too.
+        "line_height" | "letter_spacing" | "vertical_align" => ("a text or text_input", text_like),
         // #285: a text input takes `wrap` and `overflow` too.
         "wrap" | "overflow" => ("a text or text_input", text_like),
         "multiline" | "overwrite" | "tab_navigates" | "show_whitespace" | "syntax_spans"
@@ -485,10 +487,39 @@ fn parse_known(
             } else {
                 Some(positive(value, name)?)
             };
-            change(move |node| {
-                if let NodeKind::Text(state) = &mut node.kind {
-                    state.line_height = ratio;
+            change(move |node| match &mut node.kind {
+                NodeKind::Text(state) => state.line_height = ratio,
+                NodeKind::TextField(state) => state.line_height = ratio,
+                _ => {}
+            })
+        }
+        // 0.6.11 (P3): `"start"`, `"center"` or `"end"`; on a text input also `None`, which is
+        // `"center"` for a single-line input and `"start"` for a multiline one.
+        "vertical_align" => {
+            let expected = if matches!(kind, NodeKind::TextField(_)) {
+                "\"start\", \"center\", \"end\" or None"
+            } else {
+                "\"start\", \"center\" or \"end\""
+            };
+            let align = if value.is_none() && matches!(kind, NodeKind::TextField(_)) {
+                None
+            } else {
+                let word: String = value.extract().map_err(|_| invalid(name, expected))?;
+                Some(
+                    engine_core::VerticalAlign::parse(&word)
+                        .ok_or_else(|| invalid(name, expected))?,
+                )
+            };
+            change(move |node| match &mut node.kind {
+                NodeKind::Text(state) => {
+                    state.options.vertical_align =
+                        align.unwrap_or(engine_core::VerticalAlign::Start)
                 }
+                NodeKind::TextField(state) => {
+                    state.vertical_align = align;
+                    state.follow_stamp = 0;
+                }
+                _ => {}
             })
         }
         "text_align" => {
@@ -566,10 +597,13 @@ fn parse_known(
                 .ok()
                 .filter(|v: &f32| v.is_finite())
                 .ok_or_else(|| invalid(name, "a number"))?;
-            change(move |node| {
-                if let NodeKind::Text(state) = &mut node.kind {
-                    state.options.letter_spacing = spacing;
+            change(move |node| match &mut node.kind {
+                NodeKind::Text(state) => state.options.letter_spacing = spacing,
+                NodeKind::TextField(state) => {
+                    state.letter_spacing = spacing;
+                    state.follow_stamp = 0;
                 }
+                _ => {}
             })
         }
         "max_lines" => {
@@ -1076,6 +1110,10 @@ fn read_known(name: &str, kind: &NodeKind, py: Python<'_>) -> PyResult<Py<PyAny>
         ("font_size", NodeKind::TextField(s)) => to_py(f64::from(s.font_size), py),
         ("font_size", NodeKind::Terminal(s)) => to_py(f64::from(s.font_size), py),
         ("line_height", NodeKind::Text(s)) => to_py(s.line_height.map(f64::from), py),
+        ("line_height", NodeKind::TextField(s)) => to_py(s.line_height.map(f64::from), py),
+        ("vertical_align", NodeKind::Text(s)) => to_py(s.options.vertical_align.name(), py),
+        ("vertical_align", NodeKind::TextField(s)) => to_py(s.vertical_align.map(|a| a.name()), py),
+        ("letter_spacing", NodeKind::TextField(s)) => to_py(f64::from(s.letter_spacing), py),
         ("text_align", NodeKind::Text(s)) => to_py(name_of(&TEXT_ALIGN, &s.align), py),
         ("font_style", NodeKind::Text(s)) => to_py(name_of(&FONT_STYLE, &s.options.italic), py),
         ("letter_spacing", NodeKind::Text(s)) => to_py(f64::from(s.options.letter_spacing), py),

@@ -653,7 +653,8 @@ impl TextRenderer {
         if let Some(&size) = self.monospace_cell_cache.get(&key) {
             return size;
         }
-        let layout = self.build_field_layout("M", font_family, 400.0, font_size, f32::MAX);
+        let layout =
+            self.build_field_layout("M", font_family, 400.0, font_size, (0.0, None), f32::MAX);
         let size = (layout.width(), layout.height());
         self.monospace_cell_cache.insert(key, size);
         size
@@ -817,8 +818,14 @@ impl TextRenderer {
                     || cached.key.font_size != font_size
             });
         if stale {
-            let layout =
-                self.build_field_layout(content, font_family, font_weight, font_size, f32::MAX);
+            let layout = self.build_field_layout(
+                content,
+                font_family,
+                font_weight,
+                font_size,
+                (0.0, None),
+                f32::MAX,
+            );
             self.terminal_run_cache.insert(
                 cache_key,
                 CachedTerminalRun {
@@ -928,6 +935,11 @@ impl TextRenderer {
             state.line_height,
             &[],
             &state.options,
+        );
+        let at = aligned(
+            at,
+            state.options.vertical_align,
+            visible_height(layout, &state.options),
         );
 
         // M96: a cut without an ellipsis -- lines past `max_lines`, or a
@@ -1047,6 +1059,7 @@ impl TextRenderer {
         font_family: &str,
         font_weight: f32,
         font_size: f32,
+        (letter_spacing, line_height): (f32, Option<f32>),
         max_width: f32,
     ) -> parley::Layout<[u8; 4]> {
         let mut builder = self
@@ -1059,6 +1072,14 @@ impl TextRenderer {
         )));
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(font_weight)));
         builder.push_default(StyleProperty::FontSize(font_size));
+        if let Some(ratio) = line_height {
+            builder.push_default(StyleProperty::LineHeight(
+                parley::LineHeight::FontSizeRelative(ratio),
+            ));
+        }
+        if letter_spacing != 0.0 {
+            builder.push_default(StyleProperty::LetterSpacing(letter_spacing));
+        }
         let mut layout = builder.build(content);
         layout.break_all_lines(Some(max_width));
         layout.align(Alignment::Start, AlignmentOptions::default());
@@ -1114,8 +1135,10 @@ impl TextRenderer {
             &state.font_family,
             state.font_weight,
             state.font_size,
+            (state.letter_spacing, state.line_height),
             field_max_width(state, at.max_width),
         );
+        let at = aligned(at, state.effective_vertical_align(), layout.height());
         let display_offset =
             Cursor::from_point(&layout, (point.x - at.x) as f32, (point.y - at.y) as f32).index();
         let folded_offset = if glyphs.active() {
@@ -1136,6 +1159,18 @@ impl TextRenderer {
         at: TextPlacement,
         point: Point,
     ) -> usize {
+        let (layout, at) = self.static_layout(node_id, state, at);
+        Cursor::from_point(layout, (point.x - at.x) as f32, (point.y - at.y) as f32).index()
+    }
+
+    /// 0.5.4 (#131): the layout `draw` paints for a static text node, for the
+    /// point queries below.
+    fn static_layout(
+        &mut self,
+        node_id: NodeId,
+        state: &TextState,
+        at: TextPlacement,
+    ) -> (&parley::Layout<[u8; 4]>, TextPlacement) {
         let layout = self.shaped_layout(
             node_id,
             &state.content,
@@ -1148,29 +1183,12 @@ impl TextRenderer {
             &[],
             &state.options,
         );
-        Cursor::from_point(layout, (point.x - at.x) as f32, (point.y - at.y) as f32).index()
-    }
-
-    /// 0.5.4 (#131): the layout `draw` paints for a static text node, for the
-    /// point queries below.
-    fn static_layout(
-        &mut self,
-        node_id: NodeId,
-        state: &TextState,
-        at: &TextPlacement,
-    ) -> &parley::Layout<[u8; 4]> {
-        self.shaped_layout(
-            node_id,
-            &state.content,
-            &state.font_family,
-            state.font_weight,
-            state.font_size,
-            at.max_width,
-            state.align,
-            state.line_height,
-            &[],
-            &state.options,
-        )
+        let at = aligned(
+            at,
+            state.options.vertical_align,
+            visible_height(layout, &state.options),
+        );
+        (layout, at)
     }
 
     /// 0.5.4 (#131): the byte offset of the character *under* `point` (a local
@@ -1185,7 +1203,7 @@ impl TextRenderer {
         at: TextPlacement,
         point: Point,
     ) -> Option<usize> {
-        let layout = self.static_layout(node_id, state, &at);
+        let (layout, at) = self.static_layout(node_id, state, at);
         let (x, y) = ((point.x - at.x) as f32, (point.y - at.y) as f32);
         if x < 0.0 || y < 0.0 || y > layout.height() {
             return None;
@@ -1209,7 +1227,7 @@ impl TextRenderer {
     ) -> Vec<engine_core::AccessLine> {
         // The lines follow from the shaped layout and where it is placed; when
         // neither has changed since they were last made, they are the same.
-        let _ = self.static_layout(node_id, state, &at);
+        let (_, at) = self.static_layout(node_id, state, at);
         let built = self.layout_cache.get(&node_id).map_or(0, |c| c.built);
         let key = (built, at.x.to_bits(), at.y.to_bits());
         if let Some((cached, lines)) = self.access_cache.get(&node_id)
@@ -1229,7 +1247,7 @@ impl TextRenderer {
         state: &TextState,
         at: &TextPlacement,
     ) -> Vec<engine_core::AccessLine> {
-        let layout = self.static_layout(node_id, state, at);
+        let (layout, _) = self.static_layout(node_id, state, *at);
         let shown = visible_lines(layout, &state.options);
         let content = &state.content;
         let mut out = Vec::new();
@@ -1302,7 +1320,7 @@ impl TextRenderer {
         focus: usize,
         delta: isize,
     ) -> usize {
-        let layout = self.static_layout(node_id, state, &at);
+        let (layout, _) = self.static_layout(node_id, state, at);
         let len = state.content.len();
         let cursor = |offset: usize| {
             let mut offset = offset.min(len);
@@ -1327,7 +1345,7 @@ impl TextRenderer {
         point: Point,
         line: bool,
     ) -> (usize, usize) {
-        let layout = self.static_layout(node_id, state, &at);
+        let (layout, at) = self.static_layout(node_id, state, at);
         let (x, y) = ((point.x - at.x) as f32, (point.y - at.y) as f32);
         let selection = if line {
             Selection::line_from_point(layout, x, y)
@@ -1464,10 +1482,14 @@ impl TextRenderer {
             && state.overflow == Some(engine_core::FieldOverflow::Ellipsis)
             && !show_caret
             && !showing_placeholder;
-        let default_options = TextOptions::default();
+        let default_options = TextOptions {
+            letter_spacing: state.letter_spacing,
+            ..TextOptions::default()
+        };
         let ellipsis_options = TextOptions {
             wrap: false,
             ellipsis: true,
+            letter_spacing: state.letter_spacing,
             ..TextOptions::default()
         };
         let layout = self.shaped_layout(
@@ -1482,12 +1504,8 @@ impl TextRenderer {
                 field_max_width(state, at.max_width)
             },
             TextAlign::Start,
-            // M62 Phase 1 (§7.1, §16.3): `TextFieldState` is a distinct
-            // real struct from `TextState` and outside this milestone's
-            // own scope (MD3's typography *type scale* targets display
-            // text, not editable fields) -- always `None`, the exact
-            // pre-M62 behavior, never wired to any real per-field value.
-            None,
+            // 0.6.11 (P3): the input's own `line_height` (`None`, the font's, by default).
+            state.line_height,
             &display_spans,
             if ellipsize {
                 &ellipsis_options
@@ -1495,6 +1513,7 @@ impl TextRenderer {
                 &default_options
             },
         );
+        let at = aligned(at, state.effective_vertical_align(), layout.height());
 
         // Selection highlight, painted first (behind the glyphs below).
         // Real selection and a real active composition are mutually
@@ -1726,6 +1745,7 @@ impl TextRenderer {
             &state.font_family,
             state.font_weight,
             state.font_size,
+            (state.letter_spacing, state.line_height),
             field_max_width(state, at.max_width),
         );
         // While composing, the caret sits at the end of the composition.
@@ -1749,6 +1769,7 @@ impl TextRenderer {
         };
         let bounds = Cursor::from_byte_index(&layout, at_offset, Affinity::Downstream)
             .geometry(&layout, state.caret_width.max(0.0));
+        let at = aligned(at, state.effective_vertical_align(), layout.height());
         Rect::new(
             bounds.x0 + at.x,
             bounds.y0 + at.y,
@@ -1776,6 +1797,7 @@ impl TextRenderer {
             &state.font_family,
             state.font_weight,
             state.font_size,
+            (state.letter_spacing, state.line_height),
             max_width,
         );
         Some(RowsLayout {
@@ -1876,6 +1898,7 @@ impl TextRenderer {
         if rows.display.is_empty() {
             return None;
         }
+        let at = aligned(at, state.effective_vertical_align(), rows.layout.height());
         let (x, y) = ((point.x - at.x) as f32, (point.y - at.y) as f32);
         let (cluster, _) = parley::layout::Cluster::from_point(&rows.layout, x, y)?;
         let character = cluster.text_range().start;
@@ -1912,6 +1935,7 @@ impl TextRenderer {
             y: 0.0,
             max_width: viewport.0,
             color: peniko::Color::TRANSPARENT,
+            box_height: None,
         };
         let (layout, map, caret_at) = self.field_geometry_layout(state, at);
         let at_offset = if state.preedit.as_deref().is_some_and(|p| !p.is_empty()) {
@@ -1974,6 +1998,7 @@ impl TextRenderer {
         end: usize,
     ) -> Vec<Rect> {
         let (layout, map, _) = self.field_geometry_layout(state, at);
+        let at = aligned(at, state.effective_vertical_align(), layout.height());
         let at_offset =
             |offset: usize| Cursor::from_byte_index(&layout, map(offset), Affinity::Downstream);
         let selection = Selection::new(at_offset(start), at_offset(end));
@@ -2301,6 +2326,11 @@ fn follow_stamp(
     state.font_size.to_bits().hash(&mut h);
     state.caret_width.to_bits().hash(&mut h);
     (state.multiline, state.wrap).hash(&mut h);
+    (
+        state.letter_spacing.to_bits(),
+        state.line_height.map(f32::to_bits),
+    )
+        .hash(&mut h);
     state
         .overflow
         .map(engine_core::FieldOverflow::name)
@@ -2662,6 +2692,28 @@ pub struct TextPlacement {
     /// The node's taffy-computed box width -- what `parley` wraps to.
     pub max_width: f32,
     pub color: Color,
+    /// 0.6.11 (P3): the height of the node's content box, when the text is to be aligned
+    /// vertically in it (the node's own `vertical_align`: the lines' own height is taken from
+    /// the shaped layout). `None` puts the text's top at `y`. Callers that place text in a
+    /// node pass `Some`, so painting, caret, selection, hit testing and the IME's area all
+    /// share the one offset.
+    pub box_height: Option<f32>,
+}
+
+/// `at`, moved down by what `valign` leaves above text `text_height` tall in `at.box_height`.
+fn aligned(
+    at: TextPlacement,
+    valign: engine_core::VerticalAlign,
+    text_height: f32,
+) -> TextPlacement {
+    match at.box_height {
+        Some(h) => TextPlacement {
+            y: at.y + f64::from(valign.offset(h, text_height)),
+            box_height: None,
+            ..at
+        },
+        None => at,
+    }
 }
 
 /// Whether `font` carries bitmap strikes (CBDT, as the Noto Color Emoji package
@@ -2810,6 +2862,7 @@ mod tests {
             y: 0.0,
             max_width: 100.0,
             color: Color::from_rgba8(255, 255, 255, 255),
+            box_height: None,
         }
     }
 
@@ -3456,10 +3509,24 @@ mod tests {
     fn the_bundled_monospace_face_has_uniform_advance_unlike_a_real_proportional_face() {
         let mut renderer = TextRenderer::new();
         let m_width = renderer
-            .build_field_layout("M", MONOSPACE_FONT_FAMILY, 400.0, 16.0, f32::MAX)
+            .build_field_layout(
+                "M",
+                MONOSPACE_FONT_FAMILY,
+                400.0,
+                16.0,
+                (0.0, None),
+                f32::MAX,
+            )
             .width();
         let i_width = renderer
-            .build_field_layout("i", MONOSPACE_FONT_FAMILY, 400.0, 16.0, f32::MAX)
+            .build_field_layout(
+                "i",
+                MONOSPACE_FONT_FAMILY,
+                400.0,
+                16.0,
+                (0.0, None),
+                f32::MAX,
+            )
             .width();
         assert!(
             (m_width - i_width).abs() < 0.01,
@@ -3468,10 +3535,10 @@ mod tests {
         );
 
         let roboto_m_width = renderer
-            .build_field_layout("M", "Roboto", 400.0, 16.0, f32::MAX)
+            .build_field_layout("M", "Roboto", 400.0, 16.0, (0.0, None), f32::MAX)
             .width();
         let roboto_i_width = renderer
-            .build_field_layout("i", "Roboto", 400.0, 16.0, f32::MAX)
+            .build_field_layout("i", "Roboto", 400.0, 16.0, (0.0, None), f32::MAX)
             .width();
         assert!(
             (roboto_m_width - roboto_i_width).abs() > 1.0,

@@ -1896,6 +1896,7 @@ fn options_fingerprint(h: &mut impl Hasher, options: &TextOptions) {
         spans,
         selectable,
         selection,
+        vertical_align,
     } = options;
     italic.hash(h);
     letter_spacing.to_bits().hash(h);
@@ -1905,6 +1906,8 @@ fn options_fingerprint(h: &mut impl Hasher, options: &TextOptions) {
     // 0.5.4 (#112): the selection is paint (the highlight); selectable is not.
     let _ = selectable;
     selection.hash(h);
+    // 0.6.11 (P3): where the lines sit in the box.
+    vertical_align.hash(h);
     // 0.5.4 (#112): spans.
     for span in spans {
         let engine_core::TextSpan {
@@ -1998,8 +2001,11 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
         overflow,
         follow_stamp: _, // bookkeeping, not paint
         overwrite,
-        tab_navigates: _, // what Tab does, not what is drawn
-        goal_x: _,        // where a vertical run holds the caret, not what is drawn
+        tab_navigates: _,  // what Tab does, not what is drawn
+        goal_x: _,         // where a vertical run holds the caret, not what is drawn
+        vertical_align: _, // hashed below, resolved against `multiline`
+        letter_spacing,
+        line_height,
     } = state;
     caret_visible.hash(h);
     caret_width.to_bits().hash(h);
@@ -2039,6 +2045,10 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
     // #288: overwrite mode draws a block caret.
     overwrite.hash(h);
     overflow.map(engine_core::FieldOverflow::name).hash(h);
+    // 0.6.11 (P3): where the lines sit, and their spacing.
+    state.effective_vertical_align().hash(h);
+    letter_spacing.to_bits().hash(h);
+    line_height.map(f32::to_bits).hash(h);
 }
 
 fn image_fingerprint(h: &mut impl Hasher, state: &ImageState) {

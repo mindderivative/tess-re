@@ -1249,6 +1249,7 @@ fn draw_own(
                     y: f64::from(padding.top),
                     max_width: (w as f32 - padding.left - padding.right).max(0.0),
                     color,
+                    box_height: Some((h as f32 - padding.top - padding.bottom).max(0.0)),
                 },
                 id,
                 gradient,
@@ -1310,6 +1311,7 @@ fn draw_own(
                 y: content.y - state.scroll_offset.current,
                 max_width: content.w as f32,
                 color: text_color,
+                box_height: Some(content.h as f32),
             };
             let show_caret = tree.focused() == Some(id);
             // #285: a single-line input that does not wrap is clipped to its box too.
@@ -1346,6 +1348,7 @@ fn draw_own(
                     y: content.y,
                     max_width: content.w as f32,
                     color: cursor_color,
+                    box_height: None,
                 },
                 tree.focused() == Some(id),
                 id,

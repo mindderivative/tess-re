@@ -286,6 +286,7 @@ fn hit_test_position_at_the_very_start_of_the_field_returns_byte_offset_zero() {
         y: 0.0,
         max_width: 200.0,
         color: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF),
+        box_height: None,
     };
     let offset = renderer.hit_test_position(&state, at, Point::new(0.0, 8.0));
     assert_eq!(
@@ -303,6 +304,7 @@ fn hit_test_position_far_past_the_end_returns_the_full_content_length() {
         y: 0.0,
         max_width: 200.0,
         color: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF),
+        box_height: None,
     };
     // Well past where 5 real glyphs at 16px could possibly reach --
     // `parley::editing::Cursor::from_point`'s own real fallback (no
@@ -329,6 +331,7 @@ fn hit_test_position_accounts_for_the_placements_own_local_offset() {
         y: 12.0,
         max_width: 200.0,
         color: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF),
+        box_height: None,
     };
     let offset = renderer.hit_test_position(&state, at, Point::new(40.0, 20.0));
     assert_eq!(offset, 0);
@@ -353,6 +356,7 @@ fn a_multiline_fields_own_newline_produces_a_real_second_layout_line() {
         y: 0.0,
         max_width: 200.0,
         color: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF),
+        box_height: None,
     };
 
     let first_line_offset = renderer.hit_test_position(&state, placement(), Point::new(0.0, 4.0));
@@ -396,6 +400,7 @@ fn hit_test_position_on_a_field_with_visible_whitespace_returns_real_content_off
         y: 0.0,
         max_width: 200.0,
         color: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF),
+        box_height: None,
     };
 
     let start = renderer.hit_test_position(&state, placement(), Point::new(0.0, 4.0));
@@ -543,6 +548,7 @@ fn hit_test_position_on_a_folded_field_returns_real_content_offsets() {
         y: 0.0,
         max_width: 200.0,
         color: Color::from_rgba8(0x1C, 0x1B, 0x1F, 0xFF),
+        box_height: None,
     };
 
     let far_right = renderer.hit_test_position(&state, placement, Point::new(1000.0, 4.0));

@@ -420,7 +420,7 @@ impl Tree {
             layout_style,
             paint,
             access: AccessNodeData::default(),
-            hit_testable: true,
+            hit_testable: None,
             sticky: None,
             snap_align: None,
             layout_anims: None,
@@ -457,11 +457,12 @@ impl Tree {
     /// M30 Phase 5 Step 1 (§5, §7): opts `id` out of independently
     /// claiming a hit in `hit_test_at` -- see `Node::hit_testable`'s own
     /// doc comment (`NodeKind::Text`'s own hardcoded exemption, widened
-    /// into an opt-in flag for a decorative `Rect` layer). A no-op call
+    /// into an opt-in flag for a decorative `Rect` layer). `None` is the
+    /// kind's default (every kind claims). A no-op call
     /// (`id` already at `hit_testable`) is harmless; panics if `id` is
     /// stale/foreign to this `Tree`, the same real contract every
     /// other single-node setter here already has.
-    pub fn set_hit_testable(&mut self, id: NodeId, hit_testable: bool) {
+    pub fn set_hit_testable(&mut self, id: NodeId, hit_testable: Option<bool>) {
         self.nodes
             .get_mut(id)
             .expect("set_hit_testable: NodeId not found in this Tree")
