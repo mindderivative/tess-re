@@ -93,6 +93,13 @@ impl PresentChoice {
 /// animation after it is paced to the display again at once.
 pub const RESIZE_HOLD: std::time::Duration = std::time::Duration::from_millis(400);
 
+/// 0.6.10 (#248): the least time between two presents of a window while it has resize pacing.
+/// Without a vsync barrier a present never waits, and on KWin with RADV an animating window
+/// committed about 10,000 times a second for the whole [`RESIZE_HOLD`] after every fullscreen
+/// change. 4 ms is at most 250 a second: well above any display's refresh, so a resize still
+/// shows every size the compositor sends, and the burst is gone.
+pub const RESIZE_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(4);
+
 /// 0.5.5 (#155): whether a window is being resized, and so presents without
 /// vsync for the moment.
 ///
@@ -109,6 +116,8 @@ pub const RESIZE_HOLD: std::time::Duration = std::time::Duration::from_millis(40
 pub struct ResizePacing {
     /// When the window last needed a new size, while that is recent.
     last: Option<std::time::Instant>,
+    /// When the window last presented, while it has resize pacing (see [`RESIZE_MIN_INTERVAL`]).
+    last_present: Option<std::time::Instant>,
 }
 
 impl ResizePacing {
@@ -130,9 +139,28 @@ impl ResizePacing {
         match self.last {
             Some(last) if now.saturating_duration_since(last) >= RESIZE_HOLD => {
                 self.last = None;
+                self.last_present = None;
                 true
             }
             _ => false,
+        }
+    }
+
+    /// How long the window must still wait before it may present again at `now`: `None` when it
+    /// may present now (not resizing, nothing presented yet, or [`RESIZE_MIN_INTERVAL`] has
+    /// passed since the last present).
+    pub fn throttle(&self, now: std::time::Instant) -> Option<std::time::Duration> {
+        self.last?;
+        let since = now.saturating_duration_since(self.last_present?);
+        RESIZE_MIN_INTERVAL
+            .checked_sub(since)
+            .filter(|d| !d.is_zero())
+    }
+
+    /// The window presented at `now`.
+    pub fn presented(&mut self, now: std::time::Instant) {
+        if self.last.is_some() {
+            self.last_present = Some(now);
         }
     }
 
@@ -305,5 +333,36 @@ mod tests {
         let steady = PresentChoice::LowLatency;
         assert_eq!(PresentChoice::default().mode(MESA), AutoVsync);
         assert_eq!(ResizePacing::default().choice(steady), steady);
+    }
+
+    #[test]
+    fn a_resizing_window_presents_at_most_once_per_interval() {
+        use std::time::{Duration, Instant};
+        let t0 = Instant::now();
+        let ms = Duration::from_millis;
+        let mut pacing = ResizePacing::default();
+        // Not resizing: never held back, whatever the last present was.
+        pacing.presented(t0);
+        assert_eq!(pacing.throttle(t0), None);
+        pacing.resized(t0);
+        // The first present of a resize is immediate; the next must wait out the interval.
+        assert_eq!(pacing.throttle(t0), None);
+        pacing.presented(t0);
+        assert_eq!(pacing.throttle(t0 + ms(1)), Some(ms(3)));
+        assert_eq!(pacing.throttle(t0 + ms(4)), None);
+        // Counting what a loop that spins every 100 us gets through in the 400 ms hold.
+        let mut presents = 0;
+        let mut now = t0;
+        while now < t0 + RESIZE_HOLD {
+            if pacing.throttle(now).is_none() {
+                pacing.presented(now);
+                presents += 1;
+            }
+            now += Duration::from_micros(100);
+        }
+        assert!(presents <= 101, "{presents} presents in the hold");
+        // Settled: no state left over to hold the next animation back.
+        assert!(pacing.settle(t0 + RESIZE_HOLD * 2));
+        assert_eq!(pacing.throttle(t0 + RESIZE_HOLD * 2), None);
     }
 }
