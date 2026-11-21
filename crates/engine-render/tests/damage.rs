@@ -240,6 +240,27 @@ fn a_shadow_widens_the_damage_past_the_box() {
 }
 
 #[test]
+fn a_path_shadow_widens_the_damage_from_the_path_not_the_box() {
+    let mut s = Scene::new();
+    // The path reaches 100 past its 40x40 box to the right.
+    let state =
+        engine_core::PathState::new(engine_core::PathData::from_svg("M0,0 H140 V10 H0 Z").unwrap());
+    let node = s.add(s.root, NodeKind::Path(state), 100.0, 100.0, 40.0, 40.0);
+    s.tree.get_mut(node).unwrap().paint.shadows.current =
+        engine_core::Shadows(vec![engine_core::Shadow {
+            color: Color::from_rgba8(0, 0, 0, 0x80),
+            offset_x: 0.0,
+            offset_y: 20.0,
+            blur: 10.0,
+            spread: 4.0,
+        }]);
+    s.settle();
+    s.tree.get_mut(node).unwrap().paint.background.current = BLUE;
+    // The shadow lies 20 below the path, 4 + 2*10 wider than it, and 140 long.
+    assert!(covers(&s.frame(), Rect::new(100.0, 100.0, 264.0, 154.0)));
+}
+
+#[test]
 fn a_transform_damages_where_the_node_is_drawn() {
     let mut s = Scene::new();
     let node = s.rect(10.0, 10.0, 20.0, 20.0);

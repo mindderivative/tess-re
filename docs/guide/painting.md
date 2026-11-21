@@ -97,6 +97,9 @@ a focus indicator that never shifts layout:
 button.set(shadows=[((0x67, 0x50, 0xA4, 0xFF), 0, 0, 0, 3)])
 ```
 
+A `path` node's shadow follows the path, holes included: a ring casts a ring, not a box
+([details](../reference/paint.md#shadows-of-a-path-0612)).
+
 ## Opacity and transforms
 
 `opacity` fades a node **and its whole subtree together**, as one layer, so

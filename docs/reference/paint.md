@@ -215,7 +215,7 @@ about 30% of a core: that is the cost of the frames, not of the sampling. A GPU 
 | `stroke_color`, `stroke_width` | the border, drawn inside the box; it never changes layout. On a path they are the path's outline instead |
 | `corner_radius` | one radius, or `(top_left, top_right, bottom_right, bottom_left)`: rounds the background and the border, and clips an image to the rounded box (a scroll view and a virtual list clip their content to it). A path has no box, so it ignores it |
 | `opacity` | `0.0`–`1.0` — **group opacity**: the node and its whole subtree fade together, as one layer |
-| `shadows` | a list of `(color, offset_x, offset_y, blur, spread)` — CSS `box-shadow`'s model, the first listed on top |
+| `shadows` | a list of `(color, offset_x, offset_y, blur, spread)` — CSS `box-shadow`'s model, the first listed on top. A `path` node's shadow is the path's own silhouette, holes included (0.6.12); see [Shadows of a path](#shadows-of-a-path-0612) |
 | `blur` | (0.5.4) a number ≥ 0: a Gaussian blur of the node and its whole subtree, as a standard deviation in pixels |
 | `backdrop_blur` | (0.5.4) a number ≥ 0: frosted glass — what is behind the node, blurred, inside its box |
 | `blend_mode` | (0.5.4) how the node and its subtree mix with what is behind: `"normal"` (the default) or a CSS `mix-blend-mode` |
@@ -233,6 +233,24 @@ tuple that was set.
 and as a 4-tuple once they're set (or animated) separately; setting a number
 makes them uniform again. A shadow under a node with differing corner radii uses
 their mean.
+
+### Shadows of a path (0.6.12)
+
+Every other kind shadows its rounded box. A `path` node shadows what it paints: the filled path under the
+non-zero rule, so a ring's hole stays clear, plus its trimmed stroke. Before 0.6.12 a path's shadow was its bounding
+box blurred, which filled a ring's hole with solid shadow.
+
+```python
+ring = window.create("path", data="M0,0 L200,0 L200,120 L0,120 Z M20,20 L20,100 L180,100 L180,20 Z",
+                     width=200, height=120, fill=(40, 40, 60, 255),
+                     shadows=[((0, 0, 0, 255), 0, 0, 16, 0)])   # dark only beside the band
+```
+
+The tuple is the same `(color, offset_x, offset_y, blur, spread)` and `blur` means what it does for a box (a Gaussian of
+standard deviation `blur / 2`). Offsets are node-local pixels. `spread` grows the silhouette by that many pixels on
+every side, holes included (so a hole shrinks); a negative `spread` shrinks it (a hole grows). A node with a stroke
+and no fill casts the shadow of its stroke; one with neither casts that of its filled path. The shadow is painted
+under the node, so with no offset only what lies outside the path or inside its holes shows.
 
 A design system's elevation levels are shadow lists — Material Design 3's
 are a key and an ambient shadow per level:

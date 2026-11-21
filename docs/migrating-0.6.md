@@ -527,3 +527,11 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
 - **Internal (Rust):** `ScrollViewState::scrollbar_width` is `scrollbar.thickness: Option<f64>`;
   `Tree::take_scroll_changes` returns `ScrollChange` values, not tuples; `grabs_scroll_view_thumb` returns the
   `ScrollAxis` it grabbed. The Python API has no such change.
+
+## 0.6.12
+- **A path node's `shadows` follow the path, holes included (a fix).** Every node's shadow was its box, blurred, so a
+  `path` ring's hole filled with solid shadow. A path now casts the silhouette of what it paints (the fill under the
+  non-zero rule, plus the trimmed stroke), offset, grown by `spread` and blurred by the same `blur / 2` as a box.
+  No new property; a negative `spread` shrinks the silhouette. Other kinds are unchanged. An app that leaned on the
+  old box shadow under a path (a drop shadow of an icon's bounding box) now sees the icon's shape instead: put the
+  shadow on a `box` behind it for the old look.
