@@ -1233,11 +1233,24 @@ fn draw_own(
     let own_alpha = 1.0;
     scene.set_transform(composed);
 
+    // A path's geometry in node-local pixels, fitted into its content box; its shadows and its
+    // own paint both use it, so it is built once.
+    let path_geometry = match &node.kind {
+        NodeKind::Path(state) => {
+            // 0.5.1 (#53): the view box fits the content box, inside the padding.
+            let content = content_box(tree, id, w, h);
+            let (fill, stroke) = state.geometry(content.w, content.h);
+            Some((content, fill, stroke))
+        }
+        _ => None,
+    };
+
     // M95: the `shadows` list, CSS `box-shadow`'s model -- each is the
     // node's own rounded box, offset, grown by `spread` (its corners too),
     // and blurred; the first listed paints on top, so the list paints in
     // reverse. A node with differing corner radii shadows with their mean,
-    // the blurred rounded rect taking one radius.
+    // the blurred rounded rect taking one radius. 0.6.12: a path node shadows its path
+    // instead of its box (`paint_path_shadow`).
     let shadows = &node.paint.shadows.current.0;
     if !shadows.is_empty() {
         let radius = match &node.paint.corner_radii_override {
@@ -1246,6 +1259,16 @@ fn draw_own(
         };
         for shadow in shadows.iter().rev() {
             if shadow.color.components[3] <= 0.0 {
+                continue;
+            }
+            if let Some((content, fill, stroke)) = &path_geometry {
+                paint_path_shadow(
+                    scene,
+                    composed * Affine::translate((content.x, content.y)),
+                    shadow,
+                    PathSilhouette::of(node, fill, stroke),
+                    own_alpha,
+                );
                 continue;
             }
             let rect = Rect::new(
@@ -1632,10 +1655,10 @@ fn draw_own(
         // the trimmed outline, centered on the path as in SVG, with round
         // caps and joins, and its width stays in pixels however the view
         // box scales the path.
-        NodeKind::Path(state) => {
-            // 0.5.1 (#53): the view box fits the content box, inside the padding.
-            let content = content_box(tree, id, w, h);
-            let (fill, stroke) = state.geometry(content.w, content.h);
+        NodeKind::Path(_) => {
+            let Some((content, fill, stroke)) = &path_geometry else {
+                return;
+            };
             scene.set_transform(composed * Affine::translate((content.x, content.y)));
             let fill_color = node.paint.background.current;
             let fill_gradient = node.paint.gradient.as_ref().map(|g| &g.current);
@@ -1647,7 +1670,7 @@ fn draw_own(
                     fill.bounding_box(),
                     own_alpha,
                 );
-                scene.fill_path(&fill);
+                scene.fill_path(fill);
                 if shaped {
                     scene.reset_paint_transform();
                 }
@@ -1666,7 +1689,7 @@ fn draw_own(
                         .with_caps(peniko::kurbo::Cap::Round)
                         .with_join(peniko::kurbo::Join::Round),
                 );
-                scene.stroke_path(&stroke);
+                scene.stroke_path(stroke);
                 if shaped {
                     scene.reset_paint_transform();
                 }
@@ -1674,6 +1697,118 @@ fn draw_own(
             scene.set_transform(composed);
         }
     }
+}
+
+/// What a path node's shadow is cast by: the shape it paints.
+struct PathSilhouette<'a> {
+    /// The filled path, when the node fills (a colour with alpha, or a gradient).
+    fill: Option<&'a BezPath>,
+    /// The trimmed stroke outline and its width, when the node strokes.
+    stroke: Option<(&'a BezPath, f64)>,
+}
+
+impl<'a> PathSilhouette<'a> {
+    /// A node that paints neither fill nor stroke still casts the shadow of its filled path,
+    /// as a box with no fill casts its box's.
+    fn of(node: &engine_core::Node, fill: &'a BezPath, stroke: &'a BezPath) -> Self {
+        let filled =
+            node.paint.gradient.is_some() || node.paint.background.current.components[3] > 0.0;
+        let width = node.paint.border_width.current;
+        let stroked = width > 0.0 && !stroke.elements().is_empty();
+        Self {
+            fill: (filled || !stroked).then_some(fill),
+            stroke: stroked.then_some((stroke, width)),
+        }
+    }
+}
+
+/// 0.6.12: one entry of a path node's `shadows`: the silhouette of what the node paints (the
+/// filled path under the non-zero rule, so holes stay holes, and the trimmed stroke), offset by
+/// `(dx, dy)`, grown by `spread` and blurred by the same standard deviation as a box's shadow
+/// (`blur / 2`). `at` is the node-local origin of the path's pixels.
+///
+/// A positive `spread` adds a round-joined stroke of `2 * spread` to the filled outline and widens
+/// the stroke part by as much; a negative one cuts the same band out of the fill (and narrows the
+/// stroke part), so a hole grows and a solid shrinks. The whole is drawn in its own layer, which
+/// the blur then filters; the layer's clip bounds the work to the silhouette and what the blur
+/// reaches.
+fn paint_path_shadow(
+    scene: &mut Scene,
+    at: Affine,
+    shadow: &engine_core::Shadow,
+    silhouette: PathSilhouette<'_>,
+    own_alpha: f64,
+) {
+    let spread = shadow.spread;
+    let std_dev = if shadow.blur > 0.0 {
+        blur_to_std_dev(shadow.blur as f32)
+    } else {
+        0.0
+    };
+    let mut extent: Option<Rect> = None;
+    let mut grow = |bounds: Rect, by: f64| {
+        let bounds = bounds.inflate(by, by);
+        extent = Some(extent.map_or(bounds, |e| e.union(bounds)));
+    };
+    let reach = f64::from(std_dev) * 3.0 + 1.0;
+    if let Some(fill) = silhouette.fill {
+        grow(fill.bounding_box(), spread.max(0.0) + reach);
+    }
+    if let Some((stroke, width)) = silhouette.stroke {
+        grow(
+            stroke.bounding_box(),
+            (width / 2.0 + spread).max(0.0) + reach,
+        );
+    }
+    let Some(extent) = extent else { return };
+    let clip = extent.to_path(0.1);
+    let filter = (std_dev > 0.0).then(|| {
+        vello_common::filter_effects::Filter::from_function(
+            vello_common::filter_effects::FilterFunction::Blur { radius: std_dev },
+        )
+    });
+    scene.set_transform(at * Affine::translate((shadow.offset_x, shadow.offset_y)));
+    scene.push_layer(Some(&clip), None, None, None, filter);
+    scene.set_paint(with_opacity(shadow.color, own_alpha));
+    if let Some(fill) = silhouette.fill {
+        scene.fill_path(fill);
+        if spread != 0.0 {
+            let band = Stroke::new(spread.abs() * 2.0)
+                .with_caps(peniko::kurbo::Cap::Round)
+                .with_join(peniko::kurbo::Join::Round);
+            if spread > 0.0 {
+                scene.set_stroke(band);
+                scene.stroke_path(fill);
+            } else {
+                scene.push_layer(
+                    None,
+                    Some(peniko::BlendMode::new(
+                        peniko::Mix::Normal,
+                        peniko::Compose::DestOut,
+                    )),
+                    None,
+                    None,
+                    None,
+                );
+                scene.set_stroke(band);
+                scene.stroke_path(fill);
+                scene.pop_layer();
+            }
+        }
+    }
+    if let Some((stroke, width)) = silhouette.stroke {
+        let width = width + spread * 2.0;
+        if width > 0.0 {
+            scene.set_stroke(
+                Stroke::new(width)
+                    .with_caps(peniko::kurbo::Cap::Round)
+                    .with_join(peniko::kurbo::Join::Round),
+            );
+            scene.stroke_path(stroke);
+        }
+    }
+    scene.pop_layer();
+    scene.set_transform(at);
 }
 
 /// How every image and texture is sampled: bilinear, extended by *reflecting*.

@@ -1482,6 +1482,16 @@ pub(crate) fn painted_rect(
     painted.inflate(MARGIN, MARGIN).intersect(visible)
 }
 
+/// A path node's fill and stroke in its own coordinates, bounded without building the geometry:
+/// the view-box fit is a uniform scale and a translation, so it maps the data's box exactly, and
+/// a trimmed stroke lies within the whole path.
+fn path_extent(node: &Node, state: &PathState, w: f64, h: f64) -> Rect {
+    let bounds = fit_transform(state.view_box, w, h)
+        .transform_rect_bbox(state.data.current.0.bounding_box());
+    let half = node.paint.border_width.current / 2.0;
+    bounds.inflate(half, half)
+}
+
 /// What `node` paints, in its own coordinates: its box, plus whatever
 /// reaches past it.
 fn local_painted(text: &mut TextRenderer, id: NodeId, node: &Node, w: f64, h: f64) -> Rect {
@@ -1500,18 +1510,24 @@ fn local_painted(text: &mut TextRenderer, id: NodeId, node: &Node, w: f64, h: f6
             local = local.inflate(reach, reach);
         }
     }
+    // A path's shadow is the path's own silhouette (0.6.12), which may lie past the node's box;
+    // every other kind shadows its box.
+    let shadowed = match &node.kind {
+        NodeKind::Path(state) => path_extent(node, state, w, h),
+        _ => Rect::new(0.0, 0.0, w, h),
+    };
     for shadow in &node.paint.shadows.current.0 {
         if shadow.color.components[3] <= 0.0 {
             continue;
         }
         // A Gaussian blur with standard deviation `blur / 2` fades
         // out by 3 deviations; `blur * 2` is past that.
-        let reach = shadow.spread + shadow.blur * 2.0;
+        let reach = shadow.spread.max(0.0) + shadow.blur * 2.0;
         local = local.union(Rect::new(
-            shadow.offset_x - reach,
-            shadow.offset_y - reach,
-            w + shadow.offset_x + reach,
-            h + shadow.offset_y + reach,
+            shadowed.x0 + shadow.offset_x - reach,
+            shadowed.y0 + shadow.offset_y - reach,
+            shadowed.x1 + shadow.offset_x + reach,
+            shadowed.y1 + shadow.offset_y + reach,
         ));
     }
     match &node.kind {
@@ -1525,13 +1541,7 @@ fn local_painted(text: &mut TextRenderer, id: NodeId, node: &Node, w: f64, h: f6
             );
         }
         NodeKind::Path(state) => {
-            // Bounded without building the geometry: the fit is a uniform
-            // scale and a translation, so it maps the data's box exactly,
-            // and a trimmed stroke lies within the whole path.
-            let bounds = fit_transform(state.view_box, w, h)
-                .transform_rect_bbox(state.data.current.0.bounding_box());
-            let half = node.paint.border_width.current / 2.0;
-            local = local.union(bounds.inflate(half, half));
+            local = local.union(path_extent(node, state, w, h));
         }
         NodeKind::Canvas(state) => {
             for command in &state.commands {

@@ -635,6 +635,44 @@ fn a_change_inside_another_nodes_shadow_repaints_that_shadow() {
 }
 
 #[test]
+fn a_change_in_a_path_shadow_beyond_its_box_repaints_the_shadow() {
+    // The ring's data reaches past its 40x30 box; its blurred shadow follows the path, so the
+    // changed dot sits in the shadow far from the box and inside the ring's hole.
+    built_partial_matches_full(
+        |tree, root| {
+            let ring = add(
+                tree,
+                root,
+                NodeKind::Path(PathState::new(
+                    PathData::from_svg("M0,0 L100,0 L100,60 L0,60 Z M20,20 L20,40 L80,40 L80,20 Z")
+                        .unwrap(),
+                )),
+                placed(20.0, 100.0, 40.0, 30.0),
+                Color::from_rgba8(0xE0, 0xE0, 0xE0, 0xFF),
+            );
+            tree.get_mut(ring).unwrap().paint.shadows.current = Shadows(vec![Shadow {
+                color: Color::from_rgba8(0xFF, 0x40, 0x40, 0xFF),
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur: 12.0,
+                spread: 4.0,
+            }]);
+            add(
+                tree,
+                root,
+                NodeKind::Rect,
+                placed(80.0, 125.0, 8.0, 8.0),
+                Color::from_rgba8(0x40, 0x40, 0xFF, 0x80),
+            )
+        },
+        |tree, dot| {
+            tree.get_mut(*dot).unwrap().paint.background.current =
+                Color::from_rgba8(0x40, 0xFF, 0x40, 0x80);
+        },
+    );
+}
+
+#[test]
 fn a_child_overflowing_its_parent_is_repainted() {
     // The parent doesn't clip, and its own box is far from the change.
     built_partial_matches_full(
