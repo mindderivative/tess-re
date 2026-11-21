@@ -669,6 +669,8 @@ impl Tree {
             // moves off every node.
             InputEvent::PointerLeft => {
                 let old_hovered = self.hovered;
+                // A held lane or arrow press does not go on paging with the pointer gone.
+                self.page_repeat = None;
                 self.set_hovered(None);
                 // 0.6.11: a thumb the pointer was over goes back to rest.
                 if let Some((view, axis)) = self.scrollbar_hover.take() {

@@ -586,6 +586,8 @@ pub struct ScrollbarState {
     pub drag_axis: ScrollAxis,
     /// When `auto_hide` fades the bars out, if nothing happens to them first.
     hide_at: Option<Instant>,
+    /// Whether the last tick found the bar hovered or dragged: the delay starts when that ends.
+    was_emphasised: bool,
     /// The offsets the last tick saw: a change is a reason to show the bars.
     seen: Option<(f64, f64)>,
 }
@@ -607,6 +609,7 @@ impl ScrollbarState {
             drag_anchor: None,
             drag_axis: ScrollAxis::Vertical,
             hide_at: None,
+            was_emphasised: false,
             seen: None,
         }
     }
@@ -759,10 +762,20 @@ impl ScrollbarState {
             let moved = self.seen != Some(offsets);
             let emphasised = self.hovered.iter().any(|h| *h) || self.drag_anchor.is_some();
             if moved || emphasised {
-                self.hide_at = Some(now + millis(m.hide_delay_ms));
+                // While the pointer is on it nothing is waited for (the loop may sleep);
+                // the delay starts when it leaves.
+                self.hide_at = if emphasised {
+                    None
+                } else {
+                    Some(now + millis(m.hide_delay_ms))
+                };
+                self.was_emphasised = emphasised;
                 if *self.shown.target() < 1.0 {
                     self.fade_shown(&m, 1.0, now, reduced);
                 }
+            } else if self.was_emphasised {
+                self.was_emphasised = false;
+                self.hide_at = Some(now + millis(m.hide_delay_ms));
             } else if self.hide_at.is_some_and(|t| now >= t) {
                 self.hide_at = None;
                 self.fade_shown(&m, 0.0, now, reduced);

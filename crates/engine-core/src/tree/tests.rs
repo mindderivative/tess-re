@@ -10066,6 +10066,45 @@ mod scrollbar_hooks {
     }
 
     #[test]
+    fn a_held_lane_press_stops_paging_when_the_pointer_leaves_the_window() {
+        let (mut tree, view, _) = both(&[]);
+        let t0 = Instant::now();
+        press(&mut tree, view, 194.0, 80.0, t0);
+        let before = offsets(&tree, view).1;
+        assert!(before > 0.0, "the first page");
+        tree.dispatch(view, InputEvent::PointerLeft, t0 + ms(10));
+        tree.tick_all(t0 + ms(2_000));
+        assert_eq!(
+            offsets(&tree, view).1,
+            before,
+            "no repeat with the pointer gone"
+        );
+    }
+
+    #[test]
+    fn an_auto_hide_bar_under_the_pointer_lets_the_loop_sleep_and_hides_after_it_leaves() {
+        let (mut tree, view, _) = both(&[choice(Prop::Show, "auto_hide")]);
+        let t0 = Instant::now();
+        tree.tick_all(t0);
+        move_to(&mut tree, view, 194.0, 18.0, t0 + ms(10));
+        tree.tick_all(t0 + ms(10));
+        tree.tick_all(t0 + ms(300));
+        assert!(
+            !tree.tick_all(t0 + ms(2_000)).0,
+            "hovered and settled: nothing to wait for, the loop may sleep"
+        );
+        assert_eq!(state(&tree, view).bar().shown.current, 1.0);
+        move_to(&mut tree, view, 50.0, 50.0, t0 + ms(3_000));
+        assert!(tree.tick_all(t0 + ms(3_000)).0, "the hide delay is running");
+        tree.tick_all(t0 + ms(3_900));
+        assert_eq!(state(&tree, view).bar().shown.current, 1.0, "not yet");
+        tree.tick_all(t0 + ms(4_010));
+        tree.tick_all(t0 + ms(4_200));
+        assert_eq!(state(&tree, view).bar().shown.current, 0.0);
+        assert!(!tree.tick_all(t0 + ms(4_300)).0);
+    }
+
+    #[test]
     fn a_fade_takes_its_own_durations_and_hover_waits_its_delay() {
         let (mut tree, view, _) = both(&[
             num(Prop::FadeIn, 200.0),
