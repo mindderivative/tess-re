@@ -298,6 +298,8 @@ pub(crate) enum Change {
     StrokeColor(Color),
     StrokeGradient(engine_core::Gradient),
     StrokeWidth(f64),
+    /// 0.6.11 (UXREQ-008).
+    Outline(crate::outline_props::OutlineChange),
     Opacity(f64),
     CornerRadius(Radius),
     Shadows(Vec<Shadow>),
@@ -1071,6 +1073,9 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
     if let Some(edit) = parse_layout(name, value) {
         return edit.map(Change::Style);
     }
+    if let Some(change) = crate::outline_props::parse(name, value) {
+        return change.map(Change::Outline);
+    }
     let number = |expected: &str| -> PyResult<f64> {
         let number: f64 = required(value, name, expected)?;
         if !number.is_finite() || value.is_instance_of::<pyo3::types::PyBool>() {
@@ -1468,6 +1473,7 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
                     .iter()
                     .copied()
                     .chain(crate::scrollbar_props::names())
+                    .chain(crate::outline_props::NAMES)
                     .collect::<Vec<_>>()
                     .join(", ")
             )));
@@ -1920,6 +1926,9 @@ impl Node {
             if crate::state_layer_props::NAMES.contains(&name) {
                 return crate::state_layer_props::read(name, node.paint.state_layer.as_deref(), py);
             }
+            if let Some(value) = crate::outline_props::read(name, node, py) {
+                return value;
+            }
             if let Some((_, key, _)) = CALLBACKS.iter().find(|(n, _, _)| *n == name) {
                 return Ok(
                     crate::node_callbacks::callback(&self.handlers, self.id, *key, py)
@@ -2343,7 +2352,11 @@ impl Node {
         // 0.4.2 M12: focusing scrolls the node into view, from a current
         // layout.
         self.layout_box(py);
-        let transition = self.tree.borrow_mut().set_focus_to(self.id);
+        let transition = {
+            let mut tree = self.tree.borrow_mut();
+            tree.set_focus_visible(crate::listeners::keyboard_modality());
+            tree.set_focus_to(self.id)
+        };
         if let Some((old, new)) = transition {
             fire_focus_transition(&self.handlers, &self.tree, &self.completions, old, new, py);
         }
@@ -2612,6 +2625,7 @@ impl Node {
                 }
                 Change::ZIndex(z) => node.z_index = z,
                 Change::ClipChildren(clip) => node.paint.clip_children = clip,
+                Change::Outline(change) => change.apply(&mut node.paint.outline),
                 Change::SnapAlign(align) => node.snap_align = align,
                 Change::Mask(mask) => node.paint.mask = mask,
                 Change::Sticky(inset) => node.sticky = inset,

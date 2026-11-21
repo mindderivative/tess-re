@@ -306,6 +306,17 @@ Nothing you have written breaks. New calls and fixes, listed by request:
   to migrate: with no defaults set, `create` is as before. See
   [Defaults per kind](reference/properties.md#defaults-per-kind-0611).
 
+- **`outline_*` and `focus_outline_*` draw a ring outside the box (UXREQ-008, new, opt-in).** Every node takes
+  `outline_width` (default 0, none), `outline_offset` (0; negative draws inside), `outline_color` (`None`: the window
+  scheme's role `secondary`), `outline_gap_color` (`None`: a transparent gap) and `outline_radius` (`None`: the
+  corner radius plus the offset, concentric), and the same five with the prefix `focus_outline_`, which replace them
+  while the node has keyboard focus that is visible (the `focus_visible` a `focus` event reports; a `text_input` shows
+  it for pointer focus too). The spec's focus ring is `focus_outline_width=3, focus_outline_offset=2`. The ring is
+  above the node's own paint and its children, not clipped by the node's own `clip_children` or `mask`, and clipped by
+  an ancestor's clip (keep padding of `offset + width`, or use a negative offset). Nothing to migrate: a node that sets
+  none paints, hits and repaints exactly as before. See
+  [Outline and focus ring](reference/properties.md#outline-and-focus-ring-0611).
+
 
 One behaviour changes for every scroll view and virtual list: the wheel notch. The rest is new and opt-in.
 

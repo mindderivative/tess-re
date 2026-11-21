@@ -595,6 +595,10 @@ fn process_input_inner(
         }
     }
     listeners::note_input_modality(event);
+    // 0.6.11 (UXREQ-008): the tree draws `focus_outline_*` only while focus is visible.
+    ctx.tree
+        .borrow_mut()
+        .set_focus_visible(listeners::keyboard_modality());
     // #288: a text input reads Ctrl from the tree (`KeyPressed` carries only Shift).
     ctx.tree
         .borrow_mut()

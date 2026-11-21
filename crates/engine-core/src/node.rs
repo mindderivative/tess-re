@@ -1646,6 +1646,9 @@ pub struct PaintProperties {
     /// node's fill and border, under its children (`hover_layer`, `pressed_layer`,
     /// `focus_layer`). Boxed and `None` for a node that never had one.
     pub state_layer: Option<Box<crate::state_layer::StateLayer>>,
+    /// 0.6.11 (UXREQ-008): the ring drawn outside the box (`outline_*`, `focus_outline_*`).
+    /// Boxed: most nodes have none, and `None` is the same as every width `0`.
+    pub outline: Option<Box<crate::Outlines>>,
 }
 
 /// How a node mixes with what is behind it (CSS `mix-blend-mode`).
@@ -1729,6 +1732,7 @@ impl PaintProperties {
             mask: None,
             scheme_fill: false,
             state_layer: None,
+            outline: None,
         }
     }
 

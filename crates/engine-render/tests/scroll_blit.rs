@@ -1154,3 +1154,35 @@ fn many_sizes_and_glyphs_fill_the_cache_without_failing() {
     let lit = drawn.chunks(4).filter(|p| p[0] > 128).count();
     assert!(lit > 500, "text was drawn: {lit} bright pixels");
 }
+
+/// 0.6.11 (UXREQ-008): rows that draw a ring past their box (neighbours overlap it) still
+/// scroll, shifted or redrawn, to exactly what a full draw shows.
+#[test]
+fn rows_with_an_outline_scroll_like_a_full_draw() {
+    let gpu = Gpu::new();
+    let mut world = scroll_world(40, Color::from_rgba8(20, 20, 24, 255), false);
+    for &row in &world.rows.clone() {
+        world.tree.get_mut(row).unwrap().paint.outline = Some(Box::new(engine_core::Outlines {
+            always: engine_core::OutlineStyle {
+                width: 2.0,
+                offset: 1.0,
+                color: Some(Color::from_rgba8(255, 255, 255, 255)),
+                ..Default::default()
+            },
+            ..Default::default()
+        }));
+    }
+    let mut window = Window::new(&gpu, 1.0);
+    window.frame(&gpu, &world.tree, world.root, true);
+    for (step, offset) in [4.0, 13.0, 40.0, 200.0, 0.0].into_iter().enumerate() {
+        scroll_to(&mut world, offset);
+        let damage = window.frame(&gpu, &world.tree, world.root, true);
+        assert_within(
+            &window.pixels(&gpu),
+            &fresh(&gpu, 1.0, &world.tree, world.root),
+            window.width.into(),
+            0,
+            &format!("frame {step} (offset {offset}, damage {damage:?})"),
+        );
+    }
+}

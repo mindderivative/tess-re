@@ -28,6 +28,7 @@ mod gradient;
 mod input;
 mod layout_anim;
 mod node;
+mod outline;
 mod overlay;
 mod path;
 mod path_template;
@@ -70,6 +71,7 @@ pub use node::{
     TerminalCell, TerminalPalette, TerminalState, TextAlign, TextFieldState, TextOptions, TextSpan,
     TextState, VerticalAlign, VirtualListState, WindowRegion,
 };
+pub use outline::{OUTLINE_ROLE, Outline, OutlineStyle, Outlines};
 pub use overlay::{AnchorBox, OverlayMeta, Placement};
 pub use path::{HitShape, MorphMode, PathData, PathState, fit_transform, trim};
 pub use path_template::PathTemplate;
