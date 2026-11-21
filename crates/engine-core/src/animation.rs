@@ -233,7 +233,7 @@ impl MotionCurve {
 }
 
 impl MotionCurve {
-    fn ease(self, t: f64) -> f64 {
+    pub(crate) fn ease(self, t: f64) -> f64 {
         match self {
             MotionCurve::Linear => t,
             MotionCurve::Bezier(x1, y1, x2, y2) => {

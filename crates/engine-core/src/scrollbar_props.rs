@@ -15,6 +15,9 @@ use crate::scrollbar::ScrollAxis;
 /// The most a time property takes: an hour, in milliseconds.
 pub const MAX_MILLIS: f64 = 3_600_000.0;
 
+/// The most a speed property takes: a million pixels a second.
+pub const MAX_SPEED: f64 = 1_000_000.0;
+
 /// How a property's value is checked, and what its names are.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Kind {
@@ -276,6 +279,12 @@ props! {
     ScrollEasing, "scroll_easing", Kind::Easing;
     PageRepeatDelay, "page_repeat_delay_ms", MILLIS;
     PageRepeat, "page_repeat_ms", number(1.0, MAX_MILLIS);
+    SnapSettle, "scroll_snap_settle_ms", MILLIS;
+    SnapDuration, "scroll_snap_duration_ms", MILLIS;
+    SnapEasing, "scroll_snap_easing", Kind::Easing;
+    FlingTau, "fling_tau_ms", number(1.0, MAX_MILLIS);
+    FlingStop, "fling_stop_speed", number(0.1, MAX_SPEED);
+    FlingMin, "fling_min_speed", number(0.0, MAX_SPEED);
 }
 
 impl Prop {
@@ -380,6 +389,7 @@ mod tests {
                 prop.name().starts_with("scrollbar_")
                     || ["wheel_notch", "key_line", "page_fraction"].contains(&prop.name())
                     || prop.name().starts_with("scroll_")
+                    || prop.name().starts_with("fling_")
                     || prop.name().starts_with("page_"),
                 "{}",
                 prop.name()

@@ -285,7 +285,7 @@ changes for them unless you set a property. A durations column is milliseconds; 
 | `scrollbar_fade_in_ms` | ms | 100 | The duration of a fade toward more emphasis or visibility (hover, drag, `"auto_hide"` showing). Replaces the engine's fixed 100 ms. `scrollbar_fade_in_ms=150` |
 | `scrollbar_fade_out_ms` | ms | 100 | …toward less (leaving the hit area, `"auto_hide"` hiding). `scrollbar_fade_out_ms=300` |
 | `scrollbar_hover_delay_ms` | ms | 0 | How long the pointer stays in the hit area before the hover emphasis starts. `scrollbar_hover_delay_ms=200` |
-| `scrollbar_fade_easing` | preset name or `(x1, y1, x2, y2)` | `"standard"` | The curve of those fades. Presets: `linear`, `standard` (0.2, 0, 0, 1), `emphasized` (0.3, 0, 0, 1), `standard_accelerate`, `standard_decelerate`, `ease`, `ease_in`, `ease_out`, `ease_in_out`; a bezier takes `x1` and `x2` from 0 to 1 (CSS `cubic-bezier`). `scrollbar_fade_easing="ease_out"` |
+| `scrollbar_fade_easing` | preset name or `(x1, y1, x2, y2)` | `"standard"` | The curve of those fades. A [preset name](../guide/animation.md#easing) (`linear`, `standard`, `standard_decelerate`, `standard_accelerate`, `emphasized`, `emphasized_decelerate`, `emphasized_accelerate`, `ease`, `ease_in`, `ease_out`, `ease_in_out`) or a bezier `(x1, y1, x2, y2)` with `x1` and `x2` from 0 to 1 (CSS `cubic-bezier`); the same forms `animate` takes, minus the springs. `scrollbar_fade_easing="ease_out"` |
 | `scrollbar_gutter` | px, ≥ 0 | 12 (`"both"`), 0 | The room an overflowing axis reserves at its bar's edge ([how](../guide/nodes-and-layout.md#two-axes-0611)). `scrollbar_gutter=16` |
 | `scrollbar_gutter_reserve` | bool | `True` | `False`: no room is reserved and the thumb overlays the content. `scrollbar_gutter_reserve=False` |
 
@@ -309,6 +309,17 @@ changes for them unless you set a property. A durations column is milliseconds; 
 | `page_repeat_delay_ms` | ms | 400 | How long a held lane or arrow press waits before it repeats. `page_repeat_delay_ms=300` |
 | `page_repeat_ms` | ms, 1 to an hour | 100 | The interval of the repeat. `page_repeat_ms=50` |
 
+**Scroll snap and fling** (0.6.11; the engine's own timings, until now constants; scroll views and virtual lists)
+
+| Property | Type | Default | Meaning, example |
+| --- | --- | --- | --- |
+| `scroll_snap_settle_ms` | ms, 0 to an hour | 120 | How long a view with `scroll_snap` waits after its last input (wheel, key, finger, fling) before it settles on a snap point. `scroll_snap_settle_ms=250` |
+| `scroll_snap_duration_ms` | ms, 0 to an hour | 200 | How long the settling takes; 0 while reduced motion is on, whatever this says. `scroll_snap_duration_ms=300` |
+| `scroll_snap_easing` | preset name or bezier | `"standard"` (0.2, 0, 0, 1) | The curve of the settle. `scroll_snap_easing="emphasized_decelerate"` |
+| `fling_tau_ms` | ms, 1 to an hour | 350 | How quickly a touch flick slows: the time constant of its exponential decay (the speed is `v0 · e^(-t/τ)`). Larger coasts further and longer: the distance is about `v0 · τ`. `fling_tau_ms=700` |
+| `fling_stop_speed` | px/s, 0.1 to 1 000 000 | 30 | The coast ends when its speed has fallen to this. A flick no faster than this does not coast. `fling_stop_speed=60` |
+| `fling_min_speed` | px/s, 0 to 1 000 000 | 150 | A flick slower than this does not coast at all (the finger lifted too slowly). `fling_min_speed=400` |
+
 ```python
 # A design system's scrollbar: a thin pill that shows on hover or scroll, with arrows and a track.
 view.set(scrollbar_width=6, scrollbar_show="auto_hide", scrollbar_fade_out_ms=250,
@@ -318,7 +329,9 @@ view.set(scrollbar_width=6, scrollbar_show="auto_hide", scrollbar_fade_out_ms=25
 
 **Reduced motion.** `Window.set(reduced_motion=True)` (`None`, the default, follows the OS, the value
 `window.get("reduced_motion")` and the `reduced_motion` event report) makes the fades, `scroll_smooth_ms` and the
-scroll snap settle take no time. Any one scroller can still be given its own durations of `0`.
+scroll snap settle (`scroll_snap_duration_ms`) take no time. Any one scroller can still be given its own durations of `0`.
+A touch fling is not changed by it: it is the finger's own momentum, not a transition, and carries on at the
+speed the finger left it; set `fling_min_speed` very high (or listen to `reduced_motion` and set it) to end flings.
 
 ## Virtual list
 
@@ -354,7 +367,7 @@ scrolls out of the window.
 
 (0.6.11) A virtual list takes every [scrollbar and scroll-feel property](#scrollbar-and-scroll-feel-0611) a scroll
 view does (`scrollbar_*`, `wheel_notch`, `key_line`, `page_fraction`, `scroll_smooth_ms`, `scroll_easing`,
-`page_repeat_*`), and draws, hit-tests, hovers, drags and fades its bar with the same code. A list that sets none keeps
+`page_repeat_*`, `fling_*`; `scroll_snap_*` are accepted and read back but do nothing there, a list has no snap), and draws, hit-tests, hovers, drags and fades its bar with the same code. A list that sets none keeps
 the bar it had (4 px, 2 px radius, no hover or drag emphasis, no lane click); the keys and the page (nine tenths of the
 viewport) are the spec's.
 

@@ -187,7 +187,8 @@ window.on("high_contrast", lambda e: use_high_contrast_palette(e.high_contrast))
 ```
 
 (0.6.11) The engine's own animations follow the preference too: the scrollbar's fades, smooth scrolling
-(`scroll_smooth_ms`) and the scroll snap settle take no time while it is on. `window.set(reduced_motion=True)` or
+(`scroll_smooth_ms`) and the scroll snap settle (`scroll_snap_duration_ms`) take no time while it is on; a touch fling
+(`fling_tau_ms`, `fling_stop_speed`, `fling_min_speed`) is the finger's own momentum and is not changed by it. `window.set(reduced_motion=True)` or
 `False` overrides the OS for the window, and `None` (the default) follows it again; `get("reduced_motion")` then reads
 the window's own say, else the OS's.
 

@@ -355,6 +355,20 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
 - **`scroll_smooth_ms`, `scroll_easing` (P1, new).** With `scroll_smooth_ms` above 0 (default 0: keys and wheel jump,
   as the spec says) the wheel and keys ease over that many milliseconds with the easing (default `"standard"`); notches
   add up. Drags, lane and arrow presses and `scroll_offset=` stay direct.
+- **Named easings everywhere an easing is taken (P7, new).** `animate`, `animate_param`, `Shader.animate`,
+  `LayerWindow.animate_margin` (and so a path's `trim_*`/`data` and the layout properties) now take a preset name too,
+  next to `"linear"`, a bezier tuple and the springs: `"linear"`, `"standard"`, `"standard_decelerate"`,
+  `"standard_accelerate"`, `"emphasized"`, `"emphasized_decelerate"`, `"emphasized_accelerate"`, `"ease"`, `"ease_in"`,
+  `"ease_out"`, `"ease_in_out"` (curves in [the animation guide](guide/animation.md#easing)); a name outside the table
+  raises `ValueError` listing them. The first seven are the table of the Tesserae UX note "Motion". **Changed
+  (unreleased P1 preset):** `"emphasized"` was `(0.3, 0, 0, 1)`, a value in no MD3 table; it is now the note's
+  `(0.2, 0, 0, 1)`, the same curve as `"standard"`.
+- **`scroll_snap_settle_ms`, `scroll_snap_duration_ms`, `scroll_snap_easing` (P7, new).** The wait before a snapping
+  `scroll_view` settles (default 120 ms), how long the settle takes (200 ms; 0 under reduced motion) and its curve
+  (`"standard"`), until now constants of the engine.
+- **`fling_tau_ms`, `fling_stop_speed`, `fling_min_speed` (P7, new).** A touch flick's decay time constant (default
+  350 ms), the speed at which the coast ends (30 px/s) and the speed below which a flick does not coast (150 px/s), until
+  now constants of the engine. A fling is not changed by reduced motion (it never was).
 - **`page_repeat_delay_ms`, `page_repeat_ms` (P1, new).** The held lane or arrow press repeats after 400 ms, then every
   100 ms (were constants).
 - **`Window.set(reduced_motion=...)` (P1, new).** `True`/`False` overrides, `None` (default) follows the OS value

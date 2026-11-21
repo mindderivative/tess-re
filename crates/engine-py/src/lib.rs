@@ -14,6 +14,7 @@ mod clock;
 mod cursor_image;
 mod dispatch;
 mod dock;
+mod easing;
 mod error;
 mod event;
 mod files;

@@ -151,7 +151,7 @@ impl Node {
     ) -> PyResult<()> {
         let duration = Duration::from_millis(duration_ms);
         let now = crate::clock::now(&self.tree);
-        let curve = parse_easing(easing.as_ref(), duration)?;
+        let curve = crate::easing::parse_easing(easing.as_ref(), duration)?;
         let value = extract_f64(&to, name)?;
         if !value.is_finite() {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -188,7 +188,7 @@ impl Node {
     ) -> PyResult<()> {
         let duration = Duration::from_millis(duration_ms);
         let now = crate::clock::now(&self.tree);
-        let curve = parse_easing(easing.as_ref(), duration)?;
+        let curve = crate::easing::parse_easing(easing.as_ref(), duration)?;
         // 0.4.3 M15: a scroll view eases to the real end, not past it --
         // layout would clamp it there each frame, stalling the curve.
         let scroll_max = if property == "scroll_offset" {
@@ -777,56 +777,6 @@ impl Node {
 /// animating, optionally with a real completion handle" dispatch --
 /// generic over every `T: Interpolate + Clone` an `Animated<T>` can
 /// wrap, so each of `animate()`'s match arms needs one call.
-/// M95: `animate`'s `easing` -- `None` or `"linear"`, or a cubic bezier
-/// `(x1, y1, x2, y2)` with `x1` and `x2` in `0.0..=1.0`, as CSS
-/// `cubic-bezier()` takes them.
-pub(crate) fn parse_easing(
-    easing: Option<&Bound<'_, PyAny>>,
-    duration: Duration,
-) -> PyResult<MotionCurve> {
-    let expected = "easing must be \"linear\", \"spring\", (\"spring\", bounce) with bounce from \
-                    -1 to 1 (exclusive), or a cubic bezier (x1, y1, x2, y2) with x1 and x2 \
-                    from 0.0 to 1.0";
-    let invalid = || pyo3::exceptions::PyValueError::new_err(expected);
-    let Some(easing) = easing else {
-        return Ok(MotionCurve::Linear);
-    };
-    if easing.is_none() {
-        return Ok(MotionCurve::Linear);
-    }
-    // 0.5.4 (#138): a spring takes `duration` as its period and bounce for how
-    // much it overshoots; a zero duration still snaps.
-    let spring = |bounce: f64| -> PyResult<MotionCurve> {
-        if !(bounce > -1.0 && bounce < 1.0) {
-            return Err(invalid());
-        }
-        Ok(if duration.is_zero() {
-            MotionCurve::Linear
-        } else {
-            MotionCurve::spring_for(duration, bounce)
-        })
-    };
-    if let Ok(name) = easing.extract::<String>() {
-        return match name.as_str() {
-            "linear" => Ok(MotionCurve::Linear),
-            "spring" => spring(0.2),
-            _ => Err(invalid()),
-        };
-    }
-    if let Ok((name, bounce)) = easing.extract::<(String, f64)>() {
-        return if name == "spring" {
-            spring(bounce)
-        } else {
-            Err(invalid())
-        };
-    }
-    let (x1, y1, x2, y2): (f64, f64, f64, f64) = easing.extract().map_err(|_| invalid())?;
-    if !(0.0..=1.0).contains(&x1) || !(0.0..=1.0).contains(&x2) {
-        return Err(invalid());
-    }
-    Ok(MotionCurve::Bezier(x1, y1, x2, y2))
-}
-
 /// 0.6.11: a text or text input whose colour is its window scheme's takes that colour as its
 /// own, so an animation of `fill` starts from what is on screen.
 fn adopt_scheme_fill(node: &mut engine_core::Node, text: peniko::Color) {
