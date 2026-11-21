@@ -36,7 +36,9 @@ CHILD = textwrap.dedent(
 )
 
 CLOCK = re.compile(r"^\[(\d+):(\d+):(\d+\.\d+)\]")  # newer libwayland: [HH:MM:SS.us] (UTC)
-MONO = re.compile(r"^\[\s*(\d+\.\d+)\]")  # Ubuntu 24.04's: [seconds.millis] since boot
+# Ubuntu 24.04's libwayland prints `[%7u.%03u]` of (microseconds / 1000, microseconds % 1000): the
+# number is MILLISECONDS with a microsecond fraction.
+MONO = re.compile(r"^\[\s*(\d+\.\d+)\]")
 COMMIT = re.compile(r"wl_surface[#@]\d+\.commit\(\)")
 
 
@@ -52,7 +54,7 @@ def _seconds(line):
         h, m, s = match.groups()
         return int(h) * 3600 + int(m) * 60 + float(s)
     match = MONO.match(line)
-    return float(match.group(1)) if match else None
+    return float(match.group(1)) / 1000.0 if match else None
 
 
 def _lines(path):
