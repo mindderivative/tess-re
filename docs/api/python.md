@@ -407,6 +407,7 @@ A handle to one node in a window's tree: properties, animation, events, structur
 | `release_pointer() -> None` | Ends this node's pointer capture, if it holds it. |
 | `remove() -> None` | Detaches this node from its parent. |
 | `scroll_into_view() -> None` | Scrolls every scroll view around this node just enough to show it, innermost first, at once. |
+| `scroll_to_index(index: int, align: str='nearest') -> bool` | Scrolls this virtual list so row `index` shows, whether or not it is built, at once. |
 | `set(**props: Any) -> None` | Sets properties atomically: every value is checked first, and a bad one raises `ValueError` without changing anything. |
 | `set_children(children: Sequence[Node]) -> None` | Makes `children` this node's whole content, in that order, in one call. |
 | `stop_animation(name: str) -> None` | Stops `name`'s running animation where it is. |

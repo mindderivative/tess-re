@@ -2239,6 +2239,52 @@ impl Node {
         self.tree.borrow_mut().scroll_into_view(self.id);
         self.fire_scroll_changes(py);
     }
+
+    /// 0.6.11: scrolls this virtual list so row `index` shows as `align`
+    /// says -- `"nearest"` (the least scroll that shows it, none if it is
+    /// already shown), `"start"`, `"center"` or `"end"` -- at once, whether
+    /// or not the row is built. Offsets come from the list's `item_extent`
+    /// or the `size_hint` of every row, so they are exact. Returns whether
+    /// the offset changed; raises `ValueError` for another kind of node, an
+    /// unknown `align`, or an `index` outside `0..item_count`.
+    #[pyo3(signature = (index, align = "nearest"))]
+    fn scroll_to_index(&self, py: Python<'_>, index: i64, align: &str) -> PyResult<bool> {
+        let align = engine_core::ScrollAlign::from_name(align).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "`align` must be one of \"nearest\", \"start\", \"center\", \"end\", got {align:?}"
+            ))
+        })?;
+        let count = match self.tree.borrow().get(self.id).map(|n| &n.kind) {
+            Some(NodeKind::VirtualList(state)) => state.item_count,
+            Some(_) => {
+                return Err(PyValueError::new_err(
+                    "scroll_to_index applies only to a virtual_list node",
+                ));
+            }
+            None => return Err(crate::error::EngineError::Destroyed.into()),
+        };
+        // The viewport height and a `size_hint` list's offsets come from layout.
+        self.layout_box(py);
+        let count_now = match self.tree.borrow().get(self.id).map(|n| &n.kind) {
+            Some(NodeKind::VirtualList(state)) => state.item_count,
+            _ => count,
+        };
+        let index = usize::try_from(index)
+            .ok()
+            .filter(|&i| i < count_now)
+            .ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "index {index} is outside the list's {count_now} rows"
+                ))
+            })?;
+        let moved = self
+            .tree
+            .borrow_mut()
+            .scroll_virtual_list_to_index(self.id, index, align)
+            .unwrap_or(false);
+        self.fire_scroll_changes(py);
+        Ok(moved)
+    }
 }
 
 impl Node {

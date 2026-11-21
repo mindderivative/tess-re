@@ -285,3 +285,15 @@ Nothing you have written breaks. New calls and fixes, listed by request:
 - **A resizing window presents at most 250 times a second (#248, a fix).** A fullscreen change on KWin with RADV made an
   animating window commit about 10,000 times a second for 0.4 s. The resize still presents without a vsync barrier, now
   at least 4 ms apart. The issue stays open until the resize is checked by hand on KWin.
+
+## 0.6.11
+
+- **`virtual_list` keys, `scroll_to_index` and `scroll_into_view` (new; from the UX spec notes "List" and "Scrollbar and
+  Scroll Container").** A focused virtual list, or a node inside one, now scrolls on Up/Down (40 px), Page Up/Page Down
+  (the viewport less 10 percent) and Home/End, with the scroll-view rules (a `key_down` listener or a text input keeps
+  its keys, Ctrl/Alt/Meta never scroll, a list that cannot move bubbles the key to the scroller around it). Focus
+  moving to a built row, and `scroll_into_view()`, scroll the list by the least distance; the row holding focus stays
+  built when it scrolls out of the window. `node.scroll_to_index(index, align="nearest")` reaches rows that are not
+  built. A virtual list now fires `scroll` (it did not for the wheel either). Nothing to migrate unless an app handled
+  these keys itself on a list or focused a row it expected to stay put: such an app now sees the list scroll as well.
+  See [Keyboard scrolling](guide/nodes-and-layout.md#keyboard-scrolling).

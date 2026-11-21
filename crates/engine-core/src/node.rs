@@ -1048,6 +1048,9 @@ pub struct VirtualListState {
     /// anywhere along its own length must not snap it so that point
     /// jumps under the pointer.
     pub thumb_drag_anchor: Option<(f64, f64)>,
+    /// The offset last reported as a `scroll` event (see
+    /// `ScrollViewState::reported`).
+    pub reported: f64,
 }
 
 impl VirtualListState {
@@ -1059,6 +1062,7 @@ impl VirtualListState {
             scroll_offset: Animated::new(0.0),
             resolved_offsets: std::collections::BTreeMap::new(),
             thumb_drag_anchor: None,
+            reported: 0.0,
         }
     }
 
