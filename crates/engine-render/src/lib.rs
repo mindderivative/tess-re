@@ -2084,6 +2084,9 @@ pub struct FrameRenderer {
     images: image_cache::ImageTextureCache,
     // 0.5.1 (#67): the fill-shader passes and their textures.
     shaders: shader_pass::ShaderPasses,
+    /// 0.6.11 (P5): the colour a frame's pixels are cleared to before the scene paints over
+    /// them (transparent by default); a window's `background`.
+    backdrop: peniko::Color,
 }
 
 impl FrameRenderer {
@@ -2099,7 +2102,16 @@ impl FrameRenderer {
             core: shared.core.clone(),
             images: image_cache::ImageTextureCache::new(),
             shaders: shader_pass::ShaderPasses::new(format),
+            backdrop: peniko::Color::TRANSPARENT,
         }
+    }
+
+    /// 0.6.11 (P5): the colour the frame is cleared to before the scene paints (default
+    /// transparent); returns whether it changed, in which case the whole frame is out of date.
+    pub fn set_backdrop(&mut self, color: peniko::Color) -> bool {
+        let changed = self.backdrop != color;
+        self.backdrop = color;
+        changed
     }
 
     /// Renders `scene` into `target` via `encoder`. Does not submit the
@@ -2144,13 +2156,15 @@ impl FrameRenderer {
             })
             .collect();
         let clear = match rects {
-            // Transparent, as the full clear is: the scene's own background
-            // paints over it.
+            // The backdrop (transparent unless the window sets one), as the full clear is:
+            // the scene's own background paints over it.
             Some(_) => vello_gpu::ClearSettings::Rects {
-                color: peniko::color::AlphaColor::TRANSPARENT,
+                color: self.backdrop,
                 rects: &clear_rects,
             },
-            None => vello_gpu::ClearSettings::default(),
+            None => vello_gpu::ClearSettings::Viewport {
+                color: self.backdrop,
+            },
         };
         let core = &mut *self.core.borrow_mut();
         core.renderer

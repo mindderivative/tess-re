@@ -228,6 +228,13 @@ baseline with your overrides): `surface`, `surface_container` and the other role
 colour in force. `set(scheme_colors={...})` replaces the window's overrides (`None` or `{}` clears them) and raises
 `ValueError`, listing the valid role names, for an unknown one; the overrides stay across a change of scheme.
 
+**The window's own background and the first frame (0.6.11).** Pixels no node paints are cleared to the window's
+`background`, by default the scheme's `surface` role, so a dark window is never white or black behind the app's own
+fills. `Window(background=(r, g, b, a))` or `window.set(background=...)` overrides it. To keep a window from showing an
+unfinished first frame, or (macOS, Windows) the OS's default background before it, build it with
+`first_present="on_ready"`, add its content, and call `window.ready()`; a number of milliseconds is the same with a
+deadline. See [First present and background](../reference/window.md#first-present-and-background-0611).
+
 ## What Tesserae Engine leaves to you
 
 The colors Tesserae Engine draws for you all have properties: a text's and a text input's `fill`, a text input's

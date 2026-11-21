@@ -449,7 +449,7 @@ impl PyWindow {
 const SETTABLE: &str = "title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, \
     min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, \
     dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, \
-touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors";
+touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors, background";
 
 /// 0.5.8 (#132): a distance in layout pixels, zero or more.
 fn extract_distance(name: &str, value: &Bound<'_, PyAny>) -> PyResult<f64> {
@@ -931,6 +931,7 @@ impl PyWindow {
         let mut reduced_motion: Option<Option<bool>> = None;
         let mut scheme = None;
         let mut scheme_colors = None;
+        let mut background = None;
         if let Some(props) = props {
             for (name, value) in props.iter() {
                 let name: String = name.extract()?;
@@ -1043,6 +1044,19 @@ impl PyWindow {
                     "scheme_colors" => {
                         scheme_colors = Some(crate::scheme::parse_overrides(&value)?);
                     }
+                    // 0.6.11 (P5): the colour every frame is cleared to; `None` is the scheme's
+                    // `surface`.
+                    "background" => {
+                        background = Some(crate::first_present::FirstPresent::parse_background(
+                            &value,
+                        )?);
+                    }
+                    "first_present" => {
+                        return Err(PyValueError::new_err(
+                            "window property `first_present` can only be given when the window is \
+                             made: Window(first_present=...)",
+                        ));
+                    }
                     "icon" => {
                         icon = Some(if value.is_none() {
                             None
@@ -1052,7 +1066,7 @@ impl PyWindow {
                     }
                     "width" | "height" | "scale_factor" | "maximized" | "minimized" | "active"
                     | "occluded" | "platform" | "titlebar_inset" | "native_controls"
-                    | "transparent_active" | "scheme_resolved" => {
+                    | "transparent_active" | "scheme_resolved" | "first_presented" => {
                         return Err(PyValueError::new_err(format!(
                             "window property `{name}` is read-only -- settable: {SETTABLE}"
                         )));
@@ -1070,6 +1084,11 @@ impl PyWindow {
                 window.set_title(&title);
             }
             *self.title.borrow_mut() = title;
+        }
+        if let Some(color) = background {
+            self.handles.first_present.set_background(color);
+            // A frame already drawn was cleared to the old colour.
+            self.handles.tree.borrow_mut().mark_dirty();
         }
         if scheme.is_some() || scheme_colors.is_some() {
             if let Some(setting) = scheme {
@@ -1408,6 +1427,19 @@ impl PyWindow {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind(),
+            "first_present" => self.handles.first_present.mode().to_py(py)?,
+            "first_presented" => self
+                .handles
+                .first_present
+                .presented()
+                .into_pyobject(py)?
+                .to_owned()
+                .into_any()
+                .unbind(),
+            "background" => match self.handles.first_present.background() {
+                Some(color) => crate::node_props::color_to_py(color, py)?,
+                None => py.None(),
+            },
             "x" | "y" => {
                 // The window's own position once it is open (None where the
                 // system doesn't say, as on Wayland); before that, what was set.
@@ -1637,7 +1669,7 @@ impl PyWindow {
                      min_height, platform, resize_border, system_menu, titlebar_inset, \
                      native_controls, gpu_watchdog, present_mode, dpi_scaling, transparent, \
                      transparent_active, blur_behind, click_through, x, y, always_on_top, resizable, \
-                     skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, scheme, scheme_resolved, scheme_colors"
+                     skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, scheme, scheme_resolved, scheme_colors, first_present, first_presented, background"
                 )));
             }
         })

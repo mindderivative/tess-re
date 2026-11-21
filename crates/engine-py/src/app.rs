@@ -43,6 +43,7 @@ use winit::window::{Window, WindowId};
 
 use crate::dispatch::{WindowIo, process_input, run_completions, run_dispatch_outcome};
 use crate::event::NodeContext;
+use crate::first_present;
 use crate::listeners::{self, WindowEventType};
 use crate::text_interaction::{text_access_lines, text_cursor_at};
 use crate::thread_bound::{ThreadBound, thread_bound_shell};
@@ -141,6 +142,7 @@ fn window_request(setup: &WindowSetup, index: usize, max_frames: Option<u32>) ->
                 always_on_top: setup.handles.always_on_top.get(),
                 resizable: setup.handles.resizable.get(),
                 skip_taskbar: setup.handles.skip_taskbar.get(),
+                start_hidden: setup.handles.first_present.starts_hidden(),
             },
         },
         token: index as u64,
@@ -1595,6 +1597,8 @@ impl App {
                 };
                 let setup = &setup_owned;
                 *setup.handles.os_window.borrow_mut() = Some(window.clone());
+                // 0.6.11 (P5): a `first_present` deadline counts from here.
+                setup.handles.first_present.opened_now(Instant::now());
                 // 0.6.11: the engine's own animations follow the OS's motion preference
                 // (until a `reduced_motion` of the window says otherwise); changes arrive
                 // as `ReducedMotionChanged` events.
@@ -2091,9 +2095,47 @@ impl App {
                 // still tick on the frames that do run (a timer, an input, a wake) and
                 // `on_complete` still fires; the loop just no longer asks for more. The
                 // window draws everything once it shows again.
-                if runtime.handles.pause_when_occluded.get() && runtime.handles.occluded.get() {
+                // A window whose first present is held has not been shown yet, so whatever the OS
+                // says of it (macOS and Windows may call a hidden window occluded) does not
+                // pause its first frame.
+                if runtime.handles.pause_when_occluded.get()
+                    && runtime.handles.occluded.get()
+                    && !runtime.handles.first_present.awaiting()
+                {
                     runtime.handles.tree.borrow_mut().mark_dirty();
                     return false;
+                }
+                // 0.6.11 (P5): `first_present='on_ready'` or a deadline: the window is laid out
+                // (above) but its first frame is not drawn or presented until the app says it is
+                // ready. Nothing more is asked of the loop: `window.ready()` wakes it, and a
+                // deadline arms the window's alarm. The tree is left dirty so the frame is drawn
+                // in full when it is let through.
+                if let first_present::Hold::Until(deadline) =
+                    runtime.handles.first_present.hold(Instant::now())
+                {
+                    if let Some(at) = deadline
+                        && let Some(alarm) = runtime.handles.alarm.borrow().as_ref()
+                    {
+                        alarm.arm(at);
+                    }
+                    runtime.handles.tree.borrow_mut().mark_dirty();
+                    crate::frame_stats::lock(&runtime.handles.frame_stats).skipped_one();
+                    return false;
+                }
+                // 0.6.11 (P5): what a frame is cleared to before the scene paints over it.
+                {
+                    let surface = runtime
+                        .handles
+                        .tree
+                        .borrow()
+                        .scheme_colors()
+                        .get(engine_core::SchemeRole::Surface);
+                    let see_through =
+                        runtime.gpu.transparent_active || runtime.handles.layer.is_some();
+                    runtime
+                        .gpu
+                        .renderer
+                        .set_backdrop(runtime.handles.first_present.backdrop(see_through, surface));
                 }
                 // 0.6.10 (#248): a resizing window presents without a vsync barrier, which
                 // never waits, so on KWin with RADV it committed ~10,000 times a second for
@@ -2239,6 +2281,14 @@ impl App {
                     }
                 }
                 runtime.gpu.queue.present(output);
+                // 0.6.11 (P5): the first frame is out; a window kept hidden is shown now (a
+                // no-op on Wayland, where the present mapped it).
+                if runtime.handles.first_present.finish()
+                    && runtime.handles.first_present.mode() != first_present::Mode::Immediate
+                    && let Some(window) = runtime.handles.os_window.borrow().as_ref()
+                {
+                    window.set_visible(true);
+                }
                 let frame_ended = Instant::now();
                 runtime.gpu.pacing.presented(frame_ended);
                 if reconfigure {

@@ -96,6 +96,8 @@ spec. Properties added under this rule so far (0.6.11):
 | `fill=None` (`text`, `text_input`), `palette` `foreground`/`cursor`/`selection` `None` | the scheme's colour | [Properties](reference/properties.md#text) |
 | `letter_spacing`, `line_height` (now on `text_input` too) | `0`, `None` (the font's own) | [Text](reference/properties.md#text) |
 | `Window.set_defaults` / `App.set_defaults` (`kind` or `"*"`, any `create` property) | none set: the engine's own defaults; read at node creation, never per frame | [Defaults per kind](reference/properties.md#defaults-per-kind-0611) |
+| `first_present` (`Window`; `"immediate"`, `"on_ready"` or milliseconds), `window.ready()` | `"immediate"`: the first frame is presented when drawn. Held, nothing is drawn or committed until the app is ready (or the deadline passes) | [First present and background](reference/window.md#first-present-and-background-0611) |
+| `background` (`Window`, `set`; `(r, g, b, a)` or `None`) | `None`: the scheme's `surface` role; nothing for a see-through window, a `LayerWindow` and a `PopupWindow` | [First present and background](reference/window.md#first-present-and-background-0611) |
 
 **Scrollbar and scroll feel (0.6.11, P1).** A `scroll_view` and a `virtual_list` share one scrollbar: one table of
 properties (`engine_core::ScrollProp`), one geometry (`ScrollbarMetrics::thumbs`), one hit test, hover, drag and fade
