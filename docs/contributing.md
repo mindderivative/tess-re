@@ -53,8 +53,16 @@ and `Cargo.lock` is bumped on the branch. Nothing is released until it is told t
    then waits at the **`pypi` environment** for a reviewer's approval before it
    uploads to PyPI (trusted publishing, no token). PyPI never accepts the same
    version twice, so check the version before tagging.
-4. After approval, `pip install tesserae-engine==X.Y.Z` in a clean venv is the
-   check that it is live.
+4. After approval, `post-publish.yml` runs by itself when the Wheels run has finished
+   (`workflow_run`). It waits until PyPI serves the version, installs it in a clean venv
+   with `--no-cache-dir` on Ubuntu, macOS and Windows with Python 3.12 and 3.14, checks that
+   the installed version is the tag's and that `tess_re` imports and builds a `Window`, then
+   checks the PyPI files and the GitHub Release (wheels for each platform, one sdist, the
+   standalone `.so`, a non-empty body) and writes the result to the job summary. It only
+   reads: it never tags, approves or publishes, so steps 3 and the `pypi` approval stay with
+   the maintainer. To check an already published version, run **Post-publish** by hand
+   (`Actions` > `Post-publish` > `Run workflow`, with the `version`). It does not open a
+   window, so a real compositor, a GPU, macOS and Windows hardware are still checked by hand.
 
 ## The GitHub project
 
