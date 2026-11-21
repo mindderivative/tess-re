@@ -58,7 +58,7 @@ def _commits(path, t0, span):
         for line in log:
             at = _seconds(line)
             if at is not None and t0 <= at < t0 + span and re.search(
-                r"wl_surface#\d+\.commit\(\)", line
+                r"wl_surface[#@]\d+\.commit\(\)", line
             ):
                 count += 1
     return count
