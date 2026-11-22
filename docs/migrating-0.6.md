@@ -719,3 +719,34 @@ order they were added; **Internal (Rust)** lists API changes Python never sees.
   `node_callbacks::layout` takes the completions registry; `Mode::require_immediate` is gone (one
   `FirstPresent::configure` parses `first_present=` and `background=` for all three window kinds); `WindowEventType`
   gained `TitlebarDoubleClick` and `DockCancel`, `EventType` gained `SelectionChange`.
+
+## 0.6.13
+
+- **`selection_mode`, `selection`, `selection_anchor`, `select_all_key`, `select_on_focus`, `item_selectable` on a `box`,
+  `container` and `scroll_view` (new, opt-in; no default changes; UX note "Selection", AC-SLT-1 to 5 and 8).** The
+  children are the items: `selection` is a list of child **nodes**, `item_selectable=False` on a child marks it
+  unselectable (an invisible child cannot be chosen either), and `selection_change` carries `event.selection` and
+  `event.anchor` as nodes. A scroll view's items are the children of its one content child. The clicks, keys, Ctrl+A
+  and drag rule are the virtual list's. **Reordering keeps the choice by index only** -- set `selection` again after you
+  insert, remove or move children. The default `selection_mode="none"` leaves everything as it was. See
+  [Selecting the children of a container](guide/nodes-and-layout.md#selecting-the-children-of-a-container).
+- **Accessibility: `multiselectable` and `selected` from the set (AC-SLT-8).** A list or container with a `selection_mode`
+  says `multiselectable` (when `"multiple"`) and each item says `selected` as the set says -- the built rows of a
+  `virtual_list` too, including rows built later. A toolkit that set `selected` by hand on those nodes can stop;
+  the derived value replaces it while a mode is set. With mode `"none"` a `selected` you set is untouched.
+- **`selection_announce` and `selection_announce_ms` (new; AC-SLT-9).** On a `virtual_list` and on a container:
+  `selection_announce="{count} selected"` makes one polite announcement once the set has stopped changing for
+  `selection_announce_ms` (300); ten changes within that time are announced once. Default `None`: nothing.
+- **Behaviour to know, for a list or container with a `selection_mode` only (AC-SLT-5).** Tab passes over an unselectable
+  item, and a click on one neither chooses it nor focuses it (before, a click on an unselectable row focused it, and Tab
+  visited it). A **right click** on an item that is not chosen chooses it alone; on a chosen item it keeps the set
+  (before, a secondary press changed nothing). `node.focus()` still focuses anything. `Event.selection` and `Event.anchor`
+  are now typed `list[int] | list[Node] | None` and `int | Node | None`.
+- **Removed names.** `Event.source` stays removed; the new field is still `selection_source`.
+
+### Internal (Rust)
+
+- `Node` gained `item_selectable` and `selection: Option<Box<SelectionState>>`; `SelectionState` gained `announce`,
+  `announce_ms` and the debounce state (`note_reported`, `take_announcement`, `set_announce`, `fits`) and a hand-written
+  `Default`; `Tree` gained `container_selection`, `container_items`, `item_parent`, `holds_items`, `refresh_selection_host`
+  (call it after changing a container's selection mode) and `list_secondary_press`.

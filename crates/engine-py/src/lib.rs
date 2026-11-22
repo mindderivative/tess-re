@@ -11,6 +11,7 @@ mod app;
 mod canvas;
 mod caret;
 mod clock;
+mod container_selection;
 mod cursor_image;
 mod defaults;
 mod dispatch;

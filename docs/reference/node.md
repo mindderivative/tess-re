@@ -23,7 +23,7 @@ thumb.set(role="slider", label="Volume", value=0.4, value_min=0.0,
 | `value` | `str`, number, or `None` |
 | `value_min`, `value_max`, `value_step` | number or `None` |
 | `checked` | `True`, `False`, `"mixed"`, or `None` (`"mixed"` since 0.6.11) — a checkbox's state; `pressed` wins over it where both are set |
-| `selected`, `expanded` | `bool` or `None` |
+| `selected`, `expanded` | `bool` or `None`. (0.6.13) The items of a list or container with a `selection_mode` say `selected` as the set says, whatever is set here ([Accessibility](../guide/accessibility.md#selection-0613)) |
 | `disabled` | `bool` |
 | `pressed` | `True`, `False`, `"mixed"`, or `None` (0.5.6) — a toggle button's state; where both are set, it wins over `checked` |
 | `invalid`, `busy` | `bool` (0.5.6) — the value is not acceptable; the node is updating |

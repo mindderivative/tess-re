@@ -185,12 +185,15 @@ class Event:
     """`pan` and `pinch`: `"began"`, `"changed"`, `"ended"` or `"cancelled"`."""
     count: int | None
     """`tap`: 1, or 2 for a double tap. `selection_change` (0.6.12): how many rows are chosen."""
-    selection: list[int] | None
-    """`selection_change` (0.6.12): the keys of the chosen rows, ascending; the whole set."""
+    selection: list[int] | list[Node] | None
+    """`selection_change` (0.6.12): the keys of the chosen rows, ascending; the whole set. (0.6.13)
+    On a box, container or scroll view: the chosen child nodes, in order."""
     ranges: list[tuple[int, int]] | None
-    """`selection_change` (0.6.12): the same set as half-open `(start, end)` ranges, ascending."""
-    anchor: int | None
-    """`selection_change` (0.6.12): the row a range starts from, or `None`."""
+    """`selection_change` (0.6.12): the same set as half-open `(start, end)` ranges, ascending
+    (0.6.13: of the children's indices on a container)."""
+    anchor: int | Node | None
+    """`selection_change` (0.6.12): the row a range starts from, or `None`. (0.6.13) On a box,
+    container or scroll view: that child node."""
     selection_source: str | None
     """`selection_change` (0.6.12): what changed the set: `"pointer"`, `"keyboard"` or `"api"`."""
     scale: float | None
@@ -407,6 +410,23 @@ class Node:
         click, key or range chooses and that focus never lands on by a key). The set is
         stored as ranges, so a range or select-all over any number of rows builds no row.
         See the guide "Selecting rows of a virtual list".
+
+        (0.6.13) A box, container or scroll view takes the same properties with its children
+        as the items (a scroll view's items are the children of its one content child);
+        `selection` is then a list of child nodes (`ValueError` for a node that is not an
+        item, one that cannot be chosen, or a node of another window), `selection_anchor` a
+        child node or `None`, and a child is marked unselectable by setting `item_selectable`
+        (bool, `True`) on it -- an invisible child cannot be chosen either; `unselectable_keys`
+        is the virtual list's. A child's index is its key: moving or removing children keeps the
+        choice by index only. Click, Shift, Ctrl, key and Ctrl+A rules are the list's; a right click
+        chooses an unchosen item alone and keeps the set of a chosen one. Tab and a click skip an
+        unselectable item of a list or container (they neither choose nor focus it). The items
+        say `selected` to assistive technology as the set says (a box, container or scroll view
+        with a `selection_mode`, and the built rows of a list with one), and a `"multiple"` one is
+        multiselectable. `selection_announce` (a text with `{count}`, default `None`: no
+        announcement) and `selection_announce_ms` (300) on a list or container make one polite
+        announcement once the set has stopped changing for that long: ten changes within it are
+        announced once, with the count at that time. See the guide "Selecting rows".
         """
         ...
     def redraw(self) -> None:
@@ -457,6 +477,8 @@ class Node:
         (0.6.12) Also `selection_change` (the chosen rows of a `virtual_list` with a
         `selection_mode` changed: `event.selection`, `event.ranges`, `event.count`,
         `event.anchor`, `event.selection_source`; once for a key press, click or `set`).
+        (0.6.13) The same on a box, container or scroll view with a `selection_mode`, where
+        `event.selection` and `event.anchor` are child nodes.
         (0.6.7) Also `overwrite_change` (the user toggled a text input's overwrite
         mode with Insert; `event.old_value` and `event.new_value`).
         (0.5.7) Also `layout` (the node's laid-out size changed, or it was

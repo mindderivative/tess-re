@@ -217,8 +217,10 @@ impl Tree {
                     }
                 }
                 // 0.6.12: a click chooses rows of a virtual list that has a `selection_mode`.
-                if button == PointerButton::Primary {
-                    self.list_press(hit, position);
+                match button {
+                    PointerButton::Primary => self.list_press(hit, position),
+                    PointerButton::Secondary => self.list_secondary_press(hit),
+                    _ => {}
                 }
                 if let Some(node) = hit {
                     self.set_pressed(Some((button, node)));
@@ -278,6 +280,10 @@ impl Tree {
                         } else {
                             self.focusable_ancestor(node)
                         };
+                    // 0.6.13: an item of a list or container that cannot be chosen takes no
+                    // focus either (AC-SLT-5).
+                    let focus_target =
+                        focus_target.filter(|&target| !self.in_unselectable_item(target));
                     let focus_transition =
                         focus_target.and_then(|target| self.set_focus_to(target));
                     match focus_transition {

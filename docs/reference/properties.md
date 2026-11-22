@@ -187,6 +187,7 @@ Every node.
 | `transform_origin` | (0.6.4) `(x, y)`, fractions of the box that `scale` and `rotation_deg` turn about; `(0.5, 0.5)`, the center, by default. Set, not animated; see [Painting](../guide/painting.md) |
 | `visible` | `False` hides the node and its subtree: not painted, not hit, no layout space, not in the accessibility tree or tab order |
 | `z_index` | Paint and hit order among siblings: higher is on top; equal values keep child order |
+| `item_selectable` | (0.6.13) `False` marks the node, as a child of a box, container or scroll view with a `selection_mode`, as one that cannot be chosen (a disabled or heading item); default `True`. See [Selecting children](#selecting-the-children-of-a-box-container-or-scroll-view-0613) |
 | `clip_children` | `True` clips children to the node's rounded box |
 | `hit_path` | (0.6.4) SVG path data in the node's own pixels, or `None`: pointer events and an `input_region="auto"` follow that shape in place of the box (how a [shader](shader.md) node says where it is); see [Painting](../guide/painting.md) |
 | `mask` | `None`, `"circle"`, `{"rounded": radius}`, or `{"path": data, "view_box": (x, y, w, h)}` (0.5.6) — clips the node and its subtree to the shape; see [Masks](paint.md#masks-056) |
@@ -567,7 +568,8 @@ rows = window.create("virtual_list", item_count=len(items), item_extent=32,
 | `selection_anchor` | (0.6.12) Read only: the row a range starts from, or `None` |
 | `select_all_key` | (0.6.12) `True` lets Ctrl+A choose every selectable row while focus is in a `"multiple"` list and not in a text input. Default `False` |
 | `select_on_focus` | (0.6.12) `True` makes Up, Down, Home, End, Page Up and Page Down also choose the row focus lands on. Default `False` |
-| `unselectable_keys` | (0.6.12) Keys that no click, key, range or Ctrl+A chooses and that focus never lands on by a key; a list of keys, default `[]` |
+| `unselectable_keys` | (0.6.12) Keys that no click, key, range or Ctrl+A chooses and that focus never lands on by a key; a list of keys, default `[]`. (0.6.13) Tab and a click do not focus such a row either |
+| `selection_announce`, `selection_announce_ms` | (0.6.13) A text with `{count}` in it, or `None` (default: no announcement), and a delay in milliseconds, 0 to a minute (300). See [Selecting children](#selecting-the-children-of-a-box-container-or-scroll-view-0613) |
 
 Tesserae Engine keeps exactly the rows the viewport shows built: whenever layout runs —
 each frame, `window.advance`, `window.simulate`, and any `layout_*` read — it
@@ -593,6 +595,29 @@ view does (`scrollbar_*`, `wheel_notch`, `key_line`, `page_fraction`, `scroll_sm
 `page_repeat_*`, `fling_*`; `scroll_snap_*` are accepted and read back but do nothing there, a list has no snap), and draws, hit-tests, hovers, drags and fades its bar with the same code. A list that sets none keeps
 the bar it had (4 px, 2 px radius, no hover or drag emphasis, no lane click); the keys and the page (nine tenths of the
 viewport) are the spec's.
+
+### Selecting the children of a box, container or scroll view (0.6.13)
+
+A `box`, `container` or `scroll_view` takes the properties of the list above with its children as the items
+(`selection_mode` default `"none"`: nothing changes). A scroll view has one child, its content, so a scroll view's items
+are the children of that content. A child's index among them is its key.
+
+| Property | Value |
+| --- | --- |
+| `selection_mode`, `select_all_key`, `select_on_focus` | As on a virtual list |
+| `selection` | The chosen child **nodes**, in order. Set: replaces the whole set; `ValueError` for a node that is not an item, one that cannot be chosen (`item_selectable` is `False`, or it is not `visible`), a node of another window, more than one in a `"single"` container, or any in a `"none"` one. `None` or `[]` chooses nothing |
+| `selection_anchor` | Read only: the child node a range starts from, or `None` |
+| `item_selectable` | On each child: `False` and no click, key, range, Ctrl+A or Tab chooses or focuses it; Up, Down, Home, End and the Page keys pass over it. A child that is not `visible` cannot be chosen either. Default `True` |
+| `selection_announce`, `selection_announce_ms` | As on a virtual list |
+| `unselectable_keys` | Not on a container: `ValueError` (mark the items with `item_selectable`) |
+
+The clicks and keys are those of [Selecting rows of a virtual list](../guide/nodes-and-layout.md#selecting-rows-of-a-virtual-list).
+A change of a child's `item_selectable` or `visible`, or the removal of a child, is read before the next input and each frame;
+a chosen child that can no longer be chosen leaves the set and `selection_change` fires (source `"api"`). The engine keeps the
+choice **by index only**: if the children are reordered or one is inserted, the same indices stay chosen, so set `selection`
+again from the data. `selection_change` carries `event.selection` and `event.anchor` as child nodes (`event.ranges` stay
+indices). The items say `selected` to assistive technology as the set says, and a `"multiple"` container is multiselectable
+([Accessibility](../guide/accessibility.md#selection-0613)). Nothing is drawn: the framework styles the chosen children.
 
 ## Terminal
 

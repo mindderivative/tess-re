@@ -10,6 +10,7 @@
 //! nodes, focus or input. `tree/list_selection.rs` feeds it clicks and keys.
 
 use std::ops::Range;
+use std::time::{Duration, Instant};
 
 /// A set of `usize` kept as sorted, disjoint, non-adjacent, non-empty ranges.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -204,8 +205,12 @@ impl SelectionSource {
     }
 }
 
-/// A virtual list's selection.
-#[derive(Clone, Debug, Default)]
+/// How long `selection_announce` waits after the last change, in milliseconds, unless
+/// `selection_announce_ms` says otherwise.
+pub const DEFAULT_ANNOUNCE_MS: u32 = 300;
+
+/// The selection of a virtual list (its rows) or of a container (its children).
+#[derive(Clone, Debug)]
 pub struct SelectionState {
     pub mode: SelectionMode,
     selected: RangeSet,
@@ -222,6 +227,33 @@ pub struct SelectionState {
     pub pending_focus: Option<usize>,
     /// A change not yet reported as `selection_change`, and what made the last of it.
     pending: Option<SelectionSource>,
+    /// `selection_announce`: the polite announcement made after a change, `{count}` being how
+    /// many items are chosen then. `None`: the engine announces nothing.
+    pub announce: Option<String>,
+    /// `selection_announce_ms`: how long after the last change the announcement is made, so
+    /// that a burst of changes is announced once.
+    pub announce_ms: u32,
+    /// When the announcement of the changes so far is made.
+    announce_due: Option<Instant>,
+}
+
+impl Default for SelectionState {
+    fn default() -> Self {
+        Self {
+            mode: SelectionMode::None,
+            selected: RangeSet::new(),
+            unselectable: RangeSet::new(),
+            anchor: None,
+            select_all_key: false,
+            select_on_focus: false,
+            active: None,
+            pending_focus: None,
+            pending: None,
+            announce: None,
+            announce_ms: DEFAULT_ANNOUNCE_MS,
+            announce_due: None,
+        }
+    }
 }
 
 impl SelectionState {
@@ -254,6 +286,37 @@ impl SelectionState {
     /// Whether a change is waiting to be reported.
     pub fn has_pending(&self) -> bool {
         self.pending.is_some()
+    }
+
+    /// A change was reported at `now`: the announcement, if the state has one and chooses, is due
+    /// `announce_ms` after it (a later change moves it back).
+    pub fn note_reported(&mut self, now: Instant) {
+        if self.announce.is_some() && self.mode != SelectionMode::None {
+            self.announce_due = Some(now + Duration::from_millis(u64::from(self.announce_ms)));
+        }
+    }
+
+    /// Whether an announcement is waiting for its time.
+    pub fn announce_waiting(&self) -> bool {
+        self.announce_due.is_some()
+    }
+
+    /// The announcement to make at `now`, if its time has come; it is made only once.
+    pub fn take_announcement(&mut self, now: Instant) -> Option<String> {
+        if self.announce_due.is_none_or(|due| due > now) {
+            return None;
+        }
+        self.announce_due = None;
+        let template = self.announce.as_deref()?;
+        Some(template.replace("{count}", &self.selected.len().to_string()))
+    }
+
+    /// `selection_announce`: the template (or none). Without one, no announcement is waiting.
+    pub fn set_announce(&mut self, template: Option<String>) {
+        if template.is_none() {
+            self.announce_due = None;
+        }
+        self.announce = template;
     }
 
     fn replace(&mut self, next: RangeSet, source: SelectionSource) {
@@ -359,6 +422,7 @@ impl SelectionState {
                 self.anchor = None;
                 self.active = None;
                 self.pending_focus = None;
+                self.announce_due = None;
             }
             SelectionMode::Single if self.selected.len() > 1 => {
                 let keep = self
@@ -385,6 +449,17 @@ impl SelectionState {
         self.anchor = self.anchor.filter(|&a| a < count);
         self.active = self.active.filter(|&a| a < count);
         self.pending_focus = self.pending_focus.filter(|&a| a < count);
+    }
+
+    /// Whether nothing chosen, unselectable, anchored or active lies past `count` items
+    /// (`clip` would change nothing).
+    pub fn fits(&self, count: usize) -> bool {
+        let within = |set: &RangeSet| set.ranges().last().is_none_or(|r| r.end <= count);
+        within(&self.selected)
+            && within(&self.unselectable)
+            && self.anchor.is_none_or(|a| a < count)
+            && self.active.is_none_or(|a| a < count)
+            && self.pending_focus.is_none_or(|a| a < count)
     }
 
     /// The first selectable row after `from`.

@@ -535,9 +535,9 @@ def test_a_shorter_list_drops_the_rows_it_lost():
     assert log(lst)[-1] == ([1], 1, "api")
 
 
-def test_the_properties_apply_to_a_virtual_list_only():
+def test_the_properties_apply_to_a_virtual_list_or_a_container_only():
     window = Window(width=800, height=600)
-    box = window.create("box", width=10, height=10)
+    canvas = window.create("canvas", width=10, height=10, draw=lambda c: None)
     for name, value in [
         ("selection_mode", "multiple"),
         ("select_all_key", True),
@@ -545,17 +545,20 @@ def test_the_properties_apply_to_a_virtual_list_only():
         ("unselectable_keys", [1]),
     ]:
         with pytest.raises(ValueError, match="applies only to a virtual_list"):
-            box.set(**{name: value})
+            canvas.set(**{name: value})
     for name in ["selection_mode", "selection_anchor", "select_all_key", "select_on_focus", "unselectable_keys"]:
         with pytest.raises(ValueError, match="applies only to a virtual_list"):
-            box.get(name)
+            canvas.get(name)
+    box = window.create("box", width=10, height=10)
+    with pytest.raises(ValueError, match="applies only to a virtual_list"):
+        box.set(unselectable_keys=[1])  # a container marks its items with `item_selectable`
     lst = make_list(window)
     with pytest.raises(ValueError, match="read-only"):
         lst.set(selection_anchor=1)
     with pytest.raises(ValueError, match="a bool"):
         lst.set(select_all_key=1)
     with pytest.raises(ValueError, match="applies only to a text, text_input or terminal"):
-        box.get("selection")
+        canvas.get("selection")
 
 
 # --- keys that belong to a node on the way ---------------------------------------------------

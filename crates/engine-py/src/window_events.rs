@@ -329,6 +329,7 @@ impl PyWindow {
         let (node_kind, paint) =
             crate::defaults::blank_kind(kind, cols, rows).expect("a known kind");
         let changes = parse_all(Some(&props), &node_kind, &self.handles.tree)?;
+        crate::container_selection::check_created(&node_kind, &props)?;
         // 0.5.7 (#179): `placement` and `offset` need an `anchor` in this call.
         crate::node_props::check_anchor_changes(
             &self.handles.tree.borrow(),
@@ -1955,6 +1956,7 @@ impl PyWindow {
         );
         listeners::fire_layout_changes(&ctx, py);
         listeners::fire_scroll_changes(&ctx, py);
+        crate::list_selection::fire_changes(&ctx, py);
         Ok(())
     }
 

@@ -494,6 +494,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fit_content` | `FitContent` | Which sides of a text node are the size of its text. |
 | `calc_size` | `CalcSize` | Which sides are a `calc` size. |
 | `anchored` | `Option<Box<Anchored>>` | `Some` places the node against another node in the tree. |
+| `item_selectable` | `bool` | `item_selectable` — whether the node, as a child of a container with a `selection_mode`, can be chosen. |
+| `selection` | `Option<Box<SelectionState>>` | Which children of this box, container or scroll view are chosen (`selection_mode`, `selection`, ...); the keys are the children's indices. |
 
 ### NodeId { #nodeid }
 
@@ -945,7 +947,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 ### SelectionState { #selectionstate }
 
-*struct.* A virtual list's selection.
+*struct.* The selection of a virtual list (its rows) or of a container (its children).
 
 **Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html)
 
@@ -956,28 +958,35 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `select_on_focus` | `bool` | `select_on_focus`: whether moving focus by Up, Down, Home, End, Page Up or Page Down also chooses the row focus lands on. |
 | `active` | `Option<usize>` | The row the keyboard is on while focus is not in a row (the list itself holds it). |
 | `pending_focus` | `Option<usize>` | The row focus should go to when it is built (`Tree::focus_list_row`). |
+| `announce` | `Option<String>` | `selection_announce`: the polite announcement made after a change, `{count}` being how many items are chosen then. |
+| `announce_ms` | `u32` | `selection_announce_ms`: how long after the last change the announcement is made, so that a burst of changes is announced once. |
 
 | Method | Description |
 | --- | --- |
 | `fn anchor(&self) -> Option<usize>` |  |
+| `fn announce_waiting(&self) -> bool` | Whether an announcement is waiting for its time. |
 | `fn clear(&mut self, source: SelectionSource)` | Chooses no row. |
 | `fn clip(&mut self, count: usize, source: SelectionSource)` | The list has `count` rows now: nothing past them stays chosen, anchored or active. |
 | `fn ensure_anchor(&mut self, row: usize)` | `row` is the anchor if there is none. |
 | `fn first_selectable(&self, count: usize) -> Option<usize>` |  |
+| `fn fits(&self, count: usize) -> bool` | Whether nothing chosen, unselectable, anchored or active lies past `count` items (`clip` would change nothing). |
 | `fn has_pending(&self) -> bool` | Whether a change is waiting to be reported. |
 | `fn is_selectable(&self, i: usize, count: usize) -> bool` | Whether row `i` of `count` can be chosen. |
 | `fn is_selected(&self, i: usize) -> bool` |  |
 | `fn last_selectable(&self, count: usize) -> Option<usize>` |  |
 | `fn nearest_selectable(&self, i: usize, count: usize, forward: bool) -> Option<usize>` | The selectable row nearest `i` going `forward` (or back). |
 | `fn next_selectable(&self, from: usize, count: usize) -> Option<usize>` | The first selectable row after `from`. |
+| `fn note_reported(&mut self, now: Instant)` | A change was reported at `now`: the announcement, if the state has one and chooses, is due `announce_ms` after it (a later change moves it back). |
 | `fn prev_selectable(&self, from: usize) -> Option<usize>` | The last selectable row before `from`. |
 | `fn select_all(&mut self, count: usize, source: SelectionSource)` | Chooses every selectable row. |
 | `fn select_only(&mut self, i: usize, count: usize, source: SelectionSource)` | Chooses row `i` and nothing else; it is the anchor. |
 | `fn select_range(&mut self, to: usize, count: usize, add: bool, source: SelectionSource)` | Chooses every selectable row from the anchor to `to`. |
 | `fn selected(&self) -> &RangeSet` |  |
+| `fn set_announce(&mut self, template: Option<String>)` | `selection_announce`: the template (or none). |
 | `fn set_mode(&mut self, mode: SelectionMode, source: SelectionSource)` | `selection_mode`: `None` clears the set, `Single` keeps one row (the anchor if chosen, else the first). |
 | `fn set_selected(&mut self, set: RangeSet, source: SelectionSource)` | `selection`: the set becomes exactly `set`, which the caller has checked. |
 | `fn set_unselectable(&mut self, set: RangeSet, source: SelectionSource)` | `unselectable_keys`: those rows can no longer be chosen, and leave the set. |
+| `fn take_announcement(&mut self, now: Instant) -> Option<String>` | The announcement to make at `now`, if its time has come; it is made only once. |
 | `fn take_pending(&mut self) -> Option<SelectionSource>` | The change since the last call, if there is one, and what made it. |
 | `fn toggle(&mut self, i: usize, count: usize, keep_anchor_off: bool, source: SelectionSource)` | Flips row `i`. |
 | `fn unselectable(&self) -> &RangeSet` |  |
@@ -1582,6 +1591,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn close_overlay(&mut self, id: NodeId) -> bool` | Closes an overlay by detaching its subtree while keeping the content alive. |
 | `fn collect_unreferenced(&mut self, id: NodeId, referenced: impl Fn(NodeId) -> bool) -> Vec<NodeId>` | Frees a detached subtree if the caller no longer references any node in it. |
 | `fn compute_layout(&mut self, root: NodeId, available_space: Size<AvailableSpace>)` | Computes layout for a root's whole subtree within the available space. |
+| `fn container_items(&self, host: NodeId) -> &[NodeId]` | The items `host` chooses, in order: their indices are the keys. |
+| `fn container_selection(&self, id: NodeId) -> Option<&SelectionState>` | `id`'s selection, if it is a box, container or scroll view that has one. |
 | `fn content_children(&self, parent: NodeId) -> &[NodeId]` | Returns a node's children other than its open overlays, in order. |
 | `fn cut_text_field_selection(&mut self, field: NodeId) -> Option<String>` | Removes and returns the selected text of a text field. |
 | `fn destroy(&mut self, id: NodeId) -> Vec<NodeId>` | Frees a node and its whole subtree, returning every freed id. |
@@ -1609,6 +1620,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn hit_test(&self, root: NodeId, point: Point) -> Option<NodeId>` | Returns the topmost node at a point, testing in reverse paint order. |
 | `fn hit_test_input(&self, root: NodeId, point: Point) -> Option<NodeId>` | Returns the node that input at a point reaches, with open modal layers blocking others. |
 | `fn hit_test_local(&self, root: NodeId, point: Point) -> Option<(NodeId, Point)>` | Returns the node at a point together with the point in that node's own space. |
+| `fn holds_items(kind: &NodeKind) -> bool` | Whether a node of `kind` can have its children chosen: a box, a container, a scroll view. |
 | `fn hovered(&self) -> Option<NodeId>` | `update_hover`'s own transition half, split out so `InputEvent::PointerLeft` can clear hover without a hit-test. |
 | `fn image_nodes(&self) -> impl Iterator<Item = (NodeId, &ImageState)>` | Iterates every image node in the tree with its image state. |
 | `fn input_region(&self, root: NodeId, bounds: (f64, f64), max_rects: usize) -> Vec<(i32, i32, i32, i32)>` | The rectangles, in logical pixels inside `bounds` (the surface's `(width, height)`), where a click lands on something drawn: every visible… |
@@ -1616,6 +1628,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn insert_child(&mut self, parent: NodeId, index: usize, child: NodeId) -> bool` | Attaches a child under a parent at a given position in its child list. |
 | `fn is_dirty(&self) -> bool` | Whether a frame is owed, without taking the flag. |
 | `fn is_layer(&self, id: NodeId) -> bool` | Returns whether a node is an open layer or overlay. |
+| `fn item_parent(&self, host: NodeId) -> Option<NodeId>` | The node whose children are the items `host` chooses: `host` itself, or, for a scroll view, the one child that holds its content. |
 | `fn layer_defaults(&self) -> LayerDefaults` | The policy a layer follows when it sets no viewport margin or flip threshold of its own. |
 | `fn layout(&self, id: NodeId) -> &Layout` | Returns a node's computed layout box from the last layout pass. |
 | `fn layout_epoch(&self) -> u64` | How many times a layout has been computed. |
@@ -1637,6 +1650,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn position_overlay_over(&mut self, content: NodeId, rect: Rect)` | Positions an overlay's content so it covers a given rectangle. |
 | `fn reduced_motion(&self) -> bool` | Whether motion is reduced: the window's own say (`Window.reduced_motion`) if it has one, else the OS's. |
 | `fn reduced_motion_override(&self) -> Option<bool>` | The window's own say, if it has one. |
+| `fn refresh_selection_host(&mut self, id: NodeId)` | Keeps `selection_hosts` right about `id`, after a property of it changed or its change was reported: a container is in it while its mode is not… |
 | `fn relayout(&mut self, id: NodeId)` | Marks `id` for layout again: its text, font or fit changed, and a fit side's size depends on all of those. |
 | `fn remove(&mut self, id: NodeId) -> bool` | Removes a node and its whole subtree, detaching it from its parent. |
 | `fn reparse_svgs(&mut self, fonts: &SvgFonts)` | Every SVG node whose document has text is parsed again with `fonts`. |
@@ -1710,7 +1724,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn take_layout_changes(&mut self) -> Vec<LayoutChange>` | Every watched node whose laid-out size has changed since this was last asked, as `(node, old, new)` with `old` `None` the first time. |
 | `fn take_overwrite_changes(&mut self) -> Vec<(NodeId, bool)>` | The text fields whose caret moved, or whose text changed, since the last call, each with the bytes the edit inserted, if it did. |
 | `fn take_scroll_changes(&mut self) -> Vec<ScrollChange>` | Returns each scroll view whose offset changed since the last call, as (view, old, new). |
-| `fn take_selection_changes(&mut self) -> Vec<SelectionChange>` | The lists whose chosen set changed since the last call, each with the whole set. |
+| `fn take_selection_changes(&mut self) -> Vec<SelectionChange>` | The lists and containers whose chosen set changed since the last call, each with the whole set. |
 | `fn take_touched(&self) -> Touched` | The nodes handed out mutably since the last call (see `Touched`), and a fresh start. |
 | `fn terminal_selected_text(&self, id: NodeId) -> Option<String>` | Returns the text selected in a terminal, if any. |
 | `fn text_field_selected_text(&self, field: NodeId) -> Option<String>` | Returns the text selected in a text field, if any. |

@@ -5,9 +5,14 @@
 //! `unselectable_keys`. The rules themselves live in `engine_core::SelectionState` and
 //! `Tree::list_selection_key`; this module parses and reads the properties, hands the keys to the tree
 //! when no node on the way uses them, and reports `selection_change`.
+//!
+//! 0.6.13: the same properties on a box, container or scroll view, whose children are the items
+//! (`selection` is then a list of child nodes; `crate::container_selection` parses and checks it),
+//! and `selection_announce` / `selection_announce_ms` on both.
 
 use engine_core::{
     DispatchOutcome, InputEvent, Key, NodeKind, RangeSet, SelectionMode, SelectionSource,
+    SelectionState, Tree,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -19,13 +24,36 @@ use crate::listeners::{self, EventType};
 use crate::node_kind_props::{KindChange, change};
 
 /// The properties of this module that no other module lists (`selection` is a text property too).
-pub(crate) const NAMES: [&str; 5] = [
+pub(crate) const NAMES: [&str; 7] = [
     "selection_mode",
     "selection_anchor",
     "select_all_key",
     "select_on_focus",
     "unselectable_keys",
+    "selection_announce",
+    "selection_announce_ms",
 ];
+
+/// Runs `edit` on the selection of `node`, a virtual list or a container (which gets one when it
+/// has none yet).
+pub(crate) fn edit_selection(node: &mut engine_core::Node, edit: impl FnOnce(&mut SelectionState)) {
+    match &mut node.kind {
+        NodeKind::VirtualList(state) => edit(&mut state.selection),
+        kind if Tree::holds_items(kind) => {
+            edit(node.selection.get_or_insert_with(Default::default))
+        }
+        _ => {}
+    }
+}
+
+/// The selection `node` has, a virtual list's or a container's, if it has one.
+fn selection_of(node: &engine_core::Node) -> Option<&SelectionState> {
+    match &node.kind {
+        NodeKind::VirtualList(state) => Some(&state.selection),
+        kind if Tree::holds_items(kind) => node.selection.as_deref(),
+        _ => None,
+    }
+}
 
 fn invalid(name: &str, expected: &str) -> PyErr {
     PyValueError::new_err(format!("node property `{name}` must be {expected}"))
@@ -39,7 +67,7 @@ fn mode_names() -> String {
         .join(", ")
 }
 
-fn parse_mode(name: &str, value: &Bound<'_, PyAny>) -> PyResult<SelectionMode> {
+pub(crate) fn parse_mode(name: &str, value: &Bound<'_, PyAny>) -> PyResult<SelectionMode> {
     let text: String = value.extract().unwrap_or_default();
     SelectionMode::ALL
         .iter()
@@ -106,7 +134,7 @@ fn effective(kind: &NodeKind, props: &Bound<'_, PyDict>) -> PyResult<Effective> 
 }
 
 /// Parses property `name` for a node of `kind`, or `None` if it isn't one of these (a text's
-/// `selection` is not). Applies to a virtual list only.
+/// `selection` is not). Applies to a virtual list, and to a box, container or scroll view.
 pub(crate) fn parse(
     name: &str,
     value: &Bound<'_, PyAny>,
@@ -114,12 +142,15 @@ pub(crate) fn parse(
     props: &Bound<'_, PyDict>,
 ) -> Option<PyResult<KindChange>> {
     let is_list = matches!(kind, NodeKind::VirtualList(_));
-    if name == "selection" && !is_list || name != "selection" && !NAMES.contains(&name) {
+    let is_container = Tree::holds_items(kind);
+    if name == "selection" && !is_list && !is_container
+        || name != "selection" && !NAMES.contains(&name)
+    {
         return None;
     }
-    if !is_list {
+    if !is_list && !is_container {
         return Some(Err(PyValueError::new_err(format!(
-            "node property `{name}` applies only to a virtual_list node"
+            "node property `{name}` applies only to a virtual_list, box, container or scroll_view node"
         ))));
     }
     Some(parse_known(name, value, kind, props))
@@ -135,11 +166,7 @@ fn parse_known(
     match name {
         "selection_mode" => {
             let mode = parse_mode(name, value)?;
-            change(move |node| {
-                if let NodeKind::VirtualList(state) = &mut node.kind {
-                    state.selection.set_mode(mode, api);
-                }
-            })
+            change(move |node| edit_selection(node, |sel| sel.set_mode(mode, api)))
         }
         "select_all_key" | "select_on_focus" => {
             if !value.is_instance_of::<pyo3::types::PyBool>() {
@@ -148,18 +175,54 @@ fn parse_known(
             let on: bool = value.extract()?;
             let all = name == "select_all_key";
             change(move |node| {
-                if let NodeKind::VirtualList(state) = &mut node.kind {
+                edit_selection(node, |sel| {
                     if all {
-                        state.selection.select_all_key = on;
+                        sel.select_all_key = on;
                     } else {
-                        state.selection.select_on_focus = on;
+                        sel.select_on_focus = on;
                     }
-                }
+                });
             })
+        }
+        "selection_announce" => {
+            let template = if value.is_none() {
+                None
+            } else {
+                let text: String = value.extract().map_err(|_| {
+                    invalid(
+                        name,
+                        "a text with {count} in it, or None for no announcement",
+                    )
+                })?;
+                if text.trim().is_empty() {
+                    return Err(invalid(name, "a text that is not empty, or None"));
+                }
+                Some(text)
+            };
+            change(move |node| edit_selection(node, |sel| sel.set_announce(template)))
+        }
+        "selection_announce_ms" => {
+            let ms: f64 = value
+                .extract()
+                .ok()
+                .filter(|ms: &f64| ms.is_finite() && (0.0..=60_000.0).contains(ms))
+                .filter(|_| !value.is_instance_of::<pyo3::types::PyBool>())
+                .ok_or_else(|| invalid(name, "a number of milliseconds from 0 to a minute"))?;
+            change(move |node| edit_selection(node, |sel| sel.announce_ms = ms as u32))
         }
         "selection_anchor" => Err(PyValueError::new_err(format!(
             "node property `{name}` is read-only"
         ))),
+        _ if !matches!(kind, NodeKind::VirtualList(_)) => {
+            if name == "selection" {
+                crate::container_selection::parse_selection(value)
+            } else {
+                Err(PyValueError::new_err(format!(
+                    "node property `{name}` applies only to a virtual_list node (the items of a \
+                     container are marked with `item_selectable`)"
+                )))
+            }
+        }
         "unselectable_keys" => {
             let count = effective(kind, props)?.count;
             let keys = if value.is_none() {
@@ -212,7 +275,8 @@ fn parse_known(
     }
 }
 
-/// The value of property `name` of `node`, or `None` if it isn't one of these.
+/// The value of property `name` of `node`, or `None` if it isn't one of these. A container's
+/// `selection` is read by `Node.get`, which makes its child handles.
 pub(crate) fn read(
     name: &str,
     node: &engine_core::Node,
@@ -221,14 +285,25 @@ pub(crate) fn read(
     if name != "selection" && !NAMES.contains(&name) {
         return None;
     }
-    let NodeKind::VirtualList(state) = &node.kind else {
+    let is_container = Tree::holds_items(&node.kind);
+    if !matches!(node.kind, NodeKind::VirtualList(_)) && !is_container {
         return (name != "selection").then(|| {
             Err(PyValueError::new_err(format!(
-                "node property `{name}` applies only to a virtual_list node"
+                "node property `{name}` applies only to a virtual_list, box, container or scroll_view node"
             )))
         });
-    };
-    let sel = &state.selection;
+    }
+    if is_container && matches!(name, "selection" | "selection_anchor") {
+        return None;
+    }
+    if is_container && name == "unselectable_keys" {
+        return Some(Err(PyValueError::new_err(
+            "node property `unselectable_keys` applies only to a virtual_list node (the items of a \
+             container are marked with `item_selectable`)",
+        )));
+    }
+    let default = SelectionState::default();
+    let sel = selection_of(node).unwrap_or(&default);
     let value = match name {
         "selection" => to_py(sel.selected().iter().collect::<Vec<_>>(), py),
         "selection_anchor" => to_py(sel.anchor(), py),
@@ -238,6 +313,8 @@ pub(crate) fn read(
         }
         "select_all_key" => to_py(sel.select_all_key, py),
         "select_on_focus" => to_py(sel.select_on_focus, py),
+        "selection_announce" => to_py(sel.announce.clone(), py),
+        "selection_announce_ms" => to_py(sel.announce_ms, py),
         _ => to_py(sel.unselectable().iter().collect::<Vec<_>>(), py),
     };
     Some(value)
@@ -253,6 +330,26 @@ fn to_py<'py, T: IntoPyObject<'py>>(value: T, py: Python<'py>) -> PyResult<Py<Py
 pub(crate) fn fire_changes(ctx: &NodeContext<'_>, py: Python<'_>) {
     let changes = ctx.tree.borrow_mut().take_selection_changes();
     for change in changes {
+        // A virtual list's items are keys; a container's are its child nodes.
+        let children = {
+            let tree = ctx.tree.borrow();
+            match tree.get(change.list) {
+                Some(node) if !matches!(node.kind, NodeKind::VirtualList(_)) => {
+                    Some(tree.container_items(change.list).to_vec())
+                }
+                _ => None,
+            }
+        };
+        let item = |index: usize| -> Option<Py<PyAny>> {
+            match &children {
+                None => to_py(index, py).ok(),
+                Some(children) => {
+                    let id = *children.get(index)?;
+                    let node = crate::event::Event::build_node(py, id, ctx).ok()?;
+                    Some(node.into_any())
+                }
+            }
+        };
         listeners::deliver(
             ctx,
             py,
@@ -260,7 +357,10 @@ pub(crate) fn fire_changes(ctx: &NodeContext<'_>, py: Python<'_>) {
             change.list,
             None,
             |e| {
-                e.selection = Some(change.selected.iter().collect());
+                let items: Vec<Py<PyAny>> = change.selected.iter().filter_map(item).collect();
+                e.selection = pyo3::types::PyList::new(py, items)
+                    .ok()
+                    .map(|list| list.into_any().unbind());
                 e.ranges = Some(
                     change
                         .selected
@@ -270,7 +370,7 @@ pub(crate) fn fire_changes(ctx: &NodeContext<'_>, py: Python<'_>) {
                         .collect(),
                 );
                 e.count = u32::try_from(change.selected.len()).ok();
-                e.anchor = change.anchor;
+                e.anchor = change.anchor.and_then(item);
                 e.selection_source = Some(change.source.name().to_string());
             },
         );
@@ -302,6 +402,9 @@ pub(crate) fn key(
             let node = tree.get(id);
             if matches!(node.map(|n| &n.kind),
                 Some(NodeKind::VirtualList(s)) if s.selection.mode != SelectionMode::None)
+                || tree
+                    .container_selection(id)
+                    .is_some_and(|s| s.mode != SelectionMode::None)
             {
                 in_list = true;
                 break;

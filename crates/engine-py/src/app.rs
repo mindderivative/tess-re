@@ -1843,6 +1843,15 @@ impl App {
                     },
                     py,
                 );
+                // 0.6.13: a selection that changed by itself (a chosen child removed or hidden).
+                crate::list_selection::fire_changes(
+                    &crate::event::NodeContext {
+                        tree: &runtime.handles.tree,
+                        handlers: &runtime.handles.handlers,
+                        completions: &runtime.handles.completions,
+                    },
+                    py,
+                );
                 // M9 Phase 2 (§5): the real drain -- invokes each
                 // just-completed animation's registered `on_complete`
                 // callback exactly once, the same "look up and call a
