@@ -309,6 +309,8 @@ pub(crate) enum Change {
     StrokeWidth(f64),
     /// 0.6.11 (UXREQ-008).
     Outline(crate::outline_props::OutlineChange),
+    /// 0.6.12 (P10): a shown layer's placement policy (`layer_viewport_margin`, ...).
+    Layer(crate::layer_policy::Edit),
     Opacity(f64),
     CornerRadius(Radius),
     Shadows(Vec<Shadow>),
@@ -1508,6 +1510,7 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
                     .copied()
                     .chain(crate::scrollbar_props::names())
                     .chain(crate::outline_props::NAMES)
+                    .chain(crate::layer_policy::NAMES)
                     .collect::<Vec<_>>()
                     .join(", ")
             )));
@@ -1668,6 +1671,12 @@ pub(crate) fn check_anchor_changes(
                  margins, so only the nodes of a LayerWindow have it",
             ));
         }
+        if matches!(change, Change::Layer(_)) && !id.is_some_and(|id| tree.is_layer(id)) {
+            return Err(PyValueError::new_err(
+                "node properties `layer_viewport_margin`, `layer_flip_threshold`, `layer_align`, \
+                 `layer_flip` and `layer_shift` need a node shown with `show_layer`",
+            ));
+        }
         let Change::Anchor(edit) = change else {
             continue;
         };
@@ -1764,6 +1773,10 @@ pub(crate) fn parse_all(
             }
             if name == "shader" {
                 changes.push(parse_shader(&value, tree)?);
+                continue;
+            }
+            if let Some(edit) = crate::layer_policy::parse(&name, &value) {
+                changes.push(Change::Layer(edit?));
                 continue;
             }
             if matches!(name.as_str(), "anchor" | "placement" | "offset") {
@@ -1961,6 +1974,14 @@ impl Node {
                 return crate::state_layer_props::read(name, node.paint.state_layer.as_deref(), py);
             }
             if let Some(value) = crate::outline_props::read(name, node, py) {
+                return value;
+            }
+            if let Some(value) = crate::layer_policy::read(
+                name,
+                tree.overlay_meta(self.id),
+                tree.layer_defaults(),
+                py,
+            ) {
                 return value;
             }
             if let Some((_, key, _)) = CALLBACKS.iter().find(|(n, _, _)| *n == name) {
@@ -2570,6 +2591,7 @@ impl Node {
         let mut calc = node.calc_size;
         let mut anchored = node.anchored.as_deref().copied();
         let mut anchor_changed = false;
+        let mut layer_edits = Vec::new();
         let mut kind_changed = false;
         let mut state_layer_changed = false;
         let mut resize_terminal = false;
@@ -2651,6 +2673,7 @@ impl Node {
                         calc.width = mixed;
                     }
                 }
+                Change::Layer(edit) => layer_edits.push(edit),
                 Change::Anchor(edit) => {
                     anchor_changed = true;
                     match edit {
@@ -2944,6 +2967,13 @@ impl Node {
         tree.set_calc_size(self.id, true, calc.height);
         if anchor_changed {
             tree.set_anchor(self.id, anchored);
+        }
+        if !layer_edits.is_empty() {
+            tree.update_layer(self.id, |meta| {
+                for edit in layer_edits {
+                    edit.apply(meta);
+                }
+            });
         }
         if state_layer_changed {
             tree.mark_state_layer(self.id);

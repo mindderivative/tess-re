@@ -48,6 +48,15 @@ itself at every layout, so it follows its anchor.
 `menu.get("layer_placement")` says which side it landed on — for a menu
 that grows upward, or an arrow that points the right way.
 
+**Margin, threshold and alignment (0.6.12).** The engine's flip-and-shift rule has no margin and no slack by
+default: a layer may touch the window edge. `window.set(layer_viewport_margin=8)` makes every layer keep 8 px
+from the edge (a number, or `(top, right, bottom, left)`), and `layer_flip_threshold` asks the preferred side
+for that much room beyond the layer's size before it stays. One layer can differ:
+`show_layer(menu, anchor=b, viewport_margin=4, flip_threshold=12, align="end")`, or later
+`menu.set(layer_viewport_margin=...)`. `align` lines the layer up with the anchor's `"start"` (default),
+`"center"` or `"end"` edge; `shift=False` stops it being moved inside the window. See
+[Layer placement policy](../reference/properties.md#layer-placement-policy-0612).
+
 **Corners, the centre, and an offset (0.5.7).** `placement` can also name a
 *point* of the anchor: `"top_start"`, `"top_end"`, `"bottom_start"`,
 `"bottom_end"` or `"center"` put the layer's **centre** on that point, for a badge

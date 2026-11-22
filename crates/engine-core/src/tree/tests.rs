@@ -1,6 +1,7 @@
 use super::*;
 use crate::animation::MotionCurve;
 use crate::node::ScrollViewState;
+use crate::overlay::Placement;
 use peniko::Color;
 use std::time::Duration;
 use taffy::prelude::{FlexDirection, length};
@@ -10995,4 +10996,78 @@ mod edge_scroll {
         assert_eq!(tree.pointer_capture(), None);
         assert!(!tree.tick_all(t0 + ms(17)).0);
     }
+}
+
+/// 0.6.12 (P10): a layer's viewport margin, flip threshold and alignment come from its own meta,
+/// else the tree's `layer_defaults`, and changing either places the layer again.
+#[test]
+fn layer_placement_policy_is_a_default_a_layer_may_override() {
+    use crate::overlay::{Align, Edges, LayerDefaults};
+    let mut tree = Tree::new();
+    let (k, s, p) = leaf(200.0, 100.0);
+    let root = tree.insert(k, s, p);
+    let (k, mut s, p) = leaf(20.0, 10.0);
+    s.position = Position::Absolute;
+    s.inset = TaffyRect {
+        left: length(190.0),
+        top: length(10.0),
+        right: auto(),
+        bottom: auto(),
+    };
+    let anchor = tree.insert(k, s, p);
+    tree.add_child(root, anchor);
+    let (k, s, p) = leaf(50.0, 40.0);
+    let layer = tree.insert(k, s, p);
+    let meta = OverlayMeta {
+        anchor: Some(anchor),
+        placement: Some(Placement::Below),
+        ..Default::default()
+    };
+    assert!(tree.show_layer(root, layer, meta));
+    let size = Size {
+        width: AvailableSpace::Definite(200.0),
+        height: AvailableSpace::Definite(100.0),
+    };
+    let at = |tree: &Tree| {
+        let at = tree.layout(layer).location;
+        (at.x, at.y)
+    };
+    tree.compute_layout(root, size);
+    assert_eq!(at(&tree), (150.0, 20.0), "no margin: against the edge");
+
+    tree.set_layer_defaults(LayerDefaults {
+        viewport_margin: Edges::all(8.0),
+        flip_threshold: 0.0,
+    });
+    tree.compute_layout(root, size);
+    assert_eq!(at(&tree), (142.0, 20.0), "the window's margin applies");
+
+    // The layer's own margin wins over the window's; `None` follows it again.
+    assert!(tree.update_layer(layer, |m| m.viewport_margin = Some(Edges::all(2.0))));
+    tree.compute_layout(root, size);
+    assert_eq!(at(&tree), (148.0, 20.0));
+    assert!(tree.update_layer(layer, |m| m.viewport_margin = None));
+    tree.compute_layout(root, size);
+    assert_eq!(at(&tree), (142.0, 20.0));
+
+    // A threshold large enough flips it above the anchor? Nothing above (10 < 40): stays below.
+    tree.set_layer_defaults(LayerDefaults {
+        viewport_margin: Edges::default(),
+        flip_threshold: 100.0,
+    });
+    tree.compute_layout(root, size);
+    assert_eq!(
+        tree.overlay_meta(layer).unwrap().placed,
+        Some(Placement::Below)
+    );
+
+    // Alignment to the anchor's end edge.
+    tree.set_layer_defaults(LayerDefaults::default());
+    assert!(tree.update_layer(layer, |m| {
+        m.align = Align::End;
+        m.no_shift = true;
+    }));
+    tree.compute_layout(root, size);
+    assert_eq!(at(&tree), (160.0, 20.0), "end edges line up, not shifted");
+    assert!(!tree.update_layer(anchor, |_| {}), "not a layer");
 }

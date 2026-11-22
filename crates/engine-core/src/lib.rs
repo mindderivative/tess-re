@@ -73,7 +73,9 @@ pub use node::{
     WindowRegion,
 };
 pub use outline::{OUTLINE_ROLE, Outline, OutlineStyle, Outlines};
-pub use overlay::{AnchorBox, OverlayMeta, Placement};
+pub use overlay::{
+    Align, AnchorBox, Edges, LayerDefaults, OverlayMeta, PlaceInput, Placement, place,
+};
 pub use path::{HitShape, MorphMode, PathData, PathState, StrokeStyle, fit_transform, trim};
 pub use path_template::PathTemplate;
 pub use scheme::{Role as SchemeRole, Scheme, SchemeColors};

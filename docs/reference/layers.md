@@ -20,7 +20,8 @@ window.show_layer(menu, anchor=button, placement="below")
 ## `show_layer`
 
 **`show_layer(node, anchor=None, placement="below", modal=False,
-dismissible=True)`**
+dismissible=True, offset=(0, 0), flip=True, viewport_margin=None, flip_threshold=None,
+align="start", shift=None)`**
 
 Shows `node` over the window's content, above every layer already open —
 layers stack in the order they're shown. A node attached elsewhere moves.
@@ -30,7 +31,10 @@ layers stack in the order they're shown. A node attached elsewhere moves.
   (right), aligned with the anchor's start. When that side lacks the room and
   the opposite side has more, it flips; then it shifts to stay inside the
   window. This happens at every layout, so it follows its anchor.
-  `node.get("layer_placement")` reports the side it's on. Without an anchor, a
+  `node.get("layer_placement")` reports the side it's on. (0.6.12) How much room it keeps from the window edge
+  (`viewport_margin`, default 0), how much extra room the preferred side needs before it stays
+  (`flip_threshold`, default 0), which edge of the anchor it lines up with (`align`) and whether it flips or shifts
+  (`flip`, `shift`) are properties: see [Layer placement policy](properties.md#layer-placement-policy-0612). Without an anchor, a
   layer sits at its own `x`/`y` (`0, 0` by default) — size a scrim with
   `width="100%", height="100%"`.
 - **Modal.** Input beneath the layer is blocked: presses, hovers, and wheel

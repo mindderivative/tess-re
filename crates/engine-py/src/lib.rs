@@ -25,6 +25,7 @@ mod gpu_memory;
 mod gpu_share;
 mod gradient;
 mod grid;
+mod layer_policy;
 mod layer_window;
 mod listeners;
 mod node;

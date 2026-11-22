@@ -42,7 +42,8 @@ window.root.add_child(card)
 ## Layers
 
 **`show_layer(node, anchor=None, placement="below", modal=False,
-dismissible=True, offset=(0, 0), flip=True)`** shows `node` over the window's content, and
+dismissible=True, offset=(0, 0), flip=True, viewport_margin=None, flip_threshold=None,
+align="start", shift=None)`** shows `node` over the window's content, and
 **`hide_layer(node)`** hides it — for menus, dialogs, tooltips, and sheets.
 See [Layers](layers.md).
 
@@ -77,6 +78,8 @@ window.on("active", lambda e: title_bar.set(opacity=1.0 if e.active else 0.6))
 | `active` | — | Whether the window has the OS's focus |
 | `occluded` | — | (0.5.10) Whether the window is completely hidden: the OS says so (X11 and macOS only) or it is minimized |
 | `pause_when_occluded` | `bool`, default `True` | (0.5.10) Whether an occluded window draws nothing until it shows again. See [Hidden windows](#hidden-windows) |
+| `layer_viewport_margin`, `layer_flip_threshold` | (0.6.12) The default viewport margin and flip threshold of the window's [layers](layers.md); see [Layer placement policy](properties.md#layer-placement-policy-0612) | The setting; `0` by default |
+| `ime_offset` | (0.6.12) `(dx, dy)` added to the caret box the input method places its candidate window at | The setting; `(0, 0)` by default |
 | `platform` | — | `"wayland"`, `"x11"`, `"windows"`, or `"macos"` |
 
 Each settable one applies live to an open window, or when `App.run()` opens

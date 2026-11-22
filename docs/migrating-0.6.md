@@ -645,3 +645,25 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   surface or popup closes (`close()`, the compositor, an output going away), the popups hanging off it now get `closed` with
   reason `"dismissed"` and are destroyed before it; before, they were left without a notice on a destroyed surface. See
   [First present and ready](reference/layer-window.md#first-present-and-ready).
+
+- **`layer_viewport_margin`, `layer_flip_threshold` (`Window.set`/`get`) and `viewport_margin`, `flip_threshold`, `align`,
+  `shift` on `show_layer`, with `layer_*` node properties (new, opt-in; P10 placement policy).** The UX "Anchored
+  Placement" note has a layer keep a viewport margin from the window edge (design choice 8 dp) and a flip threshold;
+  the engine had margin 0 and slack 0 fixed. A margin is a number or `(top, right, bottom, left)`, the threshold a
+  number of pixels, both default `0` (what layers always did): `window.set(layer_viewport_margin=8)` once, or per layer
+  `show_layer(menu, anchor=b, viewport_margin=4, flip_threshold=12, align="end")`, later `menu.set(layer_viewport_margin=...)`
+  (`None` follows the window). The margin also counts in the room that decides a flip. `align` (`"start"` default,
+  `"center"`, `"end"`) lines the layer up with the anchor's edge; `shift=False` stops the shift (`shift=None` follows
+  `flip`, so `flip=False` still pins both as before). Nothing changes unless you set one; invalid values raise
+  `ValueError`. Rust: `OverlayMeta.pinned` is replaced by `no_flip` and `no_shift` (and gained `align`,
+  `viewport_margin`, `flip_threshold`), `Tree::layer_defaults`/`set_layer_defaults`/`update_layer` are new, and
+  `engine_core::overlay::place` is the pure placement function. See
+  [Layer placement policy](reference/properties.md#layer-placement-policy-0612).
+- **`PopupWindow(edge_margin=...)` (new, opt-in, constructor only).** The UX "Popup Window" note keeps the body 8 dp from
+  the output edge; the compositor flipped and slid it to the edge. `edge_margin` (a whole number of pixels or `(top, right,
+  bottom, left)`, default `None` = 0) grows the window geometry the compositor places by that much on each side, as far as
+  the transparent room around `geometry` allows (`get("edge_margin_applied")`; a popup without `geometry` has none), and
+  moves the anchor rectangle so the body attaches where it did. `position` and `configure`'s `x`, `y` stay the body's.
+  `PopupConfig` (Rust) gained `edge_margin` and `edge_fit()`. See [Edge margin](reference/layer-window.md#edge-margin).
+- **`ime_offset` (`Window.set`/`get`; new, opt-in).** `(dx, dy)` layout pixels added to the caret box the input method puts its
+  candidate window at; default `(0, 0)`, the caret box itself as before.

@@ -333,6 +333,7 @@ app.add_window(menu)                           # from a click handler, with `bar
 | `offset` | A fixed `(x, y)` shift after placement. |
 | `grab` | `True` (the default) gives the popup the pointer and keyboard. |
 | `geometry` | (0.6.3) `(x, y, width, height)` in the popup's own pixels: the popup proper, when the surface is bigger. The compositor places and constrains this rectangle and ignores the rest. Default: the whole surface. Must lie inside `size`. |
+| `edge_margin` | (0.6.12) A whole number of pixels, or `(top, right, bottom, left)`, zero or more: the clearance the compositor keeps between the body and the output's edge when it flips or slides the popup (UX Popup Window: 8 dp). Default `None`: 0, what popups always did. Constructor only; `get("edge_margin")` reads it and `get("edge_margin_applied")` what fit. See [Edge margin](#edge-margin). |
 | `first_present`, `background` | (0.6.12) As for a `LayerWindow` (see [First present and ready](#first-present-and-ready)); a popup's hold is described under **First present** below. |
 | `input_region` | (0.6.5) Where input is delivered, in the popup's own logical pixels: `None` (the default, the whole surface), `[]`, a list of `(x, y, width, height)` rectangles (at most 256), or `"geometry"` for the body. Not `"auto"`. The one popup setting `set` can change. |
 
@@ -358,6 +359,27 @@ body = menu.create("box", width=180, height=120, position="absolute", x=m, y=m,
 `x` and `y` are the body's. `width` and `height` in `configure` are the surface's (body plus margins).
 If a compositor resizes the popup (`resize_x`, `resize_y`) it resizes the body, and the surface follows
 with the same margins.
+
+## Edge margin
+
+**Edge margin (0.6.12).** The compositor flips and slides a popup until it is inside the output, with no
+space left to the edge. The protocol has no margin for that, so `edge_margin` uses the one thing the compositor
+does constrain: the window geometry. The geometry the compositor places is the body grown by the margin on each
+side, and the anchor rectangle moves so the body still attaches where it would without a margin, flipped or
+not. The margin is therefore the transparent room the surface keeps around the body (`geometry`): a side with
+less room gets as much as there is (`get("edge_margin_applied")`, `(top, right, bottom, left)`), and a popup
+with no `geometry` has none, since its whole surface is the body. A menu with a 10 px shadow margin and
+`edge_margin=8` gets all 8. `position` and `x`, `y` in `configure` stay the body's.
+Where it is inexact: an anchor rectangle thinner than the two margins on an axis where the popup is placed
+outside it (`"bottom_left"` anchor with `"bottom_right"` gravity: below) is treated as a point in its middle;
+`anchor="none"` with an edge gravity is not corrected, and a `"none"` gravity centres the body on the point
+moved by half the difference of the margins.
+
+```python
+m = 20
+menu = PopupWindow(bar, size=(180 + 2 * m, 120 + 2 * m), geometry=(m, m, 180, 120),
+                   edge_margin=8, anchor_rect=(100, 0, 60, 32))
+```
 
 **Clicks in the margin (0.6.5, #282).** `geometry` places the body; it does not say where input goes,
 and the transparent margin still takes clicks that were aimed at the window below. Give the popup an
