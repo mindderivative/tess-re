@@ -43,6 +43,7 @@ input_region=None)`**
 | `margin` | `(top, right, bottom, left)` in logical pixels, or one number for all four. Negative is accepted and moves the surface past the screen edge. |
 | `keyboard` | `"none"`: never gets key events. `"on_demand"`: gets them when the user focuses it (a click). `"exclusive"`: takes the keyboard on opening, and nothing else gets keys until it closes. |
 | `output` | An [`Output`](outputs.md) (from `App.outputs()`) or a connector name (`"DP-1"`, `"HDMI-A-1"`) to bind it to. `None` picks the output at position (0, 0), or the first by name if none is there, the same on every run (the compositor's own choice alternates). A surface meant for another screen names it. Constructor only. |
+| `first_present`, `background` | (0.6.12) When the first frame is presented, and what frames are cleared to; see [First present and ready](#first-present-and-ready). |
 | `input_region` | Where the compositor delivers pointer and touch input. `None`: the whole surface. `[]`: nothing, so clicks fall through to the window below. A list of `(x, y, width, height)` rectangles in logical pixels from the surface's top-left, rounded outward, at most 256: input lands only inside them. Live through `set()`. `click_through=True` is `input_region=[]` on a `LayerWindow` (and `False` gives the whole surface back); giving both with different meanings raises `ValueError`. `"auto"`: the union of the shapes of drawn, hit-testable nodes (a box with a fill, gradient or border; any image, path, svg, canvas, text field or terminal; a selectable or linked text, or one with `hit_testable=True` (0.6.11): a plain label takes pointer events but does not hold the region open, so a label on a click-through layer stays click-through), with a box's rounded corners and a canvas's circle hit shape counted, and (0.5.9) a path set to `hit_shape="painted"` counted as what it paints, its fill and its stroke, so a ring leaves its middle open and a concave corner leaves its notch open ([hit testing a path](paint.md#hit-testing-a-path)); a path left at `hit_shape="box"` still counts as its box. A transparent root or a node with `hit_testable=False` adds nothing, so clicks there fall through. It follows layout, transforms and animation: while something animates it only grows, then snaps to the exact shape. A shape is cut into horizontal bands of 2 px or more (at most 256 rectangles, coarser if a shape needs more); it may cover a pixel or two beyond a curve, never less. The region reaches the compositor with a commit of its own, so an idle surface needs no frame. |
 
 **`exclusive_edge`** says which edge a corner-anchored surface's `exclusive_zone` is for: a clock
@@ -145,6 +146,36 @@ until `resize(width, height)` says otherwise.
 If an `output` names no output, `App.run()` raises `RuntimeError` listing the ones the
 compositor has.
 
+### First present and ready
+
+(0.6.12) **`first_present`** is `"immediate"` (the default, and what every layer window did before), `"on_ready"` or a
+number of milliseconds (1 to 600000), exactly as for [`Window`](window.md#first-present-and-background-0611), and
+`window.ready()` ends the hold. A layer surface is mapped by the first buffer it commits, so a held surface has a role, a
+size and a place in the compositor's configure handshake but **no buffer**: the compositor shows nothing, reserves no
+`exclusive_zone`, and sends it no pointer or keyboard input, until `ready()` or, for a number, that many milliseconds
+after the surface's first configure, whichever comes first.
+
+```python
+bar = LayerWindow("shell.bar", anchor=("top", "left", "right"), size=(0, 32), exclusive_zone=32,
+                  first_present="on_ready", background=(0x14, 0x12, 0x18, 255))
+build_bar(bar)                       # nodes, text, icons: nothing is drawn yet
+app.add_window(bar)
+app.thread_handle().call_soon(bar.ready)   # or bar.ready() from any listener or timer
+```
+
+* The configure handshake is complete while it is held (every configure is acknowledged before the app hears of it), so
+  the compositor's state stays consistent; layout runs, `configure` and `resize` fire, a `size="content"` surface settles
+  to its content, and timers and listeners run. Only the draw and the commit of a buffer wait. The first buffer is drawn
+  in full when it is let through.
+* Settings made before the first buffer still apply: `keyboard` and `input_region` given to the constructor go with the
+  role-setting commit, and `set(...)` made while held (also before the surface exists) is committed without a buffer, so it
+  is in force the moment the surface maps.
+* `background` is the colour every frame is cleared to; the default for a layer surface is nothing (see-through), so a
+  rounded bar shows what is behind it. Set one to clear to a colour. `set(background=...)` works while open.
+* `first_present` is fixed at construction (`set` raises `ValueError`). `ready()` is a no-op for an immediate surface, one
+  already presented and every call after the first. `window.get("first_presented")` says whether the first frame is out.
+* An app run with `app.run(max_frames=N)` counts a held pass as a frame, as for a window.
+
 ## Events
 
 Window events apply, with these additions (see [Events](events.md)):
@@ -152,7 +183,7 @@ Window events apply, with these additions (see [Events](events.md)):
 | Event | Fires | Fields |
 |---|---|---|
 | `configure` | The compositor assigned a size: when the surface first has one, and whenever it changes (a repeat of the same size, which sway sends, is not a change). `resize` fires too. | `width`, `height` in logical pixels |
-| `closed` | The surface is gone | `reason`: `"compositor"`, `"output_removed"` or `"app"` |
+| `closed` | The surface is gone | `reason`: `"compositor"`, `"output_removed"` or `"app"` (a `PopupWindow`: `"dismissed"` or `"failed"`) |
 | `output_changed` | The surface entered an output | `output`: its connector name |
 | `warning` | A setting the protocol accepts but ignores | `key` (the setting), `message` |
 | `moved` | A margin drag ended (see below) | `margin`: the final `(top, right, bottom, left)` |
@@ -302,6 +333,7 @@ app.add_window(menu)                           # from a click handler, with `bar
 | `offset` | A fixed `(x, y)` shift after placement. |
 | `grab` | `True` (the default) gives the popup the pointer and keyboard. |
 | `geometry` | (0.6.3) `(x, y, width, height)` in the popup's own pixels: the popup proper, when the surface is bigger. The compositor places and constrains this rectangle and ignores the rest. Default: the whole surface. Must lie inside `size`. |
+| `first_present`, `background` | (0.6.12) As for a `LayerWindow` (see [First present and ready](#first-present-and-ready)); a popup's hold is described under **First present** below. |
 | `input_region` | (0.6.5) Where input is delivered, in the popup's own logical pixels: `None` (the default, the whole surface), `[]`, a list of `(x, y, width, height)` rectangles (at most 256), or `"geometry"` for the body. Not `"auto"`. The one popup setting `set` can change. |
 
 **Where it landed.** `configure` carries `width`, `height` and, for a popup, `x` and `y`: where the
@@ -349,6 +381,24 @@ compositor resizes the popup (`resize_x`, `resize_y`), so set it again from the 
 the same application** is delivered to that window as usual (that is the protocol's rule for a
 grab), so a menu that should close on it listens for the click and calls `close()`. Closing a
 popup closes the submenus hanging off it.
+
+**First present (0.6.12).** `PopupWindow(..., first_present="on_ready" | <ms>, background=...)` and `popup.ready()`
+work as for a `LayerWindow`: an `xdg_popup` is mapped by its first buffer, so a held popup is placed (`configure` reports
+its `x`, `y` and size) and the configure is acknowledged, but nothing is shown until `ready()` or the deadline (counted
+from the first configure). Build the menu's content while it is held, then call `ready()`: the popup appears complete.
+
+* **The parent is not blocked.** The parent keeps drawing and taking input; a held popup is just an unmapped surface.
+* **A grab and a hold.** With `grab=True` the grab is the compositor's to start when the popup is mapped. Checked on
+  sway: a held popup with a grab is not dismissed while it is held, and maps normally at `ready()`. (A dismissal by a
+  click outside after it maps is the existing behaviour, see Dismissal above; not re-tested with a hold.)
+* **A parent that closes while the popup is held (or open) ends the popup first:** `closed` arrives on the popup with
+  reason `"dismissed"` (the reason for a popup the compositor ends because its parent went), the popup's surface is
+  destroyed before the parent's, and any popups hanging off it go the same way, deepest first. `popup.ready()` after
+  that is a no-op. (Before 0.6.12 the popup of a closed parent was never told.) The same applies when the parent closes
+  because the compositor closed it or its output went.
+* A popup is not held because its parent is: it commits as it was made. Whether a compositor shows a popup whose parent
+  layer surface is still unmapped is its own call (sway committed it); call `parent.ready()` first if the popup is to be
+  shown with it.
 
 The popup is a window like any other: its nodes, events, listeners, animation and input method
 work as in a `LayerWindow`. Its own settings cannot be changed after it is made. Errors raise

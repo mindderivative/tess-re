@@ -1074,6 +1074,12 @@ class LayerWindow(Window):
     height)` rectangles in logical pixels, rounded outward, at most 256. `click_through=True`
     is `input_region=[]`; saying both with different meanings raises.
 
+    (0.6.12) `first_present` (`"immediate"`, the default; `"on_ready"`; or an `int` of
+    milliseconds, 1 to 600000) holds the first present until `ready()` (or until that long after
+    the surface's first configure): a layer surface is mapped by its first buffer, so until then
+    the compositor shows nothing and reserves no `exclusive_zone`. Fixed at construction.
+    `background` is the `(r, g, b, a)` every frame is cleared to; `None` clears to nothing.
+
     The protocol's errors raise `ValueError` naming the key, before anything is sent to
     the compositor. It raises `UnsupportedPlatform` where there is no layer shell (X11,
     GNOME's Mutter, Windows, macOS); with no display at all it can be built and driven
@@ -1106,7 +1112,8 @@ class LayerWindow(Window):
         input_region: Literal["auto"] | Sequence[tuple[float, float, float, float]] | None = ...,
         click_through: bool | None = ...,
         scheme: Literal["light", "dark", "auto"] | None = ...,
-        first_present: Literal["immediate"] | None = ...,
+        first_present: Literal["immediate", "on_ready"] | int | None = ...,
+        background: tuple[int, int, int, int] | None = ...,
     ) -> LayerWindow: ...
     def set(self, **props: Any) -> None:
         """Sets properties; the layer ones (`layer`, `anchor`, `size`, `exclusive_zone`,
@@ -1186,6 +1193,13 @@ class PopupWindow(Window):
     Unlike the other settings it can change after the popup is made: `popup.set(input_region=...)`.
     There is no `"auto"` here.
 
+    (0.6.12) `first_present` (`"immediate"`, `"on_ready"` or milliseconds, as in `LayerWindow`) holds the
+    popup's first present until `popup.ready()` or the deadline; an `xdg_popup` is mapped by its first
+    buffer, so until then it is not shown and, with `grab=True`, does not take the pointer or keyboard.
+    Its parent is not blocked. If the parent closes while the popup is held (or open), the popup is
+    closed first: `closed` arrives with reason `"dismissed"`. `background` is the `(r, g, b, a)` every
+    frame is cleared to; `None` clears to nothing.
+
     The popup is a window like any other: its nodes, events, listeners, animation and input method
     work as in a `LayerWindow`. `configure` reports `width`, `height` and, for a popup, `x` and `y`:
     where the compositor put it, in its parent's coordinates, after any flip or slide. Errors raise
@@ -1206,7 +1220,8 @@ class PopupWindow(Window):
         geometry: tuple[int, int, int, int] | None = ...,
         input_region: Sequence[Sequence[float]] | Literal["geometry"] | None = ...,
         scheme: Literal["light", "dark", "auto"] | None = ...,
-        first_present: Literal["immediate"] | None = ...,
+        first_present: Literal["immediate", "on_ready"] | int | None = ...,
+        background: tuple[int, int, int, int] | None = ...,
     ) -> PopupWindow: ...
     def set(self, **props: Any) -> None:
         """Sets `input_region` and the window keys a popup shares (`touch_slop`, `partial_redraw`,

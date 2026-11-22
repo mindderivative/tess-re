@@ -278,7 +278,10 @@ override them per state (0.6.12: hover 15 ms, press 105 ms, as the UX spec says)
 fills. `Window(background=(r, g, b, a))` or `window.set(background=...)` overrides it. To keep a window from showing an
 unfinished first frame, or (macOS, Windows) the OS's default background before it, build it with
 `first_present="on_ready"`, add its content, and call `window.ready()`; a number of milliseconds is the same with a
-deadline. See [First present and background](../reference/window.md#first-present-and-background-0611).
+deadline. From 0.6.12 the same works for a bar, a panel or a menu: `LayerWindow(..., first_present="on_ready")` and
+`PopupWindow(..., first_present="on_ready")` map only at `ready()`. See
+[First present and background](../reference/window.md#first-present-and-background-0611) and
+[First present and ready](../reference/layer-window.md#first-present-and-ready).
 
 ## What Tesserae Engine leaves to you
 

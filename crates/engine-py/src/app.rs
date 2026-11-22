@@ -1337,6 +1337,9 @@ impl App {
                             handles.height.set(info.height);
                             layer.scale.set(info.scale);
                             layer.id.set(Some(info.id));
+                            // 0.6.12: a `first_present` deadline counts from the first configure; the
+                            // surface maps when the first frame is presented, not before.
+                            handles.first_present.opened_now(Instant::now());
                             // 0.6.11: the OS appearance, for a window on `scheme="auto"`.
                             if handles.scheme.follows_os() {
                                 handles

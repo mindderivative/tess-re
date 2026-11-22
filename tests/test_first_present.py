@@ -29,10 +29,13 @@ def test_none_is_the_default_mode():
 
 
 @pytest.mark.parametrize(
-    "bad", ["later", "ON_READY", "", 0, -5, 600_001, 1.5, True, False, [], (1,), b"on_ready"]
+    "bad",
+    ["later", "ON_READY", "", 0, -5, 600_001, 1.5, True, False, [], (1,), b"on_ready"],
 )
 def test_a_bad_first_present_names_the_choices(bad):
-    with pytest.raises(ValueError, match="first_present must be 'immediate', 'on_ready' or"):
+    with pytest.raises(
+        ValueError, match="first_present must be 'immediate', 'on_ready' or"
+    ):
         Window(first_present=bad)
 
 
@@ -79,7 +82,9 @@ def test_ready_before_the_window_is_open_is_harmless_and_repeatable():
 
 def test_a_headless_window_still_snapshots_while_its_first_present_is_held():
     """The hold is a live-loop matter: layout and the headless pipeline are untouched."""
-    w = Window(width=100, height=60, first_present="on_ready", background=(0, 0, 0, 255))
+    w = Window(
+        width=100, height=60, first_present="on_ready", background=(0, 0, 0, 255)
+    )
     w.root.add_child(w.create("box", width=40, height=20, fill=(200, 0, 0, 255)))
     w.advance(0.0)
     assert w.snapshot() is not None
@@ -95,31 +100,85 @@ class TestLayerAndPopup:
         monkeypatch.delenv("DISPLAY", raising=False)
 
     def bar(self, **kw):
-        return LayerWindow("p5.bar", anchor=("top", "left", "right"), size=(0, 24), **kw)
+        return LayerWindow(
+            "p5.bar", anchor=("top", "left", "right"), size=(0, 24), **kw
+        )
 
     @pytest.mark.parametrize("mode", [None, "immediate"])
     def test_a_layer_window_accepts_immediate(self, mode):
         assert self.bar(first_present=mode).get("first_present") == "immediate"
 
-    @pytest.mark.parametrize("mode", ["on_ready", 100])
-    def test_a_layer_window_cannot_hold_its_first_present_yet(self, mode):
-        with pytest.raises(ValueError, match="not supported on LayerWindow yet"):
-            self.bar(first_present=mode)
+    @pytest.mark.parametrize("mode", ["on_ready", 1, 100, 600_000])
+    def test_a_layer_window_takes_on_ready_and_milliseconds(self, mode):
+        assert self.bar(first_present=mode).get("first_present") == mode
 
-    def test_a_bad_first_present_is_still_refused_first(self):
-        with pytest.raises(ValueError, match="first_present must be"):
-            self.bar(first_present="soon")
+    @pytest.mark.parametrize(
+        "bad",
+        ["soon", "ON_READY", "", 0, -5, 600_001, 1.5, True, False, [], b"on_ready"],
+    )
+    def test_a_bad_first_present_is_refused_on_a_layer_window(self, bad):
+        with pytest.raises(
+            ValueError, match="first_present must be 'immediate', 'on_ready' or"
+        ):
+            self.bar(first_present=bad)
 
-    def test_a_popup_accepts_immediate_and_refuses_the_rest(self):
+    def test_a_popup_takes_every_mode_and_refuses_a_bad_one(self):
         parent = self.bar()
         kw = dict(size=(40, 40), anchor_rect=(0, 0, 10, 10))
-        assert PopupWindow(parent, first_present="immediate", **kw).get("first_present") == (
-            "immediate"
-        )
-        with pytest.raises(ValueError, match="not supported on PopupWindow yet"):
-            PopupWindow(parent, first_present="on_ready", **kw)
+        for mode, want in (
+            (None, "immediate"),
+            ("immediate", "immediate"),
+            ("on_ready", "on_ready"),
+            (250, 250),
+        ):
+            assert (
+                PopupWindow(parent, first_present=mode, **kw).get("first_present")
+                == want
+            )
+        for bad in ("soon", 0, 600_001, True):
+            with pytest.raises(ValueError, match="first_present must be"):
+                PopupWindow(parent, first_present=bad, **kw)
 
-    def test_ready_on_a_layer_window_is_a_no_op(self):
+    def test_first_present_cannot_be_set_later_on_either(self):
+        bar = self.bar(first_present="on_ready")
+        with pytest.raises(ValueError, match="first_present"):
+            bar.set(first_present="immediate")
+        assert bar.get("first_present") == "on_ready"
+
+    def test_ready_is_harmless_before_during_and_after_opening_and_repeatable(self):
+        for mode in ("immediate", "on_ready", 100):
+            bar = self.bar(first_present=mode)
+            popup = PopupWindow(
+                bar, size=(40, 40), anchor_rect=(0, 0, 10, 10), first_present=mode
+            )
+            for w in (bar, popup):
+                assert w.ready() is None
+                assert w.ready() is None
+                assert w.get("first_presented") is False
+                assert w.get("first_present") == mode
+
+    def test_a_held_layer_window_still_lays_out_and_snapshots(self):
+        bar = self.bar(first_present="on_ready", background=(5, 6, 7, 255))
+        bar.root.add_child(
+            bar.create("box", width=20, height=10, fill=(200, 0, 0, 255))
+        )
+        assert bar.snapshot() is not None
+
+    @pytest.mark.parametrize("make", ["bar", "popup"])
+    def test_background_is_a_constructor_argument_of_layer_and_popup(self, make):
+        def build(**kw):
+            bar = self.bar()
+            if make == "bar":
+                return self.bar(**kw)
+            return PopupWindow(bar, size=(40, 40), anchor_rect=(0, 0, 10, 10), **kw)
+
+        assert build().get("background") is None
+        assert build(background=(1, 2, 3, 255)).get("background") == (1, 2, 3, 255)
+        assert build(background=None).get("background") is None
+        with pytest.raises(ValueError, match="background"):
+            build(background=(1, 2, 3))
+
+    def test_ready_on_a_layer_window_is_a_no_op_when_it_presents_immediately(self):
         assert self.bar().ready() is None
 
     def test_a_layer_window_background_can_be_set(self):
