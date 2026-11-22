@@ -52,6 +52,10 @@ pub const FLING_TAU_MS: f64 = 350.0;
 pub const FLING_STOP: f64 = 30.0;
 /// `fling_min_speed`: a flick slower than this, pixels a second, does not coast.
 pub const FLING_MIN: f64 = 150.0;
+/// 0.6.12 (UXREQ-007) `edge_scroll_band`: how far in from a view's edge a held gesture scrolls it, dp.
+pub const EDGE_SCROLL_BAND: f64 = 24.0;
+/// `edge_scroll_speed`: dp per frame at 60 Hz at the inner edge of the band and at the edge.
+pub const EDGE_SCROLL_SPEED: (f64, f64) = (8.0, 32.0);
 /// `scrollbar_hide_delay_ms`: how long `auto_hide` waits.
 pub const HIDE_DELAY: Duration = Duration::from_millis(1000);
 
@@ -186,6 +190,12 @@ pub struct ScrollbarMetrics {
     pub fling_stop_speed: f64,
     /// A flick slower than this does not coast, pixels a second.
     pub fling_min_speed: f64,
+    /// 0.6.12 (UXREQ-007): whether a held gesture near the view's edge scrolls it.
+    pub edge_scroll: bool,
+    /// How far in from the edge the scrolling starts, dp.
+    pub edge_scroll_band: f64,
+    /// dp per frame at 60 Hz at the band's inner edge and at the edge.
+    pub edge_scroll_speed: (f64, f64),
 }
 
 /// `ms` milliseconds as a duration, none for a number that is no time.
@@ -292,6 +302,9 @@ impl ScrollbarMetrics {
             fling_tau_ms: n(Prop::FlingTau, FLING_TAU_MS),
             fling_stop_speed: n(Prop::FlingStop, FLING_STOP),
             fling_min_speed: n(Prop::FlingMin, FLING_MIN),
+            edge_scroll: o.flag(Prop::EdgeScroll).unwrap_or(false),
+            edge_scroll_band: n(Prop::EdgeScrollBand, EDGE_SCROLL_BAND),
+            edge_scroll_speed: o.pair(Prop::EdgeScrollSpeed).unwrap_or(EDGE_SCROLL_SPEED),
         }
     }
 
@@ -335,6 +348,12 @@ impl ScrollbarMetrics {
             Prop::FlingTau => number(self.fling_tau_ms),
             Prop::FlingStop => number(self.fling_stop_speed),
             Prop::FlingMin => number(self.fling_min_speed),
+            Prop::EdgeScroll => Some(Value::Flag(self.edge_scroll)),
+            Prop::EdgeScrollBand => number(self.edge_scroll_band),
+            Prop::EdgeScrollSpeed => Some(Value::Pair(
+                self.edge_scroll_speed.0,
+                self.edge_scroll_speed.1,
+            )),
             Prop::Fill
             | Prop::FillHover
             | Prop::FillDrag

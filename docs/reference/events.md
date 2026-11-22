@@ -20,7 +20,7 @@ listing the valid ones.
 | --- | --- | --- |
 | `pointer_enter`, `pointer_leave` | The pointer enters or leaves the node's **subtree** — not when it moves between the node and its own descendants, and `pointer_leave` also fires when the pointer leaves the window | no |
 | `pointer_down`, `pointer_move`, `pointer_up` | A button is pressed, the pointer moves, a button is released | yes |
-| `pointer_cancel` | A press was taken by the OS — to move the window from a drag region, toggle maximize, or show the window menu — so no `pointer_up` or click follows, and any pointer capture is released (0.5.0) | yes |
+| `pointer_cancel` | A press was taken by the OS — to move the window from a drag region, toggle maximize, or show the window menu — so no `pointer_up` or click follows, and any pointer capture is released (0.5.0). Also (0.6.12) **Escape during a gesture**: a captured pointer, a scrollbar thumb drag or a dock drag ends, once, on the node that held the capture (else the one pressed); no `pointer_up`, no `click`, and Escape goes no further (no `key_down`, no terminal byte, no overlay `dismiss`). Without a gesture Escape is unchanged | yes |
 | `click` | Primary press and release on the same node, or keyboard activation | yes |
 | `secondary_click` | Secondary press and release on the same node | yes |
 | `wheel` | A wheel or trackpad scroll | yes |
@@ -107,7 +107,8 @@ thumb.on("pointer_move", lambda e: print(e.x))  # keeps firing off the thumb
 `node.capture_pointer()` routes every later pointer event to `node`, wherever
 the pointer goes, until a button is released or `node.release_pointer()` is
 called. While captured, the capturing node is the target and events still
-bubble from it.
+bubble from it. A node that holds the capture does **not** receive `key_down` (keys go to the focused node);
+the way to end a drag from the keyboard is Escape, which sends the holder one `pointer_cancel` (0.6.12).
 
 ## Window listeners
 
@@ -132,6 +133,7 @@ window.on("close_requested", lambda e: e.cancel())  # keep the window open
 | `file_drop` | Files were dropped on the window (0.5.4); `paths` | — |
 | `dock_drop` | A docking drag ended with the primary button's release; the panel has moved to the zone there, if any | `panel`, `side` |
 | `titlebar_double_click` | A double-click on a `window_region="drag"` node, only with `window.set(titlebar_double_click="event")` (0.6.12) | `x`, `y` |
+| `dock_cancel` | A docking drag was cancelled with Escape (0.6.12): the panel stays in its zone and `dock_drop` never fires. If a zone was highlighted, `dock_target` fires first with `side=None` | `panel` |
 | `maximized` | The window was maximized or restored (0.5.0) | `maximized` |
 | `active` | The window gained or lost the OS's focus (0.5.0) | `active` |
 | `occluded` | The window became completely hidden, or showed again (0.5.10; X11 and macOS only) | `occluded` |
@@ -241,7 +243,7 @@ hardware; the Windows and macOS code is compiled for those targets and untested.
 | `caret`, `inserted` | `caret_move` — the caret's `(x, y, width, height)` in the node's coordinates, and the `(start, end)` bytes an edit inserted or `None` |
 | `property`, `finished` | `animation_end` — the animated property, and whether it ran to the end (`False`: it was replaced or stopped) |
 | `side` | `dock_target`, `dock_drop` — the dock zone under the pointer, or `None` |
-| `panel` | `dock_drop` — the dragged panel |
+| `panel` | `dock_drop`, `dock_cancel` — the dragged panel |
 
 Methods: `stop()` ends propagation; `cancel()` prevents `close_requested`'s
 default (any other event raises `ValueError`).

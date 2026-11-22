@@ -314,6 +314,8 @@ pub(crate) enum WindowEventType {
     DockTarget,
     /// M99: a panel drag ended.
     DockDrop,
+    /// 0.6.12 (UXREQ-007): a panel drag was cancelled (Escape): no drop, the panel stays.
+    DockCancel,
     /// 0.5.4 (#114): files dragged over the window, off it, or dropped on it.
     FileHover,
     FileHoverCancel,
@@ -351,6 +353,7 @@ impl WindowEventType {
         Self::GpuStalled,
         Self::DockTarget,
         Self::DockDrop,
+        Self::DockCancel,
         Self::FileHover,
         Self::FileHoverCancel,
         Self::FileDrop,
@@ -380,6 +383,7 @@ impl WindowEventType {
             Self::GpuStalled => "gpu_stalled",
             Self::DockTarget => "dock_target",
             Self::DockDrop => "dock_drop",
+            Self::DockCancel => "dock_cancel",
             Self::FileHover => "file_hover",
             Self::FileHoverCancel => "file_hover_cancel",
             Self::FileDrop => "file_drop",

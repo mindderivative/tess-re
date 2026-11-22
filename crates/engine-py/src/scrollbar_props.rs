@@ -48,6 +48,16 @@ fn parse_value(prop: ScrollProp, value: &Bound<'_, PyAny>) -> PyResult<PropValue
                 Err(invalid(name, &words))
             }
         }
+        PropKind::Pair { min, max } => {
+            let words = format!("a pair of numbers from {min} to {max}, or None");
+            let pair: (f64, f64) = value.extract().map_err(|_| invalid(name, &words))?;
+            let parsed = PropValue::Pair(pair.0, pair.1);
+            if prop.kind().accepts(&parsed) {
+                Ok(parsed)
+            } else {
+                Err(invalid(name, &words))
+            }
+        }
         PropKind::Colour => Ok(PropValue::Colour(parse_color(value, name)?)),
         PropKind::Flag => {
             if !value.is_instance_of::<pyo3::types::PyBool>() {
@@ -127,6 +137,7 @@ fn to_py(value: Option<PropValue>, prop: ScrollProp, py: Python<'_>) -> PyResult
         None => py.None(),
         Some(PropValue::Number(n)) => n.into_pyobject(py)?.into_any().unbind(),
         Some(PropValue::Flag(f)) => f.into_pyobject(py)?.to_owned().into_any().unbind(),
+        Some(PropValue::Pair(a, b)) => (a, b).into_pyobject(py)?.into_any().unbind(),
         Some(PropValue::Colour(c)) => return color_to_py(c, py),
         Some(PropValue::Choice(i)) => {
             let names = prop.choices().unwrap_or(&[]);

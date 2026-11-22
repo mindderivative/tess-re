@@ -51,6 +51,7 @@ mod nodes;
 mod region;
 mod scroll;
 mod state_layers;
+pub use focus::CancelledGesture;
 pub use scroll::{KEY_SCROLL_LINE, ScrollChange};
 mod virtual_scroll;
 pub use virtual_scroll::ScrollAlign;
@@ -147,6 +148,13 @@ pub struct Tree {
     /// 0.6.11: a press holding the lane of a thumb pages again until it is
     /// released or the thumb reaches the press.
     page_repeat: Option<scroll::PageRepeat>,
+    /// 0.6.12 (UXREQ-007): the last pointer position the tree saw (kept while the pointer is
+    /// outside the window), whether a gesture the tree cannot see (a dock drag) is held, when
+    /// edge auto-scroll last stepped, and whether the last tick moved a view.
+    pointer_at: Option<Point>,
+    gesture_hold: bool,
+    edge_scroll_last: Option<Instant>,
+    edge_scrolled: bool,
     /// 0.6.11: whether the OS asks for less motion, and the window's own
     /// say (`Window.reduced_motion`): the scrollbar's fades and the smooth
     /// scroll and the snap settle take no time while it is on.
@@ -328,6 +336,10 @@ impl Tree {
             dragging: None,
             scrollbar_hover: None,
             page_repeat: None,
+            pointer_at: None,
+            gesture_hold: false,
+            edge_scroll_last: None,
+            edge_scrolled: false,
             os_reduced_motion: false,
             reduced_motion_override: None,
             clock: Instant::now(),
@@ -1113,6 +1125,7 @@ impl Tree {
         self.animating = still;
         let settling = self.settle_snaps(now);
         let paging = self.repeat_pages(now);
+        let edge_scrolling = self.edge_scroll_tick(now);
         for id in layout_changed {
             if let Some(node) = self.nodes.get(id) {
                 let style = node.layout_style.clone();
@@ -1126,6 +1139,7 @@ impl Tree {
         let any_active = !self.animating.is_empty()
             || settling
             || paging
+            || edge_scrolling
             || !self.snap_pending.is_empty()
             || shader_active;
         // M29 Phase 1 (§5, §6): a mid-flight animation is itself a real

@@ -186,6 +186,11 @@ impl Tree {
     /// M94: `update_hover`'s own transition half, split out so
     /// `InputEvent::PointerLeft` can clear hover without a hit-test.
     /// Returns `hit`.
+    /// The node the pointer was last found over.
+    pub fn hovered(&self) -> Option<NodeId> {
+        self.hovered
+    }
+
     pub fn set_hovered(&mut self, hit: Option<NodeId>) -> Option<NodeId> {
         self.dirty = true;
         if hit == self.hovered {
@@ -404,4 +409,66 @@ impl Tree {
         self.pointer_capture = None;
         pressed
     }
+
+    /// 0.6.12 (UXREQ-007): whether a gesture the engine can cancel is held: a
+    /// captured pointer, a scrollbar thumb drag, or one `set_gesture_hold` was
+    /// told of (a dock drag).
+    pub fn gesture_active(&self) -> bool {
+        self.pointer_capture.is_some() || self.dragging.is_some() || self.gesture_hold
+    }
+
+    /// 0.6.12 (UXREQ-007): tells the tree a gesture it cannot see (a dock drag)
+    /// starts or ends, which is what edge auto-scroll waits for.
+    pub fn set_gesture_hold(&mut self, hold: bool) {
+        self.gesture_hold = hold;
+    }
+
+    /// 0.6.12 (UXREQ-007): ends the gesture in progress without its release: the
+    /// pointer capture and the press go, a held lane press stops, and a dragged
+    /// scrollbar thumb puts its view back at the offset the drag started from.
+    /// Returns the node that held the capture and the one that was pressed
+    /// (what `pointer_cancel` goes to).
+    pub fn cancel_gesture(&mut self, now: Instant) -> CancelledGesture {
+        let holder = self.pointer_capture;
+        if let Some(view) = self.dragging.take() {
+            let mut start = None;
+            if let Some(scroller) = self.nodes.get_mut(view).and_then(|n| n.kind.scroller_mut()) {
+                let axis = scroller.bar().drag_axis;
+                if let Some((_, scroll)) = scroller.bar_mut().drag_anchor.take() {
+                    let offset = scroller.offset_anim(axis);
+                    offset.stop();
+                    offset.current = scroll;
+                    start = Some(scroll);
+                }
+            }
+            if start.is_some() {
+                self.note_scroll_input(view);
+            }
+            self.refresh_bar(view, now);
+        }
+        self.page_repeat = None;
+        self.edge_scroll_last = None;
+        self.dirty = true;
+        let pressed = self.cancel_press();
+        CancelledGesture { holder, pressed }
+    }
+
+    /// 0.6.12 (UXREQ-007): where the pointer was when edge auto-scroll last moved
+    /// a view, once (the caller re-reads hover and the dock target there).
+    pub fn take_edge_scrolled(&mut self) -> Option<Point> {
+        if std::mem::take(&mut self.edge_scrolled) {
+            self.pointer_at
+        } else {
+            None
+        }
+    }
+}
+
+/// What `Tree::cancel_gesture` ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CancelledGesture {
+    /// The node that held the pointer capture.
+    pub holder: Option<NodeId>,
+    /// The node the press was on.
+    pub pressed: Option<NodeId>,
 }

@@ -211,7 +211,7 @@ class Event:
     (`"left"`, `"right"`, `"top"`, `"bottom"`, `"center"`), or `None`
     when it's over no zone."""
     panel: Node | None
-    """`dock_drop`: the panel that was dragged."""
+    """`dock_drop`, `dock_cancel` (0.6.12): the panel that was dragged."""
     def stop(self) -> None:
         """Ends propagation: no listener on a further ancestor runs."""
         ...
@@ -366,7 +366,10 @@ class Node:
         `page_repeat_ms`, and the engine's snap and fling timings (0.6.11):
         `scroll_snap_settle_ms` (120), `scroll_snap_duration_ms` (200),
         `scroll_snap_easing` (`"standard"`; a list has no snap), `fling_tau_ms` (350),
-        `fling_stop_speed` (30 px/s) and `fling_min_speed` (150 px/s). Each is a number, a bool, a colour `(r, g, b, a)`, a name or an
+        `fling_stop_speed` (30 px/s) and `fling_min_speed` (150 px/s), and (0.6.12)
+        edge auto-scroll while a gesture is held: `edge_scroll` (bool, `False`),
+        `edge_scroll_band` (dp, 24) and `edge_scroll_speed` (`(inner, edge)` dp per frame
+        at 60 Hz, `(8, 32)`). Each is a number, a bool, a colour `(r, g, b, a)`, a name or an
         easing (a preset name or a cubic bezier `(x1, y1, x2, y2)`); `None` is the
         default, and `get` reads the value in force.
         """
@@ -590,7 +593,7 @@ class Window:
         """M94: registers `handler` for a window event -- `resize`,
         `color_scheme`, `scale_factor`, `close_requested` (cancellable
         with `event.cancel()`), `closed`, (M99) the docking drag's
-        `dock_target`/`dock_drop`, or (0.5.0) `maximized` and `active`,
+        `dock_target`/`dock_drop`/`dock_cancel` (0.6.12: Escape ended the drag), or (0.5.0) `maximized` and `active`,
         fired when the window is maximized or restored and when it gains
         or loses focus, and `titlebar_inset`, fired when the area the OS's
         window controls take over the content changes (macOS) -- and (0.5.1)
@@ -1097,7 +1100,8 @@ class Window:
         framework's own drag handle's `pointer_down`. While the pointer
         moves, the `dock_target` window event reports the zone under it;
         the primary button's release moves the panel there and reports
-        `dock_drop`. Raises `ValueError` if `panel` isn't docked.
+        `dock_drop`. Escape cancels the drag (0.6.12): the panel stays, and
+        `dock_cancel` fires. Raises `ValueError` if `panel` isn't docked.
         """
         ...
     def undock_panel(self, panel: Node) -> None:

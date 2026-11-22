@@ -594,6 +594,92 @@ impl Tree {
         false
     }
 
+    /// 0.6.12 (UXREQ-007): edge auto-scroll. While a gesture is held (a captured
+    /// pointer, a thumb drag, a dock drag) and the pointer is within
+    /// `edge_scroll_band` of the edge of a view with `edge_scroll` on -- or past
+    /// it -- the view scrolls toward that edge by `lo + (hi - lo) * t` dp per
+    /// frame at 60 Hz (`edge_scroll_speed`; `t` 0 at the band's inner edge, 1 at
+    /// the edge), scaled by the time since the last step (at most 0.1 s). Every
+    /// tick works from the pointer and the gesture as they are now, so it stops
+    /// the tick after the pointer leaves the band or the gesture ends. The views
+    /// tried are the ancestors of the capture holder or the pressed node, then
+    /// those of the node under the pointer, the innermost first; the first that
+    /// moves wins. A thumb drag leaves its own view alone. Whether it moved
+    /// one, which keeps the loop ticking.
+    pub(super) fn edge_scroll_tick(&mut self, now: Instant) -> bool {
+        let Some(point) = self.pointer_at.filter(|_| self.gesture_active()) else {
+            self.edge_scroll_last = None;
+            return false;
+        };
+        let dt = self.edge_scroll_last.map_or(1.0 / 60.0, |last| {
+            now.saturating_duration_since(last).as_secs_f64().min(0.1)
+        });
+        self.edge_scroll_last = Some(now);
+        let mut seeds = Vec::new();
+        seeds.extend(self.pointer_capture);
+        seeds.extend(self.pressed.map(|(_, id)| id));
+        seeds.extend(self.hovered);
+        let mut seen = Vec::new();
+        for seed in seeds {
+            let mut current = Some(seed);
+            while let Some(id) = current {
+                current = self.nodes.get(id).and_then(|n| n.parent);
+                if self.dragging == Some(id) || seen.contains(&id) {
+                    continue;
+                }
+                seen.push(id);
+                if self.edge_scroll_view(id, point, dt) {
+                    self.edge_scrolled = true;
+                    self.dirty = true;
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// 0.6.12: one step of edge auto-scroll of `view` for a pointer at `point`
+    /// and `dt` seconds. Whether it moved.
+    fn edge_scroll_view(&mut self, view: NodeId, point: Point, dt: f64) -> bool {
+        let Some(scroller) = self.nodes.get(view).and_then(|n| n.kind.scroller()) else {
+            return false;
+        };
+        let metrics = scroller.metrics();
+        if !metrics.edge_scroll {
+            return false;
+        }
+        let axes = scroller.scroll_axes();
+        let Some((size, _)) = self.scroller_boxes(view) else {
+            return false;
+        };
+        let origin = self.absolute_position(view);
+        let (band, (lo, hi)) = (metrics.edge_scroll_band, metrics.edge_scroll_speed);
+        let mut moved = false;
+        for &axis in axes {
+            let at = axis.pick((point.x, point.y)) - axis.pick(origin);
+            let (near, far) = (at, axis.pick(size) - at);
+            let (dir, inside) = if far <= near {
+                (1.0, far)
+            } else {
+                (-1.0, near)
+            };
+            if inside >= band && inside >= 0.0 {
+                continue;
+            }
+            let t = if band > 0.0 && inside >= 0.0 {
+                ((band - inside) / band).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            let delta = dir * (lo + (hi - lo) * t) * dt * 60.0;
+            if self.can_scroll_axis(view, axis, delta) {
+                self.scroll_axis_by(view, axis, delta);
+                moved = true;
+            }
+        }
+        moved
+    }
+
     /// 0.6.11: the thumb of a scroller the pointer is over -- its hit area, the
     /// nearest scroller first -- walking up from `from`, the node under it.
     fn scrollbar_under(&self, from: Option<NodeId>, point: Point) -> Option<(NodeId, ScrollAxis)> {

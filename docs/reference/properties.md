@@ -479,6 +479,16 @@ changes for them unless you set a property. A durations column is milliseconds; 
 | `fling_tau_ms` | ms, 1 to an hour | 350 | How quickly a touch flick slows: the time constant of its exponential decay (the speed is `v0 · e^(-t/τ)`). Larger coasts further and longer: the distance is about `v0 · τ`. `fling_tau_ms=700` |
 | `fling_stop_speed` | px/s, 0.1 to 1 000 000 | 30 | The coast ends when its speed has fallen to this. A flick no faster than this does not coast. `fling_stop_speed=60` |
 | `fling_min_speed` | px/s, 0 to 1 000 000 | 150 | A flick slower than this does not coast at all (the finger lifted too slowly). `fling_min_speed=400` |
+| `edge_scroll` | bool | `False` | (0.6.12) Opt in to edge auto-scroll: while a gesture is held (a captured pointer, a scrollbar thumb drag, a [dock drag](../guide/docking.md)), a pointer within `edge_scroll_band` of this view's edge, or past it, scrolls it toward that edge. Stops the frame after the pointer leaves the band or the gesture ends (release, Escape, capture lost). `edge_scroll=True` |
+| `edge_scroll_band` | dp, 0 or more | 24 | How far in from the edge the scrolling starts. `edge_scroll_band=40` |
+| `edge_scroll_speed` | `(inner, edge)`, dp per frame at 60 Hz, each 0 to 1 000 000 | `(8, 32)` | The step at the band's inner edge and at the edge, rising linearly between; past the edge it is the edge's. Scaled by the frame's time (at most 0.1 s), so 120 Hz takes half steps. `edge_scroll_speed=(4, 48)` |
+
+**Edge auto-scroll (0.6.12, UXREQ-007).** `edge_scroll`, `edge_scroll_band` and `edge_scroll_speed` work on a
+`scroll_view` (both axes of a `both` view) and a `virtual_list`, and run in the engine's tick: no Python runs per frame.
+The views tried are the ancestors of the node that holds the pointer capture (or was pressed), then of the node under
+the pointer, innermost first; the first that can move wins. A thumb drag leaves its own view alone. After each step
+hover (`pointer_enter`/`pointer_leave`) and the dock target are read again at the pointer, which has not moved; no
+`pointer_move` is sent. The pointer leaving the window keeps scrolling at its last position until the gesture ends.
 
 ```python
 # A design system's scrollbar: a thin pill that shows on hover or scroll, with arrows and a track.

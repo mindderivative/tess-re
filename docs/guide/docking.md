@@ -92,6 +92,14 @@ window.on("dock_target", show_target)
 window.on("dock_drop", lambda: highlight.remove())
 ```
 
+Escape cancels the drag (0.6.12): the panel stays in its zone, no move happens, a highlighted zone is
+taken down within the frame (`dock_target` with `event.side` `None`), and `dock_cancel` (`event.panel`)
+fires instead of `dock_drop`. That Escape does nothing else (it does not also close a popup).
+
+```python
+window.on("dock_cancel", lambda: highlight.remove())
+```
+
 The drag runs in the same input pipeline as every other pointer event, so a
 headless test drives it with `window.simulate`:
 
