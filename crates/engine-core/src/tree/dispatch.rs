@@ -30,13 +30,21 @@ impl Tree {
                 | InputEvent::PointerPressed { .. }
         );
         let before = self.focused_caret();
-        if let Some(field) = self.focused
-            && let Some(NodeKind::TextField(state)) = self.nodes.get_mut(field).map(|n| &mut n.kind)
-        {
-            state.last_inserted = None;
-            if restart_blink {
-                state.caret_on = true;
-                state.caret_epoch = None;
+        if let Some(field) = self.focused {
+            match self.nodes.get_mut(field).map(|n| &mut n.kind) {
+                Some(NodeKind::TextField(state)) => {
+                    state.last_inserted = None;
+                    if restart_blink {
+                        state.caret_on = true;
+                        state.caret_epoch = None;
+                    }
+                }
+                // 0.6.12 (P8): and a terminal's cursor is solid while you type.
+                Some(NodeKind::Terminal(state)) if restart_blink => {
+                    state.caret_on = true;
+                    state.caret_epoch = None;
+                }
+                _ => {}
             }
         }
         let outcome = self.dispatch_event(root, event, now);
@@ -175,10 +183,12 @@ impl Tree {
                 // press entirely -- the content underneath must not
                 // also register a click for the same real press.
                 if button == PointerButton::Primary {
+                    self.scrollbar_pressed = false;
                     let mut current = hit;
                     while let Some(id) = current {
                         if self.nodes[id].kind.scroller().is_some() {
                             if let Some(axis) = self.grabs_thumb(id, position) {
+                                self.scrollbar_pressed = true;
                                 let coord = axis.pick((position.x, position.y));
                                 let scroller =
                                     self.nodes[id].kind.scroller_mut().expect("checked above");
@@ -194,6 +204,7 @@ impl Tree {
                             // 0.6.11: a press on an arrow button, or on the lane
                             // beside the thumb, pages or jumps.
                             if self.press_scrollbar(id, position, now) {
+                                self.scrollbar_pressed = true;
                                 self.set_pressed(None);
                                 return DispatchOutcome::None;
                             }
@@ -524,7 +535,12 @@ impl Tree {
                         // wheel, or Shift made one, moves a `both` view
                         // sideways), one notch being its `wheel_notch`;
                         // whatever it can move takes the wheel.
-                        if let Some(scroller) = node.kind.scroller() {
+                        // A terminal's wheel is the session's history, not the bar's.
+                        if let Some(scroller) = node
+                            .kind
+                            .scroller()
+                            .filter(|_| !matches!(node.kind, NodeKind::Terminal(_)))
+                        {
                             let notch = scroller.metrics().wheel_notch;
                             let axes = scroller.scroll_axes();
                             let wheel = match delta {

@@ -2123,10 +2123,12 @@ impl TextRenderer {
         palette: &ResolvedPalette,
     ) {
         let glyph_cache = self.glyph_cache;
-        let (cell_width, cell_height) =
-            self.monospace_cell_size(&state.font_family, state.font_size);
+        let natural = self.monospace_cell_size(&state.font_family, state.font_size);
+        let (cell_width, cell_height) = state.cell_size(natural);
         let cell_width = f64::from(cell_width);
         let cell_height = f64::from(cell_height);
+        // 0.6.12 (P8): with a `line_height` the glyphs stay centred in their cell.
+        let glyph_dy = (cell_height - f64::from(natural.1)) / 2.0;
 
         // M32 Phase 6 (§4, §5, §8): the real, normalized selection
         // range (if any) -- computed once, outside the row loop, the
@@ -2198,7 +2200,8 @@ impl TextRenderer {
                         y0 + cell_height,
                     );
                     scene.set_paint(palette.selection);
-                    scene.fill_path(&rect.to_path(0.1));
+                    // 0.6.12 (P8): rounded by `selection_radius` (square at 0, as it was).
+                    fill_highlight(scene, rect, state.selection_radius, true);
                 }
             }
 
@@ -2216,10 +2219,25 @@ impl TextRenderer {
             // here, so two adjacent cells that only differ by `dim`
             // naturally break into separate runs -- their resolved
             // colors are simply no longer equal).
-            let ink = |cell: &TerminalCell| -> Color {
+            // 0.6.12 (P8): a cell inside the selection takes `selection_foreground`.
+            let selected_cols = selection
+                .filter(|_| state.selection_foreground.is_some())
+                .and_then(|((start_row, start_col), (end_row, end_col))| {
+                    (row >= start_row && row <= end_row).then_some((
+                        if row == start_row { start_col } else { 0 },
+                        if row == end_row { end_col } else { state.cols },
+                    ))
+                });
+            let ink = |cell: &TerminalCell, col: u16| -> Color {
+                if let (Some((from, to)), Some(foreground)) =
+                    (selected_cols, state.selection_foreground)
+                    && (from..to).contains(&col)
+                {
+                    return foreground;
+                }
                 let fg = terminal_cell_effective_colors(cell, palette).0;
                 if cell.dim {
-                    crate::with_opacity(fg, 0.6)
+                    crate::with_opacity(fg, f64::from(state.dim_opacity))
                 } else {
                     fg
                 }
@@ -2227,12 +2245,12 @@ impl TextRenderer {
             let mut col = 0u16;
             while col < state.cols {
                 let first = state.cell(row, col);
-                let fg = ink(first);
+                let fg = ink(first, col);
                 let (bold, italic, underline) = (first.bold, first.italic, first.underline);
                 let mut end = col + 1;
                 while end < state.cols {
                     let next = state.cell(row, end);
-                    if ink(next) != fg
+                    if ink(next, end) != fg
                         || next.bold != bold
                         || next.italic != italic
                         || next.underline != underline
@@ -2243,7 +2261,7 @@ impl TextRenderer {
                 }
                 let run: String = (col..end).map(|c| state.cell(row, c).ch).collect();
                 if fg != Color::TRANSPARENT && !run.trim().is_empty() {
-                    let font_weight = if bold { 700.0 } else { 400.0 };
+                    let font_weight = if bold { state.bold_weight } else { 400.0 };
                     let layout = self.shaped_terminal_run(
                         node_id,
                         row,
@@ -2267,7 +2285,7 @@ impl TextRenderer {
                             let glyphs = glyph_run.positioned_glyphs().map(|g| glifo::Glyph {
                                 id: g.id,
                                 x: g.x + x0 as f32,
-                                y: g.y + y0 as f32,
+                                y: g.y + (y0 + glyph_dy) as f32,
                             });
                             let mut builder = scene
                                 .glyph_run(resources, font)
@@ -2312,8 +2330,12 @@ impl TextRenderer {
                         // same "analytic grid, not exact font metrics"
                         // scope this whole function's own cell grid
                         // already operates at for backgrounds/cursor.
-                        let underline_y = y0 + cell_height * 0.85;
-                        let underline_h = (cell_height * 0.06).max(1.0);
+                        // 0.6.12 (P8): or where `underline_offset` and `underline_thickness` say.
+                        let underline_y =
+                            y0 + state.underline_offset.map_or(cell_height * 0.85, f64::from);
+                        let underline_h = state
+                            .underline_thickness
+                            .map_or((cell_height * 0.06).max(1.0), f64::from);
                         let rule = Rect::new(
                             x0,
                             underline_y,
@@ -2328,20 +2350,49 @@ impl TextRenderer {
             }
         }
 
-        // The real cursor block, painted last (on top of every real
-        // cell) -- only while this terminal is the `Tree`'s own real,
-        // live focused node, the identical real `show_caret` gate
-        // `draw_field`'s own caret already uses.
-        if show_caret
+        // The real cursor, painted last (on top of every real cell) -- only while this terminal
+        // is the `Tree`'s own real, live focused node, the identical real `show_caret` gate
+        // `draw_field`'s own caret already uses. 0.6.12 (P8): its shape, width and blink are the
+        // terminal's (`caret_shape`, `caret_width`, `caret_blink`), and a terminal without focus
+        // draws it as an outline when `caret_unfocused` says so.
+        let outline = !show_caret && state.caret_unfocused == engine_core::UnfocusedCursor::Outline;
+        if ((show_caret && state.caret_on) || outline)
             && state.cursor_visible
             && state.cursor_row < state.rows
             && state.cursor_col < state.cols
         {
             let x0 = at.x + f64::from(state.cursor_col) * cell_width;
             let y0 = at.y + f64::from(state.cursor_row) * cell_height;
-            let rect = Rect::new(x0, y0, x0 + cell_width, y0 + cell_height);
+            let width = f64::from(state.caret_width.max(0.0));
+            let rect = match state.caret_shape {
+                engine_core::CaretShape::Block => {
+                    Rect::new(x0, y0, x0 + cell_width, y0 + cell_height)
+                }
+                engine_core::CaretShape::Bar => {
+                    Rect::new(x0, y0, x0 + width.min(cell_width), y0 + cell_height)
+                }
+                engine_core::CaretShape::Underline => Rect::new(
+                    x0,
+                    y0 + cell_height - width.max(1.0).min(cell_height),
+                    x0 + cell_width,
+                    y0 + cell_height,
+                ),
+            };
             scene.set_paint(palette.cursor);
-            scene.fill_path(&rect.to_path(0.1));
+            if outline && state.caret_shape == engine_core::CaretShape::Block {
+                // A one-pixel frame: four rectangles round the box's edge.
+                let t = 1.0_f64.min(rect.width() / 2.0).min(rect.height() / 2.0);
+                for edge in [
+                    Rect::new(rect.x0, rect.y0, rect.x1, rect.y0 + t),
+                    Rect::new(rect.x0, rect.y1 - t, rect.x1, rect.y1),
+                    Rect::new(rect.x0, rect.y0 + t, rect.x0 + t, rect.y1 - t),
+                    Rect::new(rect.x1 - t, rect.y0 + t, rect.x1, rect.y1 - t),
+                ] {
+                    scene.fill_path(&edge.to_path(0.1));
+                }
+            } else {
+                scene.fill_path(&rect.to_path(0.1));
+            }
         }
     }
 
@@ -2363,8 +2414,8 @@ impl TextRenderer {
     /// same real "clamp, don't reject" contract `hit_test_position`'s
     /// own far-past-the-end case already established for `TextField`.
     pub fn terminal_hit_cell(&mut self, state: &TerminalState, point: Point) -> (u16, u16) {
-        let (cell_width, cell_height) =
-            self.monospace_cell_size(&state.font_family, state.font_size);
+        let natural = self.monospace_cell_size(&state.font_family, state.font_size);
+        let (cell_width, cell_height) = state.cell_size(natural);
         let col = (point.x / f64::from(cell_width)).floor().max(0.0) as u16;
         let row = (point.y / f64::from(cell_height)).floor().max(0.0) as u16;
         (

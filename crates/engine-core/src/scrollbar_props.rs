@@ -293,6 +293,22 @@ impl Prop {
         Self::ALL.iter().copied().find(|p| p.name() == name)
     }
 
+    /// Whether a terminal's history bar takes the property (0.6.12, UXREQ-006): the bar's
+    /// measures, colours, fades, arrows and lane, and the page and its repeat. Not the gutter,
+    /// the corner and the horizontal side (one bar, over the grid, no space reserved), nor the
+    /// wheel, key, smooth-scroll, snap and fling ones (the session scrolls the history in lines).
+    pub fn applies_to_terminal(self) -> bool {
+        let bar = self.name().starts_with("scrollbar_")
+            && !matches!(
+                self,
+                Prop::Gutter | Prop::GutterReserve | Prop::Corner | Prop::SideH
+            );
+        bar || matches!(
+            self,
+            Prop::PageFraction | Prop::PageRepeatDelay | Prop::PageRepeat
+        )
+    }
+
     /// The choice names of the property, for a `Kind::Choice` one.
     pub fn choices(self) -> Option<&'static [&'static str]> {
         match self.kind() {

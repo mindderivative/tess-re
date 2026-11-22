@@ -69,7 +69,8 @@ pub use node::{
     NodeId, NodeKind, NodeTransform, PaintProperties, ResolvedPalette, SCROLLBAR_GRAB_SLOP,
     SCROLLBAR_MARGIN, SCROLLBAR_MIN_LENGTH, SCROLLBAR_THICKNESS, ScrollViewState, Shadow, Shadows,
     SnapAlign, TerminalCell, TerminalPalette, TerminalState, TextAlign, TextFieldState,
-    TextOptions, TextSpan, TextState, VerticalAlign, VirtualListState, WindowRegion,
+    TextOptions, TextSpan, TextState, UnfocusedCursor, VerticalAlign, VirtualListState,
+    WindowRegion,
 };
 pub use outline::{OUTLINE_ROLE, Outline, OutlineStyle, Outlines};
 pub use overlay::{AnchorBox, OverlayMeta, Placement};

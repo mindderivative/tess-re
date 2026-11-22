@@ -612,6 +612,9 @@ pub(crate) fn text_pointer_input(
                     // `None` exactly as `set_text_field_
                     // cursor` already left it.
                     *text_drag = Some(hit);
+                } else if tree.borrow().scrollbar_pressed() {
+                    // 0.6.12 (UXREQ-006): a press the history bar took (a thumb, a lane or an
+                    // arrow) selects no cells under it.
                 } else if let Some((row, col)) = terminal_hit_cell(tree, text, hit, local_point) {
                     // M32 Phase 6 (§4, §5, §8): a real press
                     // on a `Terminal` -- the identical real

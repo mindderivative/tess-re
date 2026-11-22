@@ -459,7 +459,40 @@ term.set(escape_chord="ctrl+alt+tab", escape_chord_reverse="ctrl+alt+shift+tab")
 print(term.get("escape_chord"))      # "ctrl+alt+tab"
 ```
 
-The terminal has no scrollbar for its history yet (the wheel scrolls it); that is a later item.
+**A scrollbar over the history (0.6.12, UXREQ-006).** The wheel scrolls a terminal's history; a scrollbar over it is
+opt-in, so a terminal that never asked for one draws none:
+
+```python
+term.set(scrollbar_show="overflow")     # the bar shows while there is history
+```
+
+It is the scroll view's bar, so `scrollbar_width`, `scrollbar_fill`, `scrollbar_opacity`, `scrollbar_arrows`,
+`scrollbar_lane_click` and the rest apply, with the spec's defaults (an 8 px thumb 2 px from the edge, at least 32 px
+long, 70 % opaque and 80 % hovered). Its content is the history and the screen: 500 lines of history under 24 visible
+rows is a thumb of 24/524 of the lane (32 px if that is less). Dragging the thumb, pressing the lane (a page, repeating
+while held) or an arrow moves the view through the history one line at a time, and what the shell prints while you are
+scrolled back keeps the view on its line and moves the thumb. The wheel and the keys stay the terminal's own: the
+bar adds no key to it. The bar draws over the grid's right edge and reserves no space, so give the box room if the
+last column matters. See [Terminal properties](../reference/properties.md#terminal).
+
+### Terminal appearance (0.6.12)
+
+How a terminal draws is properties too, each with the value it always had as its default:
+
+```python
+term.set(
+    font_family="JetBrains Mono", line_height=1.3,           # the cell
+    caret_shape="bar", caret_width=2, caret_blink=530,       # the cursor (blink: steady under reduced motion)
+    caret_unfocused="outline",                               # hollow when the terminal has no focus
+    bold_weight=600, dim_opacity=0.5,                        # SGR 1 and 2
+    underline_offset=15, underline_thickness=2,              # SGR 4
+    selection_foreground=(255, 255, 255, 255), selection_radius=2,
+)
+```
+
+The box follows `font_family` and `line_height`; the glyphs stay centred in a taller or shorter cell. The
+selection's colour is `palette["selection"]`. The 256-colour cube and grey ramp are the xterm values, not a design
+choice, and stay fixed; the 16 ANSI colours are in `palette`.
 
 The `palette` recolors it — any of
 `ansi` (16 colors), `foreground`, `background`, `cursor`, and `selection`:

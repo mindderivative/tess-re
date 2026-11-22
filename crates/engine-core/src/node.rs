@@ -103,6 +103,9 @@ impl NodeKind {
         match self {
             NodeKind::ScrollView(state) => Some(state),
             NodeKind::VirtualList(state) => Some(state),
+            // 0.6.12 (UXREQ-006): a terminal's history bar. The wheel and the keys stay the
+            // terminal's own (they go to the session), so only the bar is shared.
+            NodeKind::Terminal(state) => Some(&**state),
             _ => None,
         }
     }
@@ -111,6 +114,7 @@ impl NodeKind {
         match self {
             NodeKind::ScrollView(state) => Some(state),
             NodeKind::VirtualList(state) => Some(state),
+            NodeKind::Terminal(state) => Some(&mut **state),
             _ => None,
         }
     }
@@ -328,7 +332,8 @@ impl TerminalCell {
 /// incremental diffing" simplicity an image node's `rgba` frames
 /// already use for a comparable "engine only displays the latest
 /// snapshot a real external process produced" shape).
-#[derive(Clone, Debug, PartialEq)]
+/// 0.6.12: no `Debug` or `PartialEq`, and a `Clone` by hand: the history bar's animated state
+/// has none, so a copy starts with the bar's settings and its offset but at rest.
 pub struct TerminalState {
     pub cols: u16,
     pub rows: u16,
@@ -361,6 +366,109 @@ pub struct TerminalState {
     pub escape_chord: Option<crate::KeyChord>,
     /// The chord that leaves it backward; `None` (the default) has none.
     pub escape_chord_reverse: Option<crate::KeyChord>,
+    /// 0.6.12 (P8): a multiple of `font_size` for the height of a cell; `None` (the default) is
+    /// the font's own line height. The glyphs stay centred in the taller or shorter cell.
+    pub line_height: Option<f32>,
+    /// 0.6.12 (P8): how the cursor is drawn: a box over the cell (the default, as it was), a bar
+    /// at its left edge, or a line under it.
+    pub caret_shape: CaretShape,
+    /// 0.6.12 (P8): the bar's width, or the underline's thickness, in pixels.
+    pub caret_width: f32,
+    /// 0.6.12 (P8): milliseconds between the cursor going off and on; `0` (the default) keeps it
+    /// steady, and so does reduced motion. `caret_on` is the phase and `caret_epoch` when the
+    /// blink started, both kept by the window's loop (as for a text input).
+    pub caret_blink_ms: u32,
+    pub caret_on: bool,
+    pub caret_epoch: Option<Instant>,
+    /// 0.6.12 (P8): what a terminal without focus shows of its cursor.
+    pub caret_unfocused: UnfocusedCursor,
+    /// 0.6.12 (P8): the weight of a bold cell's glyphs (`700`, as it was).
+    pub bold_weight: f32,
+    /// 0.6.12 (P8): the opacity a dim cell's glyphs are drawn with (`0.6`, as it was).
+    pub dim_opacity: f32,
+    /// 0.6.12 (P8): where an underline starts, in pixels from the top of its cell; `None` (the
+    /// default) is `0.85` of the cell's height, as it was.
+    pub underline_offset: Option<f32>,
+    /// 0.6.12 (P8): an underline's thickness in pixels; `None` (the default) is `0.06` of the
+    /// cell's height, at least a pixel, as it was.
+    pub underline_thickness: Option<f32>,
+    /// 0.6.12 (P8): the colour of the glyphs inside the selection; `None` keeps each cell's own.
+    pub selection_foreground: Option<Color>,
+    /// 0.6.12 (P8): the corner radius of the selection's rectangles (one per row), in pixels.
+    pub selection_radius: f32,
+    /// 0.6.12 (UXREQ-006): the history scrollbar's settings and fades, the same as a scroll
+    /// view's. Off until `scrollbar_show` says otherwise.
+    pub bar: crate::scrollbar::ScrollbarState,
+    /// How many lines of history the session holds, and how many of them the view is scrolled
+    /// back into (`0` is the live screen). The session (`engine-py`) is the owner of both and
+    /// writes them with `set_history`.
+    pub history_len: usize,
+    pub history_back: usize,
+    /// One line, in pixels: the unit the bar's offsets are in. Set with the box's size
+    /// whenever the font or the line height changes; `0` until then (no history shown).
+    pub line_px: f32,
+    /// The view's top, in pixels from the top of the history (`history_len * line_px` is the
+    /// live screen): what the bar's thumb shows and a drag, a lane click or an arrow writes.
+    /// The session follows it (`history_back_wanted`).
+    pub scroll: Animated<f64>,
+}
+
+/// 0.6.12 (P8): what a terminal that does not have focus draws of its cursor.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UnfocusedCursor {
+    /// Nothing (the default, as it was).
+    #[default]
+    Hidden,
+    /// A one-pixel frame of the cursor's box: a block is hollow, a bar or an underline is drawn
+    /// as when focused.
+    Outline,
+}
+
+impl UnfocusedCursor {
+    pub const ALL: [(&'static str, UnfocusedCursor); 2] = [
+        ("hidden", UnfocusedCursor::Hidden),
+        ("outline", UnfocusedCursor::Outline),
+    ];
+}
+
+impl Clone for TerminalState {
+    fn clone(&self) -> Self {
+        let mut bar = crate::scrollbar::ScrollbarState::new();
+        bar.settings = self.bar.settings;
+        Self {
+            cols: self.cols,
+            rows: self.rows,
+            cells: self.cells.clone(),
+            cursor_col: self.cursor_col,
+            cursor_row: self.cursor_row,
+            cursor_visible: self.cursor_visible,
+            font_family: self.font_family.clone(),
+            font_size: self.font_size,
+            selection_start: self.selection_start,
+            selection_end: self.selection_end,
+            palette: self.palette,
+            escape_chord: self.escape_chord.clone(),
+            escape_chord_reverse: self.escape_chord_reverse.clone(),
+            line_height: self.line_height,
+            caret_shape: self.caret_shape,
+            caret_width: self.caret_width,
+            caret_blink_ms: self.caret_blink_ms,
+            caret_on: self.caret_on,
+            caret_epoch: self.caret_epoch,
+            caret_unfocused: self.caret_unfocused,
+            bold_weight: self.bold_weight,
+            dim_opacity: self.dim_opacity,
+            underline_offset: self.underline_offset,
+            underline_thickness: self.underline_thickness,
+            selection_foreground: self.selection_foreground,
+            selection_radius: self.selection_radius,
+            bar,
+            history_len: self.history_len,
+            history_back: self.history_back,
+            line_px: self.line_px,
+            scroll: Animated::new(self.scroll.current),
+        }
+    }
 }
 
 impl TerminalState {
@@ -404,7 +512,62 @@ impl TerminalState {
             palette: TerminalPalette::default(),
             escape_chord: crate::KeyChord::parse("ctrl+shift+escape").ok(),
             escape_chord_reverse: None,
+            line_height: None,
+            caret_shape: CaretShape::Block,
+            caret_width: 1.5,
+            caret_blink_ms: 0,
+            caret_on: true,
+            caret_epoch: None,
+            caret_unfocused: UnfocusedCursor::Hidden,
+            bold_weight: 700.0,
+            dim_opacity: 0.6,
+            underline_offset: None,
+            underline_thickness: None,
+            selection_foreground: None,
+            selection_radius: 0.0,
+            bar: crate::scrollbar::ScrollbarState::new(),
+            history_len: 0,
+            history_back: 0,
+            line_px: 0.0,
+            scroll: Animated::new(0.0),
         }
+    }
+
+    /// 0.6.12 (UXREQ-006): the session holds `len` lines of history and the view is `back` lines
+    /// into it. The bar's offset follows, unless it is already on that line (a thumb dragged
+    /// between two lines stays where the pointer put it).
+    pub fn set_history(&mut self, len: usize, back: usize) {
+        self.history_len = len;
+        self.history_back = back;
+        let wanted = len.saturating_sub(back) as f64 * f64::from(self.line_px);
+        if (self.scroll.current - wanted).abs() >= f64::from(self.line_px) / 2.0
+            || !(0.0..=len as f64 * f64::from(self.line_px)).contains(&self.scroll.current)
+        {
+            self.scroll.stop();
+            self.scroll.current = wanted;
+        }
+    }
+
+    /// 0.6.12 (UXREQ-006): how many lines back into the history the bar's offset asks the view
+    /// to be: what a thumb drag, a lane click or an arrow set (`history_back` while no line has
+    /// a size yet).
+    pub fn history_back_wanted(&self) -> usize {
+        if self.line_px <= 0.0 {
+            return self.history_back;
+        }
+        let from_top = (self.scroll.current / f64::from(self.line_px))
+            .round()
+            .clamp(0.0, self.history_len as f64) as usize;
+        self.history_len - from_top
+    }
+
+    /// 0.6.12 (P8): the size of one cell: the font's measured `natural` size, its height
+    /// replaced by `line_height` times the font size when that is set.
+    pub fn cell_size(&self, natural: (f32, f32)) -> (f32, f32) {
+        (
+            natural.0,
+            self.line_height.map_or(natural.1, |r| self.font_size * r),
+        )
     }
 
     /// The real cell at `(row, col)`, `0`-indexed -- panics on an

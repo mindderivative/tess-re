@@ -567,6 +567,30 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   drags are not held back), because tre had no drag threshold at all and the Tesserae spec wants 4 dp.
   `multi_click_px` is also the title-bar double click's press distance (it was a separate fixed 4). Bad values raise
   `ValueError` naming the property. See [Gesture, click and drag thresholds](reference/window.md#gesture-click-and-drag-thresholds-0612).
+- **Terminal appearance: `font_family`, `line_height`, `caret_shape`, `caret_width`, `caret_blink`, `caret_unfocused`,
+  `bold_weight`, `dim_opacity`, `underline_offset`, `underline_thickness`, `selection_foreground`, `selection_radius` on
+  a `terminal` (new, opt-in; no default changes).** The audit and the UX note "Terminal" listed the font family, line
+  height, cursor shape and blink, bold weight, dim opacity and underline geometry as fixed in the engine. Each is now a
+  property whose default is what the terminal drew: the bundled Hack Nerd Font Mono, the font's own line height, a
+  `"block"` cursor that does not blink and is not drawn without focus, bold 700, dim 0.6, an underline at 0.85 of the cell
+  and 0.06 of it thick, each cell's own colour in a selection and square corners. `caret_shape`, `caret_width` and
+  `caret_blink` are the text input's, so a terminal's `caret_shape` reads `"block"` where a text input's reads `"bar"`;
+  `caret_blink` is steady under reduced motion. A terminal's `font_family` and `line_height` resize its box as `font_size`
+  does. Bad values raise `ValueError`; `bold_weight`, `dim_opacity`, `underline_*` and `caret_unfocused` raise on any
+  other kind. Not done: the 256-colour cube and grey ramp (the xterm values, not a design choice; the 16 ANSI colours are
+  `palette`). `TerminalState` (Rust) gained the matching fields and a `cell_size` helper; it no longer derives `Debug` and
+  `PartialEq` and its `Clone` is by hand (its history bar has animated state).
+- **The terminal history scrollbar (UXREQ-006 second half; new, opt-in).** A `terminal` takes the `scrollbar_*`
+  properties of a scroll view and `page_fraction`, `page_repeat_delay_ms`, `page_repeat_ms`, with the spec's measures,
+  but **`scrollbar_show` defaults to `"never"`**: no existing terminal draws a bar until it sets `"overflow"`, `"always"`
+  or `"auto_hide"`. The bar's content is the history and the screen; a thumb drag, a lane click or an arrow moves the
+  view through the history in lines, and the wheel still does. `scrollbar_gutter`, `scrollbar_gutter_reserve`,
+  `scrollbar_corner`, `scrollbar_side_h` and the wheel, key, smooth-scroll, snap and fling properties do not apply and
+  raise `ValueError` on a terminal. The bar draws over the grid's right edge and reserves no space. The error for the
+  scrollbar properties on any other kind still reads "applies only to a scroll_view or virtual_list node". Rust:
+  `NodeKind::Terminal` is a `Scroller` (`ScrollDefaults::Terminal`; `TerminalState::{bar, history_len, history_back,
+  line_px, scroll}`, `set_history`, `history_back_wanted`), `Tree::scrollbar_pressed`. See
+  [Terminal](guide/text.md#terminal).
 - **`selection_fill` on a static `text`; `selection_foreground` and `selection_radius` on `text` and `text_input` (new,
   opt-in; no default changes).** The UX note "Text Selection" has the highlight as `primary` at 30 % with the selected text
   keeping its own colour and a square corner. A `text_input` took `selection_fill`; a `text` had no way to set its

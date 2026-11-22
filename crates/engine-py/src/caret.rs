@@ -10,44 +10,61 @@ use engine_core::{NodeKind, Tree};
 
 use crate::timers::SharedAlarm;
 
+/// A text input's or a terminal's blink: what `update_blink` reads and writes.
+struct Blink<'a> {
+    epoch: &'a mut Option<Instant>,
+    on: &'a mut bool,
+}
+
+/// The blink of `node`, if it is a text input or a terminal.
+fn blink_of(node: &mut engine_core::Node) -> Option<Blink<'_>> {
+    match &mut node.kind {
+        NodeKind::TextField(state) => Some(Blink {
+            epoch: &mut state.caret_epoch,
+            on: &mut state.caret_on,
+        }),
+        NodeKind::Terminal(state) => Some(Blink {
+            epoch: &mut state.caret_epoch,
+            on: &mut state.caret_on,
+        }),
+        _ => None,
+    }
+}
+
 /// Moves the focused field's caret through its blink at `now` and wakes the
 /// loop for the next change, so an idle field wakes at each edge and not every
 /// frame. A field whose blink is off keeps a solid caret. Touches the tree only
 /// when the phase changes, so a frame with nothing new is not a redraw.
+/// 0.6.12 (P8): a focused terminal's cursor blinks the same way, but never under
+/// reduced motion (the UX note "Terminal": steady with reduced motion).
 pub(crate) fn update_blink(tree: &Rc<RefCell<Tree>>, now: Instant, alarm: &SharedAlarm) {
-    let Some(field) = tree.borrow().focused() else {
+    let mut tree = tree.borrow_mut();
+    let Some(field) = tree.focused() else {
         return;
     };
-    let (period, epoch, on) = {
-        let tree = tree.borrow();
-        let Some(NodeKind::TextField(state)) = tree.get(field).map(|n| &n.kind) else {
-            return;
-        };
-        if state.caret_blink_ms == 0 {
-            if state.caret_on {
-                return;
-            }
-            (0, None, false)
-        } else {
-            (state.caret_blink_ms, state.caret_epoch, state.caret_on)
-        }
+    let reduced = tree.reduced_motion();
+    let Some(node) = tree.get(field) else {
+        return;
     };
-    if period == 0 {
-        // Blinking was switched off while the caret was in its off phase.
-        if let Some(NodeKind::TextField(state)) =
-            tree.borrow_mut().get_mut(field).map(|n| &mut n.kind)
-        {
-            state.caret_on = true;
+    let steady = reduced && matches!(node.kind, NodeKind::Terminal(_));
+    // Read first, and touch the tree only when something changes: `get_mut` marks it dirty.
+    let (period, epoch, on) = match &node.kind {
+        NodeKind::TextField(state) => (state.caret_blink_ms, state.caret_epoch, state.caret_on),
+        NodeKind::Terminal(state) => (state.caret_blink_ms, state.caret_epoch, state.caret_on),
+        _ => return,
+    };
+    if period == 0 || steady {
+        // Blinking is off (or the motion reduced) while the caret may be in its off phase.
+        if !on && let Some(blink) = tree.get_mut(field).and_then(blink_of) {
+            *blink.on = true;
         }
         return;
     }
     let epoch = match epoch {
         Some(epoch) => epoch,
         None => {
-            if let Some(NodeKind::TextField(state)) =
-                tree.borrow_mut().get_mut(field).map(|n| &mut n.kind)
-            {
-                state.caret_epoch = Some(now);
+            if let Some(blink) = tree.get_mut(field).and_then(blink_of) {
+                *blink.epoch = Some(now);
             }
             now
         }
@@ -56,11 +73,11 @@ pub(crate) fn update_blink(tree: &Rc<RefCell<Tree>>, now: Instant, alarm: &Share
     let phase = now.saturating_duration_since(epoch).as_millis() / u128::from(period);
     let should_be_on = phase.is_multiple_of(2);
     if should_be_on != on
-        && let Some(NodeKind::TextField(state)) =
-            tree.borrow_mut().get_mut(field).map(|n| &mut n.kind)
+        && let Some(blink) = tree.get_mut(field).and_then(blink_of)
     {
-        state.caret_on = should_be_on;
+        *blink.on = should_be_on;
     }
+    drop(tree);
     if let Some(alarm) = alarm.borrow().as_ref() {
         let next = epoch + length * u32::try_from(phase + 1).unwrap_or(u32::MAX);
         alarm.arm(next);

@@ -283,6 +283,18 @@ impl TerminalSession {
         {
             self.resize(tree, node_id, want_cols, want_rows);
         }
+        // 0.6.12 (UXREQ-006): where the history bar (a thumb dragged, a lane or an arrow
+        // pressed) asks the view to be, before new output is taken in.
+        let wanted = match tree.get(node_id).map(|n| &n.kind) {
+            Some(NodeKind::Terminal(state)) => Some(state.history_back_wanted()),
+            _ => None,
+        };
+        if let Some(wanted) = wanted
+            && wanted != self.parser.screen().scrollback()
+        {
+            self.parser.screen_mut().set_scrollback(wanted);
+            self.sync_state(tree, node_id);
+        }
         let bytes = {
             let mut guard = self
                 .incoming
@@ -306,7 +318,17 @@ impl TerminalSession {
     /// internally) without any new PTY bytes ever arriving, so it
     /// needs its own real sync call, not just `drain_into`'s own
     /// "only when new bytes showed up" gate.
-    fn sync_state(&self, tree: &mut Tree, node_id: NodeId) {
+    fn sync_state(&mut self, tree: &mut Tree, node_id: NodeId) {
+        // 0.6.12 (UXREQ-006): how many lines of history there are, which `vt100` states only by
+        // clamping: ask for more than there can be and read where that put the view.
+        let (history_len, history_back) = {
+            let screen = self.parser.screen_mut();
+            let back = screen.scrollback();
+            screen.set_scrollback(usize::MAX);
+            let len = screen.scrollback();
+            screen.set_scrollback(back);
+            (len, back)
+        };
         let screen = self.parser.screen();
         let (rows, cols) = screen.size();
         let mut cells = Vec::with_capacity(usize::from(rows) * usize::from(cols));
@@ -327,6 +349,7 @@ impl TerminalSession {
             state.cursor_col = cursor_col;
             state.cursor_row = cursor_row;
             state.cursor_visible = cursor_visible;
+            state.set_history(history_len, history_back);
         }
     }
 
