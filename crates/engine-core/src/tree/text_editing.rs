@@ -65,8 +65,8 @@ impl Tree {
             return;
         };
         // #285: an input with a `wrap` follows its caret by the shaped layout (`follow_caret`),
-        // which this monospace estimate would fight.
-        if !state.multiline || state.wrap.is_some() {
+        // which this monospace estimate would fight; so does one with its scrollbar on (0.6.13).
+        if !state.multiline || state.shaped_scroll() {
             return;
         }
         // 0.5.1 (#53): the viewport is the content box, inside the padding.
@@ -132,10 +132,12 @@ impl Tree {
         state.horizontal_scroll_offset.current = h_scroll;
     }
 
-    /// #285: the text inputs whose scroll follows the caret by the shaped layout, which
-    /// `engine-core` cannot do (no font), so the window's text renderer does: see
-    /// `TextFieldState::follows_caret`. Empty without any text input in the tree.
-    pub fn caret_following_fields(&self) -> Vec<NodeId> {
+    /// #285: the text inputs the window's text renderer must shape to work something out for,
+    /// which `engine-core` cannot do (no font): those whose scroll follows the caret by the
+    /// shaped layout (see `TextFieldState::follows_caret`), and (0.6.13) those whose scrollbar is
+    /// on, whose thumb is sized from the shaped text (`set_text_field_extent`). Empty without any
+    /// text input in the tree.
+    pub fn shaped_fields(&self) -> Vec<NodeId> {
         if self.text_field_count == 0 {
             return Vec::new();
         }
@@ -145,6 +147,7 @@ impl Tree {
             .filter(|(id, node)| match &node.kind {
                 NodeKind::TextField(state) => {
                     state.follows_caret(focused == Some(*id))
+                        || state.bar_on()
                         // A single-line input that lost the focus goes back to its start.
                         || (state.resets_when_unfocused()
                             && (state.horizontal_scroll_offset.current != 0.0

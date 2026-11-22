@@ -32,8 +32,9 @@ fn number_words(min: f64, max: f64) -> String {
 }
 
 /// Why `kind` does not take `prop`, if it does not: a scroll view and a virtual list take all
-/// of them, a terminal (0.6.12, UXREQ-006) the ones its history bar uses (and so the error for
-/// any other kind still names the two it always did).
+/// of them, a terminal (0.6.12, UXREQ-006) the ones its history bar uses, a text input (0.6.13)
+/// the ones its own bar uses (and so the error for any other kind still names the two it always
+/// did).
 fn refuse(name: &str, prop: ScrollProp, kind: &NodeKind) -> Option<PyErr> {
     match kind {
         NodeKind::Terminal(_) if !prop.applies_to_terminal() => {
@@ -42,7 +43,19 @@ fn refuse(name: &str, prop: ScrollProp, kind: &NodeKind) -> Option<PyErr> {
                  over the grid that reserves no gutter, and the session scrolls its history in lines"
             )))
         }
-        NodeKind::Terminal(_) | NodeKind::ScrollView(_) | NodeKind::VirtualList(_) => None,
+        // 0.6.13: a text input takes the ones its own bar uses (a single-line one keeps them and
+        // shows no bar, so that the order `multiline` and the bar are set in does not matter).
+        NodeKind::TextField(_) if !prop.applies_to_text_input() => {
+            Some(PyValueError::new_err(format!(
+                "node property `{name}` does not apply to a text_input: its bar is one bar over \
+                 the text that reserves no gutter, its keys are the caret's, and its scroll is \
+                 never eased or snapped"
+            )))
+        }
+        NodeKind::Terminal(_)
+        | NodeKind::TextField(_)
+        | NodeKind::ScrollView(_)
+        | NodeKind::VirtualList(_) => None,
         _ => Some(PyValueError::new_err(format!(
             "node property `{name}` applies only to a scroll_view or virtual_list node"
         ))),

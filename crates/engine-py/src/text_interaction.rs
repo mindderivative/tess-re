@@ -153,36 +153,73 @@ fn text_placement(tree: &Tree, id: NodeId) -> TextPlacement {
 /// #285: brings the scroll of every text input that follows its caret by the shaped layout
 /// (a wrapped multiline input, a single-line one with `overflow="scroll"`, or `"ellipsis"` while
 /// focused) to where the caret is in view, and puts an `"ellipsis"` input that lost the focus
-/// back at its start. It needs the shaped text, which `engine-core` has not, so it runs here:
-/// after an input event, and before a frame is drawn or a snapshot taken, once layout has given
-/// each input its box. A settled input costs one hash and no frame.
+/// back at its start. 0.6.13: and measures the shaped text of every multiline input whose
+/// scrollbar is on, which sizes its thumb. It needs the shaped text, which `engine-core` has not,
+/// so it runs here: after an input event, and before a frame is drawn or a snapshot taken, once
+/// layout has given each input its box. A settled input costs one hash and no frame.
 pub(crate) fn follow_fields(tree: &Rc<RefCell<Tree>>, text: &mut TextRenderer) {
-    let ids = tree.borrow().caret_following_fields();
+    let ids = tree.borrow().shaped_fields();
     for id in ids {
         let next = {
             let tree = tree.borrow();
             let Some(NodeKind::TextField(state)) = tree.get(id).map(|n| &n.kind) else {
                 continue;
             };
-            let layout = tree.layout(id);
-            let pad = layout.padding;
-            let viewport = (
-                (layout.size.width - pad.left - pad.right).max(0.0),
-                (layout.size.height - pad.top - pad.bottom).max(0.0),
-            );
             if state.follows_caret(tree.focused() == Some(id)) {
-                text.follow_caret(state, viewport)
-            } else {
-                // A single-line input that is not being edited shows its start.
-                (state.horizontal_scroll_offset.current != 0.0
+                text.follow_caret(state, content_box(&tree, id))
+            } else if state.resets_when_unfocused()
+                && (state.horizontal_scroll_offset.current != 0.0
                     || state.scroll_offset.current != 0.0)
-                    .then_some((0.0, 0.0, 0))
+            {
+                // A single-line input that is not being edited shows its start.
+                Some((0.0, 0.0, 0))
+            } else {
+                None
             }
         };
         if let Some((horizontal, vertical, stamp)) = next {
             tree.borrow_mut()
                 .set_text_field_scroll(id, horizontal, vertical, stamp);
         }
+        // The extent last: a text that got shorter pulls the scroll back to what is left.
+        measure_field(tree, text, id);
+    }
+}
+
+/// 0.6.13: measures the shaped text of every multiline input whose scrollbar is on, for a caller
+/// that has laid the tree out but is not about to follow carets (`follow_fields` does both): a
+/// headless window taking an event, which has had no frame before it.
+pub(crate) fn measure_bars(tree: &Rc<RefCell<Tree>>, text: &mut TextRenderer) {
+    let ids = tree.borrow().bar_fields();
+    for id in ids {
+        measure_field(tree, text, id);
+    }
+}
+
+/// The content box of input `id` -- its box inside the padding -- as `(width, height)`.
+fn content_box(tree: &Tree, id: NodeId) -> (f32, f32) {
+    let layout = tree.layout(id);
+    let pad = layout.padding;
+    (
+        (layout.size.width - pad.left - pad.right).max(0.0),
+        (layout.size.height - pad.top - pad.bottom).max(0.0),
+    )
+}
+
+/// 0.6.13: sizes input `id`'s scrollbar from its shaped text, if its bar is on and the text or the
+/// box changed since it was last measured.
+fn measure_field(tree: &Rc<RefCell<Tree>>, text: &mut TextRenderer, id: NodeId) {
+    let measured = {
+        let tree = tree.borrow();
+        match tree.get(id).map(|n| &n.kind) {
+            Some(NodeKind::TextField(state)) if state.bar_on() => {
+                text.field_content_extent(state, content_box(&tree, id))
+            }
+            _ => None,
+        }
+    };
+    if let Some((extent, stamp)) = measured {
+        tree.borrow_mut().set_text_field_extent(id, extent, stamp);
     }
 }
 
@@ -583,6 +620,10 @@ pub(crate) fn text_pointer_input(
                         tree.borrow_mut().set_text_selection(hit, offset, offset);
                         *text_drag = Some(hit);
                     }
+                } else if tree.borrow().scrollbar_pressed() {
+                    // 0.6.12 (UXREQ-006), 0.6.13: a press a scrollbar took (a thumb, a lane or
+                    // an arrow: a terminal's history bar, a text input's own) places no caret
+                    // and selects no cells under it.
                 } else if let Some(offset) = text_field_hit_offset(tree, text, hit, local_point) {
                     tree.borrow_mut().set_text_field_cursor(hit, offset);
                     // #288: a double click selects the word under the pointer, a triple click
@@ -612,9 +653,6 @@ pub(crate) fn text_pointer_input(
                     // `None` exactly as `set_text_field_
                     // cursor` already left it.
                     *text_drag = Some(hit);
-                } else if tree.borrow().scrollbar_pressed() {
-                    // 0.6.12 (UXREQ-006): a press the history bar took (a thumb, a lane or an
-                    // arrow) selects no cells under it.
                 } else if let Some((row, col)) = terminal_hit_cell(tree, text, hit, local_point) {
                     // M32 Phase 6 (§4, §5, §8): a real press
                     // on a `Terminal` -- the identical real

@@ -550,11 +550,10 @@ impl Tree {
                         // wheel, or Shift made one, moves a `both` view
                         // sideways), one notch being its `wheel_notch`;
                         // whatever it can move takes the wheel.
-                        // A terminal's wheel is the session's history, not the bar's.
-                        if let Some(scroller) = node
-                            .kind
-                            .scroller()
-                            .filter(|_| !matches!(node.kind, NodeKind::Terminal(_)))
+                        // A terminal's wheel is the session's history, not the bar's; a text
+                        // input's is the bar's only while its bar is on.
+                        if let Some(scroller) =
+                            node.kind.scroller().filter(|_| node.kind.takes_wheel())
                         {
                             let notch = scroller.metrics().wheel_notch;
                             let axes = scroller.scroll_axes();

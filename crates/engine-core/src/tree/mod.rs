@@ -43,6 +43,7 @@ mod access;
 mod container_selection;
 pub use access::{AccessLine, TextPart};
 mod dispatch;
+mod field_bar;
 mod focus;
 mod layers;
 mod layout;
@@ -978,6 +979,15 @@ impl Tree {
             && caret.tick(now, completed)
         {
             active = true;
+        }
+        // 0.6.13: a multiline text input's bar fades.
+        if let NodeKind::TextField(state) = &mut node.kind
+            && state.bar_on()
+        {
+            let (defaults, offsets) = (state.defaults(), state.scroll_offsets());
+            if state.bar.tick(defaults, offsets, now, reduced, completed) {
+                active = true;
+            }
         }
         if let NodeKind::ScrollView(state) = &mut node.kind {
             // 0.6.11: its other offset, with the main one, and the bar's fades.

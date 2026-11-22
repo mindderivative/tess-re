@@ -135,12 +135,21 @@ pub enum Defaults {
     /// 0.6.12 (UXREQ-006): a terminal's history bar. The spec's measures, as a `both` view
     /// has them, but off until `scrollbar_show` says otherwise (an opt-in).
     Terminal,
+    /// 0.6.13: a multiline text input's own bar (`tree/field_bar.rs`). The spec's measures, off
+    /// until `scrollbar_show` says otherwise (an opt-in), as a terminal's.
+    Field,
 }
 
 impl Defaults {
-    /// Whether the measures are the Tesserae UX spec's (a `both` scroll view, a terminal).
+    /// Whether the measures are the Tesserae UX spec's (a `both` scroll view, a terminal, a
+    /// text input).
     pub fn is_spec(self) -> bool {
-        matches!(self, Defaults::Spec | Defaults::Terminal)
+        matches!(self, Defaults::Spec | Defaults::Terminal | Defaults::Field)
+    }
+
+    /// Whether the bar is off until `scrollbar_show` is set (a terminal's, a text input's).
+    pub fn is_opt_in(self) -> bool {
+        matches!(self, Defaults::Terminal | Defaults::Field)
     }
 }
 
@@ -278,7 +287,7 @@ impl ScrollbarMetrics {
                 edge(ScrollAxis::Vertical, Prop::SideV),
                 edge(ScrollAxis::Horizontal, Prop::SideH),
             ],
-            show: Show::from_index(o.choice(Prop::Show).unwrap_or(if d == Defaults::Terminal {
+            show: Show::from_index(o.choice(Prop::Show).unwrap_or(if d.is_opt_in() {
                 Show::Never.index()
             } else {
                 Show::Overflow.index()

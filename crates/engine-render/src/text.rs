@@ -2047,6 +2047,36 @@ impl TextRenderer {
         ))
     }
 
+    /// 0.6.13: how big the shaped text of input `state` is, `(width, height)` in pixels, for a
+    /// content box `viewport` wide (a wrapped input's lines break at it), which is what its
+    /// scrollbar's thumb is sized from, and the stamp of what it was measured from; `None` when
+    /// the answer is what it was (`state.extent_stamp`). The width has room for the caret after
+    /// the last character, so the end of a line can be scrolled to with it in view.
+    pub fn field_content_extent(
+        &mut self,
+        state: &TextFieldState,
+        viewport: (f32, f32),
+    ) -> Option<((f64, f64), u64)> {
+        let stamp = extent_stamp(state, viewport.0);
+        if state.extent_stamp == stamp {
+            return None;
+        }
+        let at = TextPlacement {
+            x: 0.0,
+            y: 0.0,
+            max_width: viewport.0,
+            color: peniko::Color::TRANSPARENT,
+            box_height: None,
+        };
+        let (layout, _, _) = self.field_geometry_layout(state, at);
+        let width = if state.wraps() {
+            f64::from(viewport.0)
+        } else {
+            f64::from(layout.full_width()) + f64::from(state.caret_width.max(0.0))
+        };
+        Some(((width, f64::from(layout.height())), stamp))
+    }
+
     /// 0.5.6 (#165): the rectangles covering `start..end` (bytes of
     /// `state.content`), one per line it crosses, in the field's coordinates.
     pub fn field_range_rects(
@@ -2437,6 +2467,9 @@ impl TextRenderer {
 /// the two real call sites that know `state.multiline`.
 /// #285: what `follow_caret` worked an input's scroll out from -- its text, caret, font, wrap
 /// mode and box, and the offsets in force -- so an input that did not change is not shaped again.
+/// 0.6.13: with the input's scrollbar on the offsets are not in it: a scrollbar or a wheel that
+/// moved them away from the caret is not undone until the caret moves or the text changes. An
+/// input without the bar keeps the stamp it always had.
 fn follow_stamp(
     state: &TextFieldState,
     viewport: (f32, f32),
@@ -2463,7 +2496,38 @@ fn follow_stamp(
         .hash(&mut h);
     state.preedit.hash(&mut h);
     (viewport.0.to_bits(), viewport.1.to_bits()).hash(&mut h);
-    (horizontal.to_bits(), vertical.to_bits()).hash(&mut h);
+    if !state.bar_on() {
+        (horizontal.to_bits(), vertical.to_bits()).hash(&mut h);
+    }
+    h.finish() | 1
+}
+
+/// 0.6.13: what `field_content_extent` measured an input's text from: what shapes it (the text,
+/// what is shown in its place, the font, the wrap and the width it breaks at), not the caret.
+fn extent_stamp(state: &TextFieldState, width: f32) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    state.content.hash(&mut h);
+    state.preedit.hash(&mut h);
+    state.placeholder.hash(&mut h);
+    state.folded_ranges.hash(&mut h);
+    (state.show_whitespace, state.obscured, state.multiline).hash(&mut h);
+    state.font_family.hash(&mut h);
+    state.font_weight.to_bits().hash(&mut h);
+    (state.font_size.to_bits(), state.caret_width.to_bits()).hash(&mut h);
+    (state.wraps(), width.to_bits()).hash(&mut h);
+    (
+        state.letter_spacing.to_bits(),
+        state.line_height.map(f32::to_bits),
+    )
+        .hash(&mut h);
+    // The cursor matters only while a composition is spliced in at it.
+    state
+        .preedit
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .map(|_| state.cursor)
+        .hash(&mut h);
     h.finish() | 1
 }
 
@@ -4108,6 +4172,50 @@ mod tests {
             .follow_caret(&state, viewport)
             .expect("must scroll back");
         assert_eq!(h0, 0.0);
+    }
+
+    /// 0.6.13: a wrapped multiline input WITHOUT the scrollbar follows its caret as it always did:
+    /// a scroll set away from the caret is pulled back on the next pass (the offsets are in its
+    /// stamp); with the bar on it stays where the bar or the wheel put it until the caret or the
+    /// text moves.
+    #[test]
+    fn the_bar_decides_whether_a_scroll_away_from_the_caret_is_pulled_back() {
+        use engine_core::{PropValue as Value, ScrollProp as Prop, Show};
+        let text = "the quick brown fox jumps over the lazy dog and keeps going on ".repeat(6);
+        let viewport = (100.0, 40.0);
+        let settled = |bar: bool| {
+            let mut renderer = TextRenderer::new();
+            let mut state = TextFieldState::new(&text, "Roboto", 400.0, 14.0);
+            state.multiline = true;
+            state.wrap = Some(true);
+            if bar {
+                assert!(
+                    state
+                        .bar
+                        .settings
+                        .set(Prop::Show, Some(Value::Choice(Show::Always.index())))
+                );
+            }
+            let (h, v, stamp) = renderer
+                .follow_caret(&state, viewport)
+                .expect("the caret at the end scrolls down");
+            state.horizontal_scroll_offset.current = h;
+            state.scroll_offset.current = v;
+            state.follow_stamp = stamp;
+            assert_eq!(renderer.follow_caret(&state, viewport), None, "settled");
+            // The scroll is moved away from the caret (a wheel, a thumb, `set`).
+            state.scroll_offset.current = 0.0;
+            renderer.follow_caret(&state, viewport)
+        };
+        assert!(
+            settled(false).is_some_and(|(_, v, _)| v > 0.0),
+            "without the bar the scroll is pulled back to the caret"
+        );
+        assert_eq!(
+            settled(true),
+            None,
+            "with the bar on it stays where it was put"
+        );
     }
 
     /// #285: a wrapped multiline input scrolls down to a caret on a later line, by the shaped

@@ -743,8 +743,29 @@ order they were added; **Internal (Rust)** lists API changes Python never sees.
   (before, a secondary press changed nothing). `node.focus()` still focuses anything. `Event.selection` and `Event.anchor`
   are now typed `list[int] | list[Node] | None` and `int | Node | None`.
 - **Removed names.** `Event.source` stays removed; the new field is still `selection_source`.
+- **`scrollbar_*`, `wheel_notch`, `page_fraction`, `page_repeat_delay_ms`, `page_repeat_ms` on a multiline `text_input` (new, opt-in;
+  no default changes).** A multiline input's own scrollbar: `scrollbar_show` is `"never"` until you set it, then it is the scroll
+  view's spec bar over the shaped text, driven by and driving the input's own scroll (a drag, a lane click, the arrows, the page
+  repeat and the wheel scroll it; the caret-follow moves the thumb). A vertical bar always, a horizontal one when the lines are not
+  wrapped. The keys stay the caret's. A single-line input takes and keeps the properties and shows no bar; `scrollbar_gutter`,
+  `scrollbar_gutter_reserve`, `key_line`, `scroll_smooth_ms`, `scroll_easing` and the snap, fling and edge-scroll properties raise
+  `ValueError` on an input. **Two behaviours to know, with the bar on only:** the wheel over the input scrolls it (it did nothing
+  before, and went to the scroll view around it), and an input with no `wrap` follows its caret by the shaped text (exact for any
+  font) instead of the monospace estimate.
+  The UX note "Text Field" has the bar on by default (`overflow`); here it is opt-in, a deviation to keep every input as it was.
+  See [A scrollbar on a multiline input](guide/text.md#a-scrollbar-on-a-multiline-input-0613).
 
 ### Internal (Rust)
+
+- `TextFieldState` gained `bar` (the `ScrollbarState`), `content_extent` and `extent_stamp`, and `bar_on` and `shaped_scroll`;
+  it is a `Scroller` (`Defaults::Field`, spec measures, off until `scrollbar_show` is set; no axes when single-line).
+  `Tree::set_text_field_extent` takes the measured text size (`TextRenderer::field_content_extent`) and `Tree::bar_fields`
+  lists the inputs to measure; `caret_following_fields` is now `shaped_fields` (and includes those whose bar is on).
+  `NodeKind::takes_wheel` and `takes_scroll_keys` say which scrollers the wheel and the keys move. The text renderer's
+  caret-follow stamp no longer hashes the scroll offsets **while the input's bar is on**, so a scroll moved away from the
+  caret by the bar is kept until the caret or the text changes. An input without the bar (every existing one) keeps the
+  stamp it always had, offsets included, so a wrapped multiline input behaves exactly as before; not hashing the offsets
+  for every input is a candidate for a later release on its own, with its own test.
 
 - `Node` gained `item_selectable` and `selection: Option<Box<SelectionState>>`; `SelectionState` gained `announce`,
   `announce_ms` and the debounce state (`note_reported`, `take_announcement`, `set_announce`, `fits`) and a hand-written

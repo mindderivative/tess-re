@@ -2051,6 +2051,9 @@ impl PyWindow {
             &self.handles.completions,
             py,
         );
+        // 0.6.13: a multiline input's scrollbar is sized from its shaped text, which a frame
+        // measures; a headless window has had none, so the event finds it measured.
+        crate::shaper::with(|shaper| crate::text_interaction::measure_bars(&tree, shaper));
         let ctx = NodeContext {
             tree: &tree,
             handlers: &handlers,

@@ -858,7 +858,14 @@ impl<'t> walk::Visitor<'t> for Painter<'_> {
     fn leave(&mut self, v: &walk::Visit<'t>) {
         let (layered, masked, clipped, drew) =
             self.open.pop().expect("every node left was entered");
-        if clipped || matches!(v.node.kind, NodeKind::Terminal(_)) {
+        // A terminal's history bar and a text input's own (0.6.13) are painted over the node,
+        // which may not clip.
+        let own_bar = match &v.node.kind {
+            NodeKind::Terminal(_) => true,
+            NodeKind::TextField(state) => state.bar_on(),
+            _ => false,
+        };
+        if clipped || own_bar {
             if clipped {
                 self.scene.pop_layer();
             }
