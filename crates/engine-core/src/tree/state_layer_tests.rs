@@ -362,7 +362,7 @@ fn a_quick_enter_press_release_leave_always_comes_to_rest_with_no_layer() {
             tree.set_focus_visible(false);
             tree.edit_state_layer(button, |l| l.hover_ms = Some(hover_ms));
             let mut t = Instant::now();
-            let mut step = |tree: &mut Tree, t: &mut Instant, ms: u64| {
+            let step = |tree: &mut Tree, t: &mut Instant, ms: u64| {
                 *t += Duration::from_millis(ms);
                 tree.tick_all(*t);
             };
