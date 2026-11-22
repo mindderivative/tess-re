@@ -247,6 +247,17 @@ pub struct Event {
     pub(crate) caret: Option<(f64, f64, f64, f64)>,
     #[pyo3(get)]
     pub(crate) inserted: Option<(usize, usize)>,
+    /// 0.6.12: `selection_change`: the chosen rows' keys, ascending, as ranges (half-open, the
+    /// same set), the anchor row, and what changed it -- `"pointer"`, `"keyboard"` or `"api"`.
+    /// `count` is how many rows are chosen.
+    #[pyo3(get)]
+    pub(crate) selection: Option<Vec<usize>>,
+    #[pyo3(get)]
+    pub(crate) ranges: Option<Vec<(usize, usize)>>,
+    #[pyo3(get)]
+    pub(crate) anchor: Option<usize>,
+    #[pyo3(get)]
+    pub(crate) selection_source: Option<String>,
     pub(crate) stopped: bool,
     pub(crate) cancelled: bool,
     pub(crate) cancellable: bool,
@@ -362,6 +373,10 @@ impl Event {
             preedit_cursor: None,
             caret: None,
             inserted: None,
+            selection: None,
+            ranges: None,
+            anchor: None,
+            selection_source: None,
             stopped: false,
             cancelled: false,
             cancellable: false,

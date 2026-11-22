@@ -172,17 +172,32 @@ pub(crate) fn sync_virtual_lists(tree: &SharedTree, handlers: &HandlerMap, py: P
 }
 
 /// Lays out `root`'s tree at `size`, materializing virtual lists' visible
-/// rows -- and laying out again when that changed any.
+/// rows -- and laying out again when that changed any. A row that a key was
+/// moving focus to (`selection_mode`) takes focus once it is built, and the row
+/// that held it is released.
 pub(crate) fn layout(
     tree: &SharedTree,
     root: NodeId,
     size: Size<AvailableSpace>,
     handlers: &HandlerMap,
+    completions: &crate::dispatch::SharedCompletions,
     py: Python<'_>,
 ) {
     tree.borrow_mut().compute_layout(root, size);
-    if sync_virtual_lists(tree, handlers, py) {
+    let mut changed = sync_virtual_lists(tree, handlers, py);
+    if changed {
         tree.borrow_mut().compute_layout(root, size);
+    }
+    let moves = tree.borrow_mut().resolve_list_focus();
+    if !moves.is_empty() {
+        for (old, new) in moves {
+            crate::dispatch::fire_focus_transition(handlers, tree, completions, old, new, py);
+        }
+        // The row that held focus is not kept built any longer.
+        changed = sync_virtual_lists(tree, handlers, py);
+        if changed {
+            tree.borrow_mut().compute_layout(root, size);
+        }
     }
 }
 

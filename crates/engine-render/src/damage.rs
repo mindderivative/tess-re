@@ -2324,6 +2324,8 @@ fn list_fingerprint(h: &mut impl Hasher, state: &VirtualListState, with_offset: 
         bar: _,
         // Event bookkeeping, not paint.
         reported: _,
+        // Which rows are chosen is the toolkit's to draw, in the rows.
+        selection: _,
     } = state;
     item_count.hash(h);
     match item_extent {

@@ -555,3 +555,90 @@ visible rows. A virtual list scrolls by wheel, keys, thumb drag,
 `scroll_to_index` and `scroll_into_view`, and fires `scroll`; see Keyboard
 scrolling above. See `examples/scrollable_list.py` and
 `examples/variable_height_list.py`.
+
+### Selecting rows of a virtual list
+
+(0.6.12) A virtual list can choose its own rows, so every list built on it has one set of rules for Shift, Ctrl
+and the anchor (the Tesserae UX note "Selection", AC-SLT-1 to AC-SLT-6 and AC-SLT-13). It is off until you ask:
+`selection_mode` is `"none"` by default, and then no click, key or Ctrl+A is looked at and nothing below applies.
+
+```python
+lst = window.create("virtual_list", item_count=100_000, item_extent=32, materialize=row,
+                    width=320, height=400, selection_mode="multiple", select_all_key=True)
+lst.on("selection_change", lambda e: print(e.count, e.anchor, e.selection_source))
+lst.get("selection")          # [] -- the chosen rows' keys, ascending
+lst.set(selection=[3, 4, 9])  # replaces the whole set; selection_change, source "api"
+```
+
+- **A row's key is its index** (`materialize(index)`); a virtual list has no other identity for a row. When the
+  data changes under the list (an insert, a delete), the framework sets `selection` again: the engine keeps indices.
+- **`selection_mode`**: `"single"` (at most one row) or `"multiple"`. `selection` (get and set), `selection_anchor`
+  (get only: the row a range starts from, `None` when there is none), `select_all_key` (`False`), `select_on_focus`
+  (`False`) and `unselectable_keys` (a list of keys, empty) are properties of the list; the table of every property
+  is in the [Properties reference](../reference/properties.md#virtual-list). Setting `selection` checks every key
+  (`ValueError` for a key outside `0..item_count`, an unselectable key, a second key in a `"single"` list, or any key
+  in a `"none"` list) and changes nothing when it raises; it is checked against the rest of the same `set` call.
+  Setting `selection_mode` to `"none"` empties the set; to `"single"` keeps one row (the anchor if it is chosen, else the first).
+  A smaller `item_count` drops the rows past the end.
+- **The set is stored as ranges**, not as a flag per row. Shift+End and Ctrl+A over a hundred thousand rows build no
+  row: only the rows in the viewport (and the one holding focus) exist, and `event.count` is exact (AC-SLT-6). The
+  engine draws nothing for a chosen row; the framework styles the rows it builds (it reads `selection`, and asks
+  again on `selection_change`).
+
+**Pointer** (`"multiple"`; Shift and Ctrl are the keys held when the primary button goes down; Cmd counts as Ctrl):
+
+| Input | Result |
+| --- | --- |
+| Click | choose only this row; it is the anchor |
+| Ctrl+click | toggle this row; it is the anchor |
+| Shift+click | choose the rows from the anchor to this one, replacing the set; the anchor stays |
+| Ctrl+Shift+click | add the rows from the anchor to this one |
+| Click in the list's empty part (below the last row) | clear the set |
+| Press on a chosen row of several, released without going `drag_start_px` | choose only this row, on the release |
+| Press on a chosen row of several, and the pointer goes `drag_start_px` or more before the release | the set is left as it is: the app starts its drag with the whole selection |
+
+A `"single"` list chooses the row clicked, whatever is held. Only the primary button chooses; a secondary press
+(a context menu) does not.
+
+**The drag rule (AC-SLT-13).** The pointer going `drag_start_px` (a [window property](../reference/window.md#gesture-click-and-drag-thresholds-0612))
+from the press makes it a drag, and stays one even if the pointer comes back. With the default `drag_start_px=0`
+no move is a drag, so a press on a chosen row always chooses that row alone on its release: set `drag_start_px=4`
+(the spec's value) on a window whose rows start drags. The release must be on the row that was pressed, else the set
+stays.
+
+**Keys.** While focus is on a row of the list, or on the list itself (a row needs to be `focusable` for focus to be
+in it; a list whose rows are not can be focusable itself and the engine keeps the row the keys are on), a
+`"multiple"` list takes these, and does not also scroll by them (the list scrolls by the least distance that
+shows the row focus lands on). A row not built yet is scrolled to, and takes focus as soon as it is built:
+`focus` and `unfocus` fire then.
+
+| Keys | Result |
+| --- | --- |
+| Up, Down, Home, End, Page Up, Page Down | move focus to the previous, next, first, last row, a page up or down; the set is unchanged (with `select_on_focus`, that row is chosen alone) |
+| Ctrl + those keys | move focus only, in every case |
+| Shift + those keys | move focus and choose the rows from the anchor to the focused row, replacing the set; the anchor stays (with none, the row focus was on) |
+| Ctrl+Shift + those keys | the same, adding to the set |
+| Space | toggle the focused row (it is the anchor if now chosen); no `click` |
+| Ctrl+Space | the same |
+| Shift+Space | choose the rows from the anchor to the focused row (Ctrl+Shift+Space adds) |
+| Enter | not changed: a `click` on the focused row (it opens), the set stays |
+| Ctrl+A | with `select_all_key`, choose every selectable row; not when focus is in a text input (that selects the input's text) |
+| Escape | never clears the set (UX note "11 Interaction"): the key is not the list's |
+
+A `"single"` list: Space and Enter choose the focused row (Enter is still the `click`); the arrows move focus
+(and choose, with `select_on_focus`); Shift and Ctrl change nothing; there is no select all. Keys with Alt or Meta held
+are shortcuts and are not the list's.
+
+**Unselectable rows.** The rows of `unselectable_keys` cannot be chosen by a click, a key, a range or Ctrl+A (a range
+passes them), and Up, Down, Home, End and the Page keys never put focus on one (AC-SLT-5); a chosen row that is made
+unselectable leaves the set. The list cannot stop Tab or a click from focusing such a row: a framework that disables a
+row also makes it not `focusable`.
+
+**Keys that belong to a node on the way.** A text input (inside a row, say) keeps its keys, and so does a row with
+its own `key_down` listener (a slider in a row), as for [keyboard scrolling](#keyboard-scrolling). A `key_down`
+listener on the list itself does not stop the engine: it hears the keys of its rows and the engine still chooses.
+
+**`selection_change`** fires on the list (it does not bubble) once for each key press, click or `set` that changed
+the set, with the whole new set: `event.selection` (the keys, ascending), `event.ranges` (the same set as
+half-open `(start, end)` pairs, which stays small for any size), `event.count`, `event.anchor` and `event.selection_source`
+(`"pointer"`, `"keyboard"` or `"api"`). A call that leaves the set as it was fires nothing.

@@ -448,6 +448,7 @@ impl Tree {
         }
         self.page_repeat = None;
         self.edge_scroll_last = None;
+        self.list_press_cancel();
         self.dirty = true;
         let pressed = self.cancel_press();
         CancelledGesture { holder, pressed }

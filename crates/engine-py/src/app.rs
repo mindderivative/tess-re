@@ -1972,6 +1972,7 @@ impl App {
                         space
                     },
                     &runtime.handles.handlers,
+                    &runtime.handles.completions,
                     py,
                 );
                 // TRE-REQ-022: the content's size is known now. A new size is asked of the compositor and

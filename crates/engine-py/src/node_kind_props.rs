@@ -432,6 +432,10 @@ pub(crate) fn parse_kind_prop(
     if let Some(parsed) = crate::scrollbar_props::parse(name, value, kind) {
         return Some(parsed);
     }
+    // 0.6.12: which rows of a virtual list are chosen.
+    if let Some(parsed) = crate::list_selection::parse(name, value, kind, props) {
+        return Some(parsed);
+    }
     if !KIND_PROPS.contains(&name) {
         return None;
     }
@@ -1224,6 +1228,10 @@ fn parse_known(
                     state.item_count = count;
                     state.resolved_offsets.clear();
                     state.scroll_offset.set_now(0.0);
+                    // Rows that are gone are no longer chosen.
+                    state
+                        .selection
+                        .clip(count, engine_core::SelectionSource::Api);
                 }
             })?;
             rows.resets_rows = true;
@@ -1302,6 +1310,9 @@ pub(crate) fn read_kind_prop(
     py: Python<'_>,
 ) -> Option<PyResult<Py<PyAny>>> {
     if let Some(read) = crate::scrollbar_props::read(name, node, py) {
+        return Some(read);
+    }
+    if let Some(read) = crate::list_selection::read(name, node, py) {
         return Some(read);
     }
     if !KIND_PROPS.contains(&name) || name == "scroll_offset" || name == "scroll_offset_x" {

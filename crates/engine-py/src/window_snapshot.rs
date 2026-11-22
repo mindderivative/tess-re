@@ -118,6 +118,7 @@ impl PyWindow {
                 height: AvailableSpace::Definite(h as f32),
             },
             &handlers,
+            &self.handles.completions,
             py,
         );
         // #285: inputs that follow their caret by the shaped text, now they have a box.

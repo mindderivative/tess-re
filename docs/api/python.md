@@ -505,6 +505,10 @@ What a listener receives when it takes one argument; never constructed directly.
 | `pointer_id` | `int \| None` |  |
 | `phase` | `str \| None` |  |
 | `count` | `int \| None` |  |
+| `selection` | `list[int] \| None` |  |
+| `ranges` | `list[tuple[int, int]] \| None` |  |
+| `anchor` | `int \| None` |  |
+| `selection_source` | `str \| None` |  |
 | `scale` | `float \| None` |  |
 | `scale_delta` | `float \| None` |  |
 | `rotation` | `float \| None` |  |

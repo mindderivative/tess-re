@@ -45,7 +45,9 @@ mod dispatch;
 mod focus;
 mod layers;
 mod layout;
+mod list_selection;
 pub use layout::{FIT_CONTENT_SLACK, LayoutChange, TextMeasure};
+pub use list_selection::{ListKey, SelectionChange};
 pub use text_editing::{FieldRows, RowAnswer, RowQuery};
 mod nodes;
 mod region;
@@ -207,6 +209,11 @@ pub struct Tree {
     /// #288: the modifier keys held, set by the window before each event: `KeyPressed` carries
     /// only Shift, and a text input needs Ctrl for its word and edge keys.
     held: crate::input::Modifiers,
+    /// 0.6.12: a press on a chosen row of a multiple selection list that waits for its
+    /// release to choose that row alone, and `drag_start_px` (set by the window before
+    /// each event).
+    list_press: Option<list_selection::ListPress>,
+    drag_start_px: f64,
     /// #288: answers a text input's questions about the rows its shaped text shows (a window
     /// installs its shaper here, as for `text_measure`). With none, the caret keys keep
     /// moving by logical line.
@@ -324,6 +331,8 @@ impl Tree {
             caret_changes: Vec::new(),
             overwrite_changes: Vec::new(),
             held: crate::input::Modifiers::default(),
+            list_press: None,
+            drag_start_px: 0.0,
             field_rows: None,
             snap_pending: Vec::new(),
             taffy_nodes: SecondaryMap::new(),

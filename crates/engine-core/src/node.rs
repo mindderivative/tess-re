@@ -1328,6 +1328,9 @@ pub struct VirtualListState {
     /// The offset last reported as a `scroll` event (see
     /// `ScrollViewState::reported`).
     pub reported: f64,
+    /// 0.6.12: which rows are chosen (`selection_mode`, `selection`, ...). With the
+    /// default mode `none` the engine chooses nothing and handles no selection input.
+    pub selection: Box<crate::selection::SelectionState>,
 }
 
 impl VirtualListState {
@@ -1340,6 +1343,7 @@ impl VirtualListState {
             resolved_offsets: std::collections::BTreeMap::new(),
             bar: Box::default(),
             reported: 0.0,
+            selection: Box::default(),
         }
     }
 
@@ -1385,6 +1389,21 @@ impl VirtualListState {
             ItemExtent::Fixed(v) => idx as f64 * v,
             ItemExtent::Variable => self.resolved_offsets.get(&idx).copied().unwrap_or(0.0),
         }
+    }
+
+    /// The row that holds offset `y`: the last whose top is at or before it (row 0 for any
+    /// offset before the first row; the last row past the end).
+    pub fn index_at(&self, y: f64) -> usize {
+        let (mut lo, mut hi) = (0, self.item_count);
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if self.offset_of(mid) > y {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        lo.saturating_sub(1)
     }
 
     /// The real total content extent across every item -- `item_count *

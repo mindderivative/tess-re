@@ -1509,6 +1509,7 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
                     .iter()
                     .copied()
                     .chain(crate::scrollbar_props::names())
+                    .chain(crate::list_selection::NAMES)
                     .chain(crate::outline_props::NAMES)
                     .chain(crate::layer_policy::NAMES)
                     .collect::<Vec<_>>()
@@ -1893,6 +1894,7 @@ impl Node {
             self.layout_box(py);
         }
         self.fire_scroll_changes(py);
+        self.fire_selection_changes(py);
         Ok(())
     }
 }
@@ -2547,6 +2549,18 @@ impl Node {
         );
     }
 
+    /// 0.6.12: `selection_change` for any list whose rows this call chose or released.
+    fn fire_selection_changes(&self, py: Python<'_>) {
+        crate::list_selection::fire_changes(
+            &crate::event::NodeContext {
+                tree: &self.tree,
+                handlers: &self.handlers,
+                completions: &self.completions,
+            },
+            py,
+        );
+    }
+
     /// M96: this node's computed box in window space -- `(x, y, width,
     /// height)` -- running any pending layout of its tree first, so it
     /// always matches the current tree. A detached subtree is laid out on
@@ -2566,7 +2580,14 @@ impl Node {
                 width: available(size.width),
                 height: available(size.height),
             };
-            crate::node_callbacks::layout(&self.tree, root, size, &self.handlers, py);
+            crate::node_callbacks::layout(
+                &self.tree,
+                root,
+                size,
+                &self.handlers,
+                &self.completions,
+                py,
+            );
         }
         let tree = self.tree.borrow();
         let (x, y) = tree.absolute_position(self.id);
