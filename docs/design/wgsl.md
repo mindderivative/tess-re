@@ -32,7 +32,7 @@ already true, as the survey shows.
 - **tess_re has no shaders to migrate.** There are no `.wgsl`, `.glsl` or `.spv`
   files, no pipelines, no `naga`, and no `build.rs` in the engine. The GLSL
   and SPIR-V in the repository are in `archive/`, the retired Vulkan engine.
-- **`vello_gpu` already uses WGSL.** At the pinned commit its shaders are
+- **`vello_gpu` already uses WGSL.** At the pinned version its shaders are
   written in WESL (a WGSL extension), linked at build time into WGSL strings,
   and loaded with `wgpu`'s `ShaderSource::Wgsl`. It has no hook for a custom
   shader or paint. Its filter layers implement only blur, and its layer masks

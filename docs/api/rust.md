@@ -3103,10 +3103,10 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 
 | Method | Description |
 | --- | --- |
-| `fn new(device: &Device, config: &RenderTargetConfig) -> Self` | Creates a renderer for the given device and render target configuration. |
-| `fn render(&mut self, scene: &Scene, device: &Device, queue: &Queue, encoder: &mut CommandEncoder, render_size: &RenderSize, target: &TextureView)` | Renders `scene` into `target` via `encoder`. |
-| `fn render_into(&mut self, scene: &Scene, device: &Device, queue: &Queue, encoder: &mut CommandEncoder, render_size: &RenderSize, target: &TextureView, rects: Option<&[Rect]>)` | Renders a scene, clearing only the given rects and keeping the rest of the target. |
-| `fn render_over(&mut self, scene: &Scene, device: &Device, queue: &Queue, encoder: &mut CommandEncoder, render_size: &RenderSize, target: &TextureView)` | Renders a scene on top of the target's existing pixels without clearing anything. |
+| `fn new(device: &Device, queue: &Queue, config: &RenderTargetConfig) -> Self` | Creates a renderer for the given device and render target configuration. |
+| `fn render(&mut self, scene: &Scene, encoder: &mut CommandEncoder, target: &TextureView)` | Renders `scene` into `target` via `encoder`. |
+| `fn render_into(&mut self, scene: &Scene, encoder: &mut CommandEncoder, target: &TextureView, rects: Option<&[Rect]>)` | Renders a scene, clearing only the given rects and keeping the rest of the target. |
+| `fn render_over(&mut self, scene: &Scene, encoder: &mut CommandEncoder, target: &TextureView)` | Renders a scene on top of the target's existing pixels without clearing anything. |
 | `fn resources_mut(&self) -> RefMut<'_, Resources>` | Gives access to the renderer's resources, which glyph drawing needs. |
 | `fn run_shader_passes(&mut self, tree: &Tree, root: NodeId, width: u16, height: u16, time: f32, scale: f64, device: &Device, queue: &Queue, text: &mut TextRenderer, geometry: &mut GeometryCache) -> ShaderTextures` | Runs this frame's shader passes and offscreen effect renders in dependency order. |
 | `fn set_backdrop(&mut self, color: Color) -> bool` | The colour the frame is cleared to before the scene paints (default transparent); returns whether it changed, in which case the whole frame is out… |
@@ -3266,9 +3266,9 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | Method | Description |
 | --- | --- |
 | `fn downgrade(&self) -> WeakSharedRenderer` | A handle that does not keep the renderer alive, for a registry of the renderers windows can still take. |
-| `fn for_format(device: &Device, format: TextureFormat, width: u32, height: u32) -> Self` | Like `new` from plain values: a renderer for surfaces of `format`, starting at `width` x `height` (clamped to what the renderer takes). |
+| `fn for_format(device: &Device, queue: &Queue, format: TextureFormat, width: u32, height: u32) -> Self` | Like `new` from plain values: a renderer for surfaces of `format`, starting at `width` x `height` (clamped to what the renderer takes). |
 | `fn holders(&self) -> usize` | How many ``FrameRenderer`s` draw with this one (itself included). |
-| `fn new(device: &Device, config: &RenderTargetConfig) -> Self` | A renderer for `config.format` on `device`. |
+| `fn new(device: &Device, queue: &Queue, config: &RenderTargetConfig) -> Self` | A renderer for `config.format` on `device`. |
 
 ### Shift { #shift }
 
@@ -3366,7 +3366,7 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | `fn has_animated_shader(&self) -> bool` | Whether the last frame drew an animated shader, which keeps the window drawing frames. |
 | `fn has_persistent_target(&self) -> bool` | Whether frames go through a kept target, so partial redraw can apply. |
 | `fn last_shift(&self) -> Option<Shift>` | The scroll shift the last `prepare` found and `draw` applied, if any. |
-| `fn new(device: &Device, format: TextureFormat, width: u32, height: u32, persistent: bool) -> Self` | Creates a renderer for a surface of the given size and format. |
+| `fn new(device: &Device, queue: &Queue, format: TextureFormat, width: u32, height: u32, persistent: bool) -> Self` | Creates a renderer for a surface of the given size and format. |
 | `fn prepare(&mut self, tree: &Tree, root: NodeId, width: u16, height: u16, partial: bool, device: &Device, queue: &Queue) -> Damage` | Uploads images, drops stale caches and returns what changed since the last frame. |
 | `fn reset(&mut self)` | Makes the next frame a full one. |
 | `fn resize(&mut self, device: &Device, width: u32, height: u32)` | Resizes the kept target; a recreated one has lost its frame, so the next is drawn in full. |

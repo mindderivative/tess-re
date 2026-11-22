@@ -795,3 +795,10 @@ is drawn**).
   `announce_ms` and the debounce state (`note_reported`, `take_announcement`, `set_announce`, `fits`) and a hand-written
   `Default`; `Tree` gained `container_selection`, `container_items`, `item_parent`, `holds_items`, `refresh_selection_host`
   (call it after changing a container's selection mode) and `list_secondary_press`.
+
+## 0.6.14
+
+- No API change for Python apps. The rendering engine is updated from a pinned `vello` git commit to `vello_gpu` 0.4.0,
+  `vello_common` 0.4.0 and `glifo` 0.5.0 from crates.io (exact `=` pins); In the scenes
+  checked against 0.6.13 (shapes, shadows, gradients, blur, text, emoji, images, opacity and rotation, at scales 1, 1.5
+  and 2) the pixels are identical except one pixel at scale 1.5 that differs by 1 in two channels.

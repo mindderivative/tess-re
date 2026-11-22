@@ -1,13 +1,13 @@
 # Blur, backdrop filters, blend modes, and masks
 
-0.5.4 research (#110). What the pinned `vello_gpu` can do as a layer effect,
+0.5.4 research (#110). What the pinned `vello_gpu` (a pinned git commit when this was written; crates.io 0.4.0 since 0.6.14) can do as a layer effect,
 what was built on it, and what could not be. Probed directly with
 `engine-render/tests/vello_effects.rs` (`cargo test -p engine-render --release
 --test vello_effects -- --ignored --nocapture`), without any tess_re node involved.
 
 ## What the renderer supports
 
-| Effect | Result at the pinned commit |
+| Effect | Result at the pinned version |
 | --- | --- |
 | Blur layer (`push_filter_layer`, `FilterFunction::Blur`) | Works. A Gaussian blur of the layer's content; the filter reads and writes in the layer's own transform, so it scales with the display |
 | Colour filters (`Saturate`, `Brightness`, `Contrast`, `Grayscale`, `HueRotate`, `Invert`, `Sepia`, `Opacity`) | **Panic**: `Filter::from_function` is `unimplemented!` for all but `Blur`. The primitives behind them (colour matrix) are not on the GPU path either |
