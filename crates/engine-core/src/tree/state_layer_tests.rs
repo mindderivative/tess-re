@@ -394,7 +394,13 @@ fn a_quick_enter_press_release_leave_always_comes_to_rest_with_no_layer() {
             for i in 0..30 {
                 step(&mut tree, &mut t, if i % 7 == 3 { 33 } else { 17 });
             }
-            let layer = tree.get(button).unwrap().paint.state_layer.as_deref().unwrap();
+            let layer = tree
+                .get(button)
+                .unwrap()
+                .paint
+                .state_layer
+                .as_deref()
+                .unwrap();
             assert!(
                 layer.visible().is_none(),
                 "{log} hover_ms {hover_ms}: left {:?} (active {})",
@@ -424,7 +430,12 @@ fn the_tick_that_ends_a_fade_marks_the_tree_to_be_drawn_even_when_every_node_was
     tree.take_dirty();
     // Some other animation starts, and the arena is reached whole.
     let mut other = crate::animation::Animated::new(0.0_f64);
-    other.animate_to(1.0, Duration::from_millis(10), crate::animation::MotionCurve::Linear, t0);
+    other.animate_to(
+        1.0,
+        Duration::from_millis(10),
+        crate::animation::MotionCurve::Linear,
+        t0,
+    );
     tree.nodes.iter_mut().for_each(drop);
     let (active, _) = tree.tick_all(t0 + Duration::from_millis(200));
     assert!(!active, "the fade has ended");

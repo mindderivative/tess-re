@@ -876,37 +876,59 @@ fn a_short_hover_fade_leaves_no_layer_pixel_behind() {
             );
         };
         // Enter, press, release, leave, with a frame (or a late one) between most.
-        s.tree
-            .dispatch(s.root, InputEvent::PointerMoved { position: at(50.0, 40.0) }, now);
+        s.tree.dispatch(
+            s.root,
+            InputEvent::PointerMoved {
+                position: at(50.0, 40.0),
+            },
+            now,
+        );
         for (i, gap) in [17u64, 17, 17].into_iter().enumerate() {
             now += Duration::from_millis(gap);
             frame(&mut s, now, &format!("enter {i}"));
         }
         s.tree.dispatch(
             s.root,
-            InputEvent::PointerPressed { position: at(50.0, 40.0), button: PointerButton::Primary },
+            InputEvent::PointerPressed {
+                position: at(50.0, 40.0),
+                button: PointerButton::Primary,
+            },
             now,
         );
         now += Duration::from_millis(17);
         frame(&mut s, now, "press");
         s.tree.dispatch(
             s.root,
-            InputEvent::PointerReleased { position: at(50.0, 40.0), button: PointerButton::Primary },
+            InputEvent::PointerReleased {
+                position: at(50.0, 40.0),
+                button: PointerButton::Primary,
+            },
             now,
         );
         now += Duration::from_millis(17);
         frame(&mut s, now, "release");
-        s.tree
-            .dispatch(s.root, InputEvent::PointerMoved { position: at(230.0, 150.0) }, now);
+        s.tree.dispatch(
+            s.root,
+            InputEvent::PointerMoved {
+                position: at(230.0, 150.0),
+            },
+            now,
+        );
         for i in 0..40 {
             now += Duration::from_millis(if i % 9 == 4 { 33 } else { 17 });
             frame(&mut s, now, &format!("leave {i}"));
         }
         let after = full.pixels(&gpu);
         let differing = before.iter().zip(&after).filter(|(a, b)| a != b).count();
-        assert_eq!(differing, 0, "hover_ms {hover_ms}: {differing} bytes differ from the look before");
+        assert_eq!(
+            differing, 0,
+            "hover_ms {hover_ms}: {differing} bytes differ from the look before"
+        );
         let kept = partial.pixels(&gpu);
         let differing = before.iter().zip(&kept).filter(|(a, b)| a != b).count();
-        assert_eq!(differing, 0, "hover_ms {hover_ms}: partial redraw left {differing} bytes behind");
+        assert_eq!(
+            differing, 0,
+            "hover_ms {hover_ms}: partial redraw left {differing} bytes behind"
+        );
     }
 }
