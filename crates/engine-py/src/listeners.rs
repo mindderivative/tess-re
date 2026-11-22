@@ -338,7 +338,7 @@ pub(crate) enum WindowEventType {
 }
 
 impl WindowEventType {
-    const ALL: [WindowEventType; 25] = [
+    const ALL: [WindowEventType; 26] = [
         Self::Resize,
         Self::ColorScheme,
         Self::ScaleFactor,
