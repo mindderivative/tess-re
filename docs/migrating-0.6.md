@@ -802,3 +802,9 @@ is drawn**).
   `vello_common` 0.4.0 and `glifo` 0.5.0 from crates.io (exact `=` pins); In the scenes
   checked against 0.6.13 (shapes, shadows, gradients, blur, text, emoji, images, opacity and rotation, at scales 1, 1.5
   and 2) the pixels are identical except one pixel at scale 1.5 that differs by 1 in two channels.
+
+- **Keys and `key_down` listeners on a row (documentation only; no behaviour change).** A `key_down` listener on a node between
+  the focused node and a scroll view, `virtual_list` or container that chooses by keys (`selection_mode`) keeps every key
+  from the engine, because a `key_down` event cannot be cancelled to give one back: a row with a bare listener stops
+  Shift+Arrow from extending the selection. Listen on the list or container itself (or above) to hear the keys without
+  blocking them. This was already the rule for keyboard scrolling; it is now written in the events reference too.

@@ -33,7 +33,7 @@ listing the valid ones.
 | `pinch` | Two fingers moving together or apart, or a trackpad pinch; carries `scale` and `scale_delta` (0.5.4) | yes |
 | `rotate` | Two fingers turning about their midpoint, once past about 7 degrees; carries `rotation` and `rotation_delta` in radians (0.5.8) | yes |
 | `swipe` | A pan that lifted fast (600 px/s) and far (40 px) enough: `direction` is `"left"`, `"right"`, `"up"` or `"down"`, after the pan's own `ended` (0.5.8) | yes |
-| `key_down`, `key_up` | A key is pressed or released while the node, or a descendant, has focus (the root gets keys when nothing is focused) | yes |
+| `key_down`, `key_up` | A key is pressed or released while the node, or a descendant, has focus (the root gets keys when nothing is focused). A `key_down` listener on a node **between the focused node and a scroll view, list or container that scrolls or chooses by keys** keeps every key from it (the engine's keyboard scrolling and `selection_mode` keys step aside; the event cannot be cancelled to give one back): listen on the scroll view, list or container itself, or above it, to hear keys without blocking them (see [keyboard scrolling](../guide/nodes-and-layout.md#keyboard-scrolling) and [selecting rows](../guide/nodes-and-layout.md)) | yes |
 | `input` | Committed text arrives for the focused text field | yes |
 | `focus`, `unfocus` | A node gains or loses keyboard focus | yes |
 | `change` | A text field's text was changed by the user | no |
