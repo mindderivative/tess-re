@@ -17,7 +17,8 @@ Three tiers (`.github/workflows/ci.yml` runs the one this picks):
            Linux only.
   full     a release (the workspace version in Cargo.toml moved), a build-config change that can
            break another platform (Cargo.lock, rust-toolchain.toml, the root Cargo.toml, the CI
-           workflow itself), the `full-ci` label, or a manual run: everything, on Linux, Windows and
+           workflow itself), a change to the cfg-heavy platform files (engine-platform's lib.rs, titlebar.rs,
+           appearance.rs: Windows and macOS code Linux does not compile), the `full-ci` label, or a manual run: everything, on Linux, Windows and
            macOS, plus the MSRV check, every example and the docs build. The docs tier runs no
            examples.
 
@@ -51,6 +52,14 @@ DOCS_SUFFIXES = (".md",)
 
 # Changes that can break a platform or the toolchain without touching a line of Rust: the full tier.
 FULL_FILES = {"Cargo.lock", "rust-toolchain.toml", "Cargo.toml", ".github/workflows/ci.yml"}
+# The cfg-heavy platform files: Windows, macOS and X11 code that Linux does not compile (a window's native
+# options, the title bar, the OS appearance). Only the Windows and macOS jobs of the full tier build it, so a change to
+# one gets that tier rather than waiting for the next release.
+PLATFORM_CFG_FILES = {
+    "crates/engine-platform/src/lib.rs",
+    "crates/engine-platform/src/titlebar.rs",
+    "crates/engine-platform/src/appearance.rs",
+}
 
 # Always taken with a partial run's Python tests: broad, quick, and not tied to one feature.
 SMOKE_TESTS = [
@@ -182,6 +191,9 @@ def decide(
     shared = sorted(f for f in files if f in FULL_FILES)
     if shared:
         return Plan("full", "build configuration changed: " + ", ".join(shared), files, run_docs=True, rust=True)
+    platform = sorted(f for f in files if f in PLATFORM_CFG_FILES)
+    if platform:
+        return Plan("full", "platform code that only Windows and macOS compile changed: " + ", ".join(platform), files, run_docs=True, rust=True)
     if all(is_docs(f) for f in files):
         why = "documentation only" if files else "no files changed"
         return Plan("docs", why, files, run_docs=True)
