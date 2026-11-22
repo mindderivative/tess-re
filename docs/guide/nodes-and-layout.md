@@ -638,6 +638,11 @@ focusing it from code (`node.focus()`) still works.
 **Keys that belong to a node on the way.** A text input (inside a row, say) keeps its keys, and so does a row with
 its own `key_down` listener (a slider in a row), as for [keyboard scrolling](#keyboard-scrolling). A `key_down`
 listener on the list itself does not stop the engine: it hears the keys of its rows and the engine still chooses.
+This is by design and has no per-key opt-out: a `key_down` event cannot be cancelled, so **any** `key_down` listener on
+a row, even one that only observes, keeps every key for itself (Shift+Arrow then does not extend the selection from
+that row). To watch or handle keys of a list's rows and still let the list choose, put the `key_down` listener on the
+list (or on an ancestor): it hears every key of its rows and does not block the engine. The same rule applies to a
+scroll view's keys and to a `virtual_list`'s.
 
 **`selection_change`** fires on the list (it does not bubble) once for each key press, click or `set` that changed
 the set, with the whole new set: `event.selection` (the keys, ascending), `event.ranges` (the same set as
