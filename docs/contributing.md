@@ -256,8 +256,8 @@ Each row is pinned by a test, so it stays true.
 | What | KWin (virtual) | sway (headless) | Test |
 |---|---|---|---|
 | A new toplevel | keeps the size it asked for (200x200), centred, with a title bar of its own | tiled over the whole output, size ignored | `test_compositor_differences_live.py` |
-| Keyboard while a popup holds a grab (the bar below asked for `keyboard="none"` or `"on_demand"`) | goes to the popup: the focused node gets `key_down`, Escape included | stays with the bar (or nobody): the popup never hears the key | `test_popup_grab_live.py` |
-| Escape with a grabbing popup | the compositor does not end the popup; the key is the popup's | same: nobody ends it | `test_popup_grab_live.py`. The `PopupWindow` docs say Escape dismisses: it does not on either compositor, an app must close the popup itself |
+| Keyboard while a popup holds a grab (the bar below asked for `keyboard="none"` or `"on_demand"`) | goes to the popup: the focused node gets `key_down`, Escape included (the TRE-REQ-024 finding: an `xdg_popup` grab owns the keyboard) | stays with the bar (or nobody): the popup never hears the key | `test_popup_grab_live.py` |
+| Escape with a grabbing popup | the compositor does not end the popup; the key is the popup's | same: nobody ends it | `test_popup_grab_live.py`. The `PopupWindow` docs used to say Escape dismisses; it does not on either compositor (corrected in `layer-window.md` and the stub), an app closes the popup from a `key_down` handler |
 | Click away while a popup is **held** (`first_present`) | ignored: the grab is inert until the popup is mapped; `ready()` shows it | dismisses the unmapped popup (`closed`, reason `dismissed`); it is never shown | `test_popup_grab_live.py`. The grab has to be requested with the role (a grab cannot be asked for after the first commit), so tre cannot defer it |
 | Same everywhere (no difference found) | first present hold/`ready()`/deadline, layer surface and popup mapping, popup placement by the body and flip by the body, edge margin | same | the `[kwin]`/`[sway]` pairs |
 
