@@ -597,8 +597,9 @@ lst.set(selection=[3, 4, 9])  # replaces the whole set; selection_change, source
 | Press on a chosen row of several, released without going `drag_start_px` | choose only this row, on the release |
 | Press on a chosen row of several, and the pointer goes `drag_start_px` or more before the release | the set is left as it is: the app starts its drag with the whole selection |
 
-A `"single"` list chooses the row clicked, whatever is held. Only the primary button chooses; a secondary press
-(a context menu) does not.
+A `"single"` list chooses the row clicked, whatever is held. Only the primary button chooses, with one exception (0.6.13):
+a **secondary press** (a right click, which opens a context menu) on a row that is not chosen chooses that row alone, so
+the menu acts on what was clicked; on a chosen row it leaves the set as it is, so the menu can act on all of it.
 
 **The drag rule (AC-SLT-13).** The pointer going `drag_start_px` (a [window property](../reference/window.md#gesture-click-and-drag-thresholds-0612))
 from the press makes it a drag, and stays one even if the pointer comes back. With the default `drag_start_px=0`
@@ -631,8 +632,8 @@ are shortcuts and are not the list's.
 
 **Unselectable rows.** The rows of `unselectable_keys` cannot be chosen by a click, a key, a range or Ctrl+A (a range
 passes them), and Up, Down, Home, End and the Page keys never put focus on one (AC-SLT-5); a chosen row that is made
-unselectable leaves the set. The list cannot stop Tab or a click from focusing such a row: a framework that disables a
-row also makes it not `focusable`.
+unselectable leaves the set. (0.6.13) Tab passes over such a row, and a click on it neither chooses it nor focuses it;
+focusing it from code (`node.focus()`) still works.
 
 **Keys that belong to a node on the way.** A text input (inside a row, say) keeps its keys, and so does a row with
 its own `key_down` listener (a slider in a row), as for [keyboard scrolling](#keyboard-scrolling). A `key_down`
@@ -642,3 +643,32 @@ listener on the list itself does not stop the engine: it hears the keys of its r
 the set, with the whole new set: `event.selection` (the keys, ascending), `event.ranges` (the same set as
 half-open `(start, end)` pairs, which stays small for any size), `event.count`, `event.anchor` and `event.selection_source`
 (`"pointer"`, `"keyboard"` or `"api"`). A call that leaves the set as it was fires nothing.
+
+**Announcing the count (0.6.13).** `selection_announce="{count} selected"` (default `None`: nothing is announced) makes the
+list say it politely to assistive technology once the set has stopped changing for `selection_announce_ms` (300): ten
+changes within that time are one announcement, with the count at the end. The wording is yours (translate it); the engine
+only counts and waits. The same two properties work on a container.
+
+### Selecting the children of a container
+
+(0.6.13) The same rules choose the children of a `box`, `container` or `scroll_view` -- a toolbar of options, a settings
+list, a tree a toolkit builds from nested containers -- with the children as the rows: set `selection_mode` on the
+container, and `item_selectable=False` on a child that cannot be chosen. A scroll view has one child, its content; the
+items of a scroll view are the children of that content.
+
+```python
+menu = window.create("box", flex_direction="vertical", selection_mode="multiple", select_all_key=True)
+for text in ["Inbox", "Drafts", "Sent"]:
+    menu.add_child(window.create("box", height=32, focusable=True, role="option", label=text))
+menu.children()[1].set(item_selectable=False)               # a heading, say
+menu.on("selection_change", lambda e: print([n.get("label") for n in e.selection], e.count))
+menu.set(selection=[menu.children()[0]])                    # nodes, not keys
+```
+
+`selection` is a list of the chosen child nodes (`ValueError` for a node that is not an item or cannot be chosen) and
+`selection_anchor` one of them. Clicks, Shift, Ctrl, the keys, Ctrl+A, the drag rule and `selection_change` are the list's
+(the event's `selection` and `anchor` are nodes). **Reordering keeps the choice by index only**: the engine remembers
+which indices are chosen, not which nodes, so after you insert, remove or move children, set `selection` again from
+your data. A child that is removed, hidden or made unselectable leaves the set. A tree is containers with items marked
+`item_selectable`: Ctrl+A chooses the items that exist (a collapsed branch's children are not in the tree, their state is
+the toolkit's). See the [Properties reference](../reference/properties.md#selecting-the-children-of-a-box-container-or-scroll-view-0613).

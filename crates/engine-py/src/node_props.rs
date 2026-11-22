@@ -26,12 +26,14 @@ use crate::node_layout::{LAYOUT_PROPS, StyleEdit, parse_layout, read_layout};
 
 /// Every property `set` accepts besides the layout ones
 /// (`node_layout::LAYOUT_PROPS`), in the order its error lists them.
-const SETTABLE: [&str; 92] = [
+const SETTABLE: [&str; 93] = [
     // 0.5.7 (#179): placed against another node.
     "anchor",
     "placement",
     "offset",
     "visible",
+    // 0.6.13: whether a container that chooses its children can choose this one.
+    "item_selectable",
     "z_index",
     "clip_children",
     "snap_align",
@@ -269,6 +271,7 @@ pub(crate) enum Change {
     /// `size_hint` -- stored in the handler map.
     Callback(HandlerKey, Py<PyAny>),
     Visible(bool),
+    ItemSelectable(bool),
     ZIndex(i32),
     ClipChildren(bool),
     /// 0.5.6 (#166): `snap_align`; `None` takes the scroll view's own.
@@ -1119,6 +1122,7 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
     };
     Ok(match name {
         "visible" => Change::Visible(boolean(value, name)?),
+        "item_selectable" => Change::ItemSelectable(boolean(value, name)?),
         "z_index" => {
             if value.is_instance_of::<pyo3::types::PyBool>() {
                 return Err(invalid(name, "an int"));
@@ -1833,7 +1837,13 @@ impl Node {
             let node = tree
                 .get(self.id)
                 .ok_or(crate::error::EngineError::Destroyed)?;
-            let changes = parse_all(props, &node.kind, &self.tree)?;
+            let mut changes = parse_all(props, &node.kind, &self.tree)?;
+            // 0.6.13: which nodes are a container's items is the tree's to say.
+            if let Some(selection) =
+                crate::container_selection::check(&tree, &self.tree, self.id, props)?
+            {
+                changes.push(Change::Kind(selection));
+            }
             check_anchor_changes(&tree, Some(self.id), node.anchored.is_some(), &changes)?;
             check_template_changes(&node.kind, &changes)?;
             for change in &changes {
@@ -1925,6 +1935,10 @@ impl Node {
                 return Ok(value);
             }
             match name {
+                // 0.6.13: a container's chosen children, and its anchor, are nodes.
+                "selection" | "selection_anchor" if Tree::holds_items(&node.kind) => {
+                    return crate::container_selection::read(self, &tree, node, name, py);
+                }
                 "anchor" => {
                     return match node.anchored.as_deref() {
                         Some(a) => Ok(Py::new(py, self.handle_to(a.anchor))?.into_any()),
@@ -2147,6 +2161,11 @@ impl Node {
                 },
                 "blend_mode" => any(node.paint.blend.name().into_pyobject(py)?.into_any()),
                 "visible" => any(node.visible.into_pyobject(py)?.to_owned().into_any()),
+                "item_selectable" => any(node
+                    .item_selectable
+                    .into_pyobject(py)?
+                    .to_owned()
+                    .into_any()),
                 "z_index" => any(node.z_index.into_pyobject(py)?.into_any()),
                 "snap_align" => node
                     .snap_align
@@ -2762,6 +2781,7 @@ impl Node {
                         taffy::Display::None
                     };
                 }
+                Change::ItemSelectable(on) => node.item_selectable = on,
                 Change::ZIndex(z) => node.z_index = z,
                 Change::ClipChildren(clip) => node.paint.clip_children = clip,
                 Change::Outline(change) => change.apply(&mut node.paint.outline),
@@ -3001,6 +3021,10 @@ impl Node {
         }
         if kind_changed && fit.any() {
             tree.relayout(self.id);
+        }
+        if kind_changed {
+            // 0.6.13: a container's `selection_mode` may have changed.
+            tree.refresh_selection_host(self.id);
         }
         let released = if reset_rows {
             tree.virtual_list_release_outside(self.id, 0..0)

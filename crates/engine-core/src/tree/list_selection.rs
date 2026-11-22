@@ -1,7 +1,8 @@
-//! Choosing the rows of a virtual list by pointer and keys (UX spec "Selection",
-//! AC-SLT-1 to AC-SLT-6 and 13): the rules of `selection.rs` fed with clicks and keys,
-//! and the focus that follows. A list whose `selection_mode` is `none` (the default)
-//! is never touched by any of it.
+//! Choosing the rows of a virtual list, or the children of a container
+//! (`container_selection.rs`), by pointer and keys (UX spec "Selection", AC-SLT-1 to
+//! AC-SLT-6 and 13): the rules of `selection.rs` fed with clicks and keys, and the focus that
+//! follows. A list or container whose `selection_mode` is `none` (the default) is never touched
+//! by any of it.
 
 use super::*;
 use crate::selection::{RangeSet, SelectionMode, SelectionSource, SelectionState};
@@ -49,35 +50,57 @@ impl Tree {
         }
     }
 
-    /// The nearest list around `node` (`node` too) whose rows the engine chooses.
+    /// The nearest list or container around `node` (`node` too) whose items the engine chooses.
     fn selecting_list_of(&self, node: NodeId) -> Option<NodeId> {
         self.ancestors(node).find(|&id| {
             matches!(&self.nodes[id].kind,
                 NodeKind::VirtualList(state) if state.selection.mode != SelectionMode::None)
+                || self.selects_children(id)
         })
     }
 
-    /// The list, and the index of its row, that `node` is or is inside, when that list
-    /// chooses rows.
+    /// The list or container, and the index of its item, that `node` is or is inside, when that
+    /// list or container chooses its items.
     fn selecting_row(&self, node: NodeId) -> Option<(NodeId, usize)> {
         self.ancestors(node).find_map(|id| {
-            let list = self.nodes[id].parent?;
-            let NodeKind::VirtualList(state) = &self.nodes[list].kind else {
-                return None;
-            };
-            if state.selection.mode == SelectionMode::None {
-                return None;
+            let host = self.nodes[id].parent?;
+            if let NodeKind::VirtualList(state) = &self.nodes[host].kind {
+                if state.selection.mode == SelectionMode::None {
+                    return None;
+                }
+                let (&row, _) = state.materialized.iter().find(|(_, built)| **built == id)?;
+                return Some((host, row));
             }
-            let (&row, _) = state.materialized.iter().find(|(_, built)| **built == id)?;
-            Some((list, row))
+            let host = self.item_host(host)?;
+            Some((host, self.container_item_index(host, id)?))
         })
     }
 
-    fn selection_mut(&mut self, list: NodeId) -> Option<(&mut SelectionState, usize)> {
-        match &mut self.nodes.get_mut(list)?.kind {
-            NodeKind::VirtualList(state) => Some((&mut state.selection, state.item_count)),
+    /// The selection of `host` (a virtual list or a container) and how many items it has.
+    pub(super) fn selection_ref(&self, host: NodeId) -> Option<(&SelectionState, usize)> {
+        let node = self.nodes.get(host)?;
+        match &node.kind {
+            NodeKind::VirtualList(state) => Some((&state.selection, state.item_count)),
+            kind if Self::holds_items(kind) => {
+                Some((node.selection.as_deref()?, self.container_items(host).len()))
+            }
             _ => None,
         }
+    }
+
+    pub(super) fn selection_mut(&mut self, host: NodeId) -> Option<(&mut SelectionState, usize)> {
+        let items = self.container_items(host).len();
+        let node = self.nodes.get_mut(host)?;
+        if matches!(node.kind, NodeKind::VirtualList(_)) {
+            return match &mut node.kind {
+                NodeKind::VirtualList(state) => Some((&mut state.selection, state.item_count)),
+                _ => None,
+            };
+        }
+        if !Self::holds_items(&node.kind) {
+            return None;
+        }
+        node.selection.as_deref_mut().map(|s| (s, items))
     }
 
     /// A primary press at `position` on `hit`: chooses rows as the click rules say
@@ -89,25 +112,30 @@ impl Tree {
         let toggle = held.ctrl || held.meta;
         let Some((list, row)) = self.selecting_row(hit) else {
             // The empty part of a list: clears a multiple selection (UX spec "Selection", rule 5).
-            let multiple = matches!(&self.nodes[hit].kind,
-                NodeKind::VirtualList(s) if s.selection.mode == SelectionMode::Multiple);
+            // (Of a scroll view, the empty part of its content is meant too.)
+            let host = self.item_host(hit).unwrap_or(hit);
+            let multiple = self
+                .selection_ref(host)
+                .is_some_and(|(s, _)| s.mode == SelectionMode::Multiple);
             if multiple
                 && !held.shift
                 && !toggle
-                && let Some((sel, _)) = self.selection_mut(hit)
+                && let Some((sel, _)) = self.selection_mut(host)
             {
                 sel.clear(SelectionSource::Pointer);
             }
             return;
         };
+        self.sync_container_selection(list);
         let Some((sel, count)) = self.selection_mut(list) else {
             return;
         };
-        sel.active = Some(row);
-        sel.pending_focus = None;
+        // A row that cannot be chosen takes neither the choice nor the keyboard (AC-SLT-5).
         if !sel.is_selectable(row, count) {
             return;
         }
+        sel.active = Some(row);
+        sel.pending_focus = None;
         let pointer = SelectionSource::Pointer;
         match (sel.mode, held.shift, toggle) {
             (SelectionMode::Multiple, true, add) => sel.select_range(row, count, add, pointer),
@@ -125,6 +153,26 @@ impl Tree {
                 });
             }
             _ => sel.select_only(row, count, pointer),
+        }
+    }
+
+    /// A secondary press (a right click) on `hit`: an item that is not chosen is chosen alone, so
+    /// that the menu it opens acts on what was clicked; a chosen one keeps the set it is in.
+    pub(super) fn list_secondary_press(&mut self, hit: Option<NodeId>) {
+        let Some((list, row)) = hit.and_then(|h| self.selecting_row(h)) else {
+            return;
+        };
+        self.sync_container_selection(list);
+        let Some((sel, count)) = self.selection_mut(list) else {
+            return;
+        };
+        if !sel.is_selectable(row, count) {
+            return;
+        }
+        sel.active = Some(row);
+        sel.pending_focus = None;
+        if !sel.is_selected(row) {
+            sel.select_only(row, count, SelectionSource::Pointer);
         }
     }
 
@@ -202,32 +250,48 @@ impl Tree {
         moves
     }
 
-    /// The lists whose chosen set changed since the last call, each with the whole set.
+    /// The lists and containers whose chosen set changed since the last call, each with the
+    /// whole set.
     pub fn take_selection_changes(&mut self) -> Vec<SelectionChange> {
-        if self.virtual_list_count == 0 {
+        if self.virtual_list_count == 0 && self.selection_hosts.is_empty() {
             return Vec::new();
         }
+        // A container reads its children again first: one that cannot be chosen any more leaves
+        // the set, and that is a change.
+        let containers: Vec<NodeId> = self.selection_hosts.iter().copied().collect();
+        for &container in &containers {
+            self.sync_container_selection(container);
+        }
         // A read-only pass first, as for scrolling: see `take_scroll_changes`.
-        let changed: Vec<NodeId> = self
-            .nodes
-            .iter()
-            .filter(|(_, node)| {
-                matches!(&node.kind, NodeKind::VirtualList(s) if s.selection.has_pending())
-            })
-            .map(|(id, _)| id)
+        let mut changed: Vec<NodeId> = containers
+            .into_iter()
+            .filter(|&id| self.selection_ref(id).is_some_and(|(s, _)| s.has_pending()))
             .collect();
+        if self.virtual_list_count > 0 {
+            changed.extend(
+                self.nodes
+                    .iter()
+                    .filter(|(_, node)| {
+                        matches!(&node.kind, NodeKind::VirtualList(s) if s.selection.has_pending())
+                    })
+                    .map(|(id, _)| id),
+            );
+        }
         let mut changes = Vec::with_capacity(changed.len());
         for list in changed {
-            if let NodeKind::VirtualList(state) = &mut self.nodes[list].kind
-                && let Some(source) = state.selection.take_pending()
-            {
+            let Some((sel, _)) = self.selection_mut(list) else {
+                continue;
+            };
+            if let Some(source) = sel.take_pending() {
                 changes.push(SelectionChange {
                     list,
-                    selected: state.selection.selected().clone(),
-                    anchor: state.selection.anchor(),
+                    selected: sel.selected().clone(),
+                    anchor: sel.anchor(),
                     source,
                 });
+                self.note_selection_reported(list);
             }
+            self.refresh_selection_host(list);
         }
         changes
     }
@@ -238,6 +302,7 @@ impl Tree {
         let Some(list) = self.focused.and_then(|f| self.selecting_list_of(f)) else {
             return false;
         };
+        self.sync_container_selection(list);
         let Some((sel, count)) = self.selection_mut(list) else {
             return false;
         };
@@ -250,8 +315,12 @@ impl Tree {
 
     /// The row the keyboard is on in `list`: the focused row, else the one last moved to.
     fn list_cursor(&self, list: NodeId) -> Option<usize> {
-        self.virtual_list_focused_row(list)
-            .or_else(|| self.virtual_list_selection(list)?.active)
+        let focused = if matches!(self.nodes[list].kind, NodeKind::VirtualList(_)) {
+            self.virtual_list_focused_row(list)
+        } else {
+            self.container_focused_item(list)
+        };
+        focused.or_else(|| self.selection_ref(list)?.0.active)
     }
 
     /// The key `key` (with the held modifiers) pressed while focus is in a list that chooses
@@ -271,6 +340,7 @@ impl Tree {
             return NOT_MINE;
         }
         let ctrl = held.ctrl;
+        self.sync_container_selection(list);
         let cursor = self.list_cursor(list);
         let keyboard = SelectionSource::Keyboard;
         let Some((sel, count)) = self.selection_mut(list) else {
@@ -328,10 +398,7 @@ impl Tree {
 
     /// The row a movement key takes the keyboard to from `cursor`: always a selectable row.
     fn list_key_target(&self, list: NodeId, key: Key, cursor: Option<usize>) -> Option<usize> {
-        let NodeKind::VirtualList(state) = &self.nodes.get(list)?.kind else {
-            return None;
-        };
-        let (sel, count) = (&state.selection, state.item_count);
+        let (sel, count) = self.selection_ref(list)?;
         let Some(from) = cursor else {
             // Nowhere yet: going down or to the start begins at the first row, going up or to the
             // end at the last.
@@ -340,32 +407,39 @@ impl Tree {
                 _ => sel.first_selectable(count),
             };
         };
-        let page = f64::from(self.layout(list).size.height) * state.metrics().page_fraction;
-        // A `size_hint` list that has not been laid out knows no offsets: a page is a row.
-        let measured = state.total_extent() > 0.0;
         match key {
             Key::Home => sel.first_selectable(count),
             Key::End => sel.last_selectable(count),
             Key::ArrowDown => sel.next_selectable(from, count).or(Some(from)),
             Key::ArrowUp => sel.prev_selectable(from).or(Some(from)),
-            Key::PageDown => {
-                let to = if measured {
-                    state.index_at(state.offset_of(from) + page).max(from + 1)
-                } else {
-                    from + 1
-                };
-                sel.nearest_selectable(to, count, true)
-            }
-            Key::PageUp => {
-                let to = if measured {
-                    state.index_at((state.offset_of(from) - page).max(0.0))
-                } else {
-                    0
-                }
-                .min(from.saturating_sub(1));
-                sel.nearest_selectable(to, count, false)
-            }
+            Key::PageDown => sel.nearest_selectable(self.page_row(list, true, from), count, true),
+            Key::PageUp => sel.nearest_selectable(self.page_row(list, false, from), count, false),
             _ => None,
+        }
+    }
+
+    /// The row a Page Down (`down`) or Page Up from row `from` of `list` goes to, before rows
+    /// that cannot be chosen are passed over: a page away, and a row away at least.
+    fn page_row(&self, list: NodeId, down: bool, from: usize) -> usize {
+        let Some(NodeKind::VirtualList(state)) = self.nodes.get(list).map(|n| &n.kind) else {
+            return self.container_page_target(list, down, from);
+        };
+        let page = f64::from(self.layout(list).size.height) * state.metrics().page_fraction;
+        // A `size_hint` list that has not been laid out knows no offsets: a page is a row.
+        let measured = state.total_extent() > 0.0;
+        if down {
+            if measured {
+                state.index_at(state.offset_of(from) + page).max(from + 1)
+            } else {
+                from + 1
+            }
+        } else {
+            if measured {
+                state.index_at((state.offset_of(from) - page).max(0.0))
+            } else {
+                0
+            }
+            .min(from.saturating_sub(1))
         }
     }
 
@@ -376,6 +450,9 @@ impl Tree {
         list: NodeId,
         row: usize,
     ) -> Option<(Option<NodeId>, Option<NodeId>)> {
+        if !matches!(self.nodes.get(list)?.kind, NodeKind::VirtualList(_)) {
+            return self.focus_container_item(list, row);
+        }
         let built = match &mut self.nodes.get_mut(list)?.kind {
             NodeKind::VirtualList(state) => {
                 state.selection.active = Some(row);
@@ -852,5 +929,103 @@ mod tests {
         assert_eq!(tree.list_selection_key(Key::ArrowDown, false), NOT_MINE);
         assert_eq!(key(&mut tree, Key::Escape, false, false), NOT_MINE);
         assert_eq!(key(&mut tree, Key::Tab, false, false), NOT_MINE);
+    }
+
+    #[test]
+    fn tab_passes_over_unselectable_rows_and_a_click_on_one_focuses_nothing() {
+        let (mut tree, list) = make_list(6, SelectionMode::Multiple);
+        if let NodeKind::VirtualList(s) = &mut tree.get_mut(list).unwrap().kind {
+            s.selection
+                .set_unselectable(RangeSet::from_indices([1, 2]), SelectionSource::Api);
+        }
+        focus(&mut tree, list, 0);
+        tree.move_focus(list, FocusDirection::Next);
+        assert_eq!(tree.focused(), Some(row(&tree, list, 3)));
+        tree.move_focus(list, FocusDirection::Previous);
+        assert_eq!(tree.focused(), Some(row(&tree, list, 0)));
+        assert!(tree.in_unselectable_item(row(&tree, list, 2)));
+        assert!(!tree.in_unselectable_item(row(&tree, list, 3)));
+        // A press on an unselectable row neither chooses it nor makes it the keyboard's row.
+        press_row(&mut tree, list, 4, false, false);
+        press_row(&mut tree, list, 2, false, false);
+        assert_eq!(chosen(&tree, list), [4]);
+        assert_eq!(tree.virtual_list_selection(list).unwrap().active, Some(4));
+    }
+
+    #[test]
+    fn a_right_click_chooses_an_unchosen_row_alone_and_keeps_the_set_of_a_chosen_one() {
+        let (mut tree, list) = make_list(6, SelectionMode::Multiple);
+        press_row(&mut tree, list, 0, false, false);
+        press_row(&mut tree, list, 2, true, false);
+        tree.list_secondary_press(Some(row(&tree, list, 1)));
+        assert_eq!(chosen(&tree, list), [0, 1, 2]);
+        tree.list_secondary_press(Some(row(&tree, list, 4)));
+        assert_eq!(chosen(&tree, list), [4]);
+    }
+
+    #[test]
+    fn built_rows_say_whether_they_are_selected_and_the_list_that_it_is_multiselectable() {
+        let (mut tree, list) = make_list(40, SelectionMode::Multiple);
+        press_row(&mut tree, list, 1, false, false);
+        // A row chosen but not built yet is selected when it is built.
+        if let NodeKind::VirtualList(s) = &mut tree.get_mut(list).unwrap().kind {
+            s.selection
+                .set_selected(RangeSet::from_indices([1, 7]), SelectionSource::Api);
+        }
+        build(&mut tree, list, 6..9);
+        // An explicit `selected` is overridden for a row of a list that chooses.
+        tree.get_mut(row(&tree, list, 0)).unwrap().access.selected = Some(true);
+        let update = tree.build_access_update(list);
+        let node = |id: NodeId| {
+            let want = crate::to_access_id(id);
+            &update.nodes.iter().find(|(n, _)| *n == want).unwrap().1
+        };
+        assert!(node(list).is_multiselectable());
+        let selected: Vec<_> = (0..9)
+            .map(|i| node(row(&tree, list, i)).is_selected())
+            .collect();
+        let want = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(|i| Some(i == 1 || i == 7));
+        assert_eq!(selected, want);
+    }
+
+    #[test]
+    fn a_list_with_mode_none_leaves_selected_to_the_app() {
+        let (mut tree, list) = make_list(6, SelectionMode::None);
+        tree.get_mut(row(&tree, list, 2)).unwrap().access.selected = Some(true);
+        let update = tree.build_access_update(list);
+        let node = |id: NodeId| {
+            let want = crate::to_access_id(id);
+            &update.nodes.iter().find(|(n, _)| *n == want).unwrap().1
+        };
+        assert!(!node(list).is_multiselectable());
+        assert_eq!(node(row(&tree, list, 1)).is_selected(), None);
+        assert_eq!(node(row(&tree, list, 2)).is_selected(), Some(true));
+    }
+
+    #[test]
+    fn a_list_announces_its_count_once_after_a_burst() {
+        let (mut tree, list) = make_list(6, SelectionMode::Multiple);
+        if let NodeKind::VirtualList(s) = &mut tree.get_mut(list).unwrap().kind {
+            s.selection.set_announce(Some("{count} rows".to_string()));
+        }
+        let start = Instant::now();
+        for i in 0..10u64 {
+            tree.clock = start + Duration::from_millis(i * 10);
+            press_row(&mut tree, list, (i % 6) as usize, false, true);
+            tree.take_selection_changes();
+        }
+        let end = start + Duration::from_millis(90);
+        tree.tick_all(end + Duration::from_millis(299));
+        assert!(!tree.has_pending_announcements());
+        tree.tick_all(end + Duration::from_millis(300));
+        assert!(tree.has_pending_announcements());
+        let texts: Vec<_> = tree
+            .build_access_update(list)
+            .nodes
+            .iter()
+            .filter(|(id, _)| id.0 & (1 << 62) != 0)
+            .map(|(_, n)| n.label().unwrap_or_default().to_string())
+            .collect();
+        assert_eq!(texts, [format!("{} rows", chosen(&tree, list).len())]);
     }
 }

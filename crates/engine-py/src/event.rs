@@ -249,13 +249,14 @@ pub struct Event {
     pub(crate) inserted: Option<(usize, usize)>,
     /// 0.6.12: `selection_change`: the chosen rows' keys, ascending, as ranges (half-open, the
     /// same set), the anchor row, and what changed it -- `"pointer"`, `"keyboard"` or `"api"`.
-    /// `count` is how many rows are chosen.
+    /// `count` is how many rows are chosen. 0.6.13: a container's `selection` and `anchor` are
+    /// its child nodes (`ranges` are still the children's indices).
     #[pyo3(get)]
-    pub(crate) selection: Option<Vec<usize>>,
+    pub(crate) selection: Option<Py<PyAny>>,
     #[pyo3(get)]
     pub(crate) ranges: Option<Vec<(usize, usize)>>,
     #[pyo3(get)]
-    pub(crate) anchor: Option<usize>,
+    pub(crate) anchor: Option<Py<PyAny>>,
     #[pyo3(get)]
     pub(crate) selection_source: Option<String>,
     pub(crate) stopped: bool,

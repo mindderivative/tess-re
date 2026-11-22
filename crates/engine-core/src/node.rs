@@ -2086,6 +2086,14 @@ pub struct Node {
     /// 0.5.7 (#179): `Some` places the node against another node in the tree.
     /// Boxed: most nodes have none.
     pub anchored: Option<Box<Anchored>>,
+    /// 0.6.13: `item_selectable` -- whether the node, as a child of a container with a
+    /// `selection_mode`, can be chosen. `false` marks a disabled or heading item that range,
+    /// select-all, the arrow keys, Tab and a click all pass over. Default `true`.
+    pub item_selectable: bool,
+    /// 0.6.13: which children of this box, container or scroll view are chosen
+    /// (`selection_mode`, `selection`, ...); the keys are the children's indices. `None` until
+    /// a selection property is set; a mode of `none` (the default) makes it inert.
+    pub selection: Option<Box<crate::selection::SelectionState>>,
 }
 
 /// 0.5.7 (#179): a node placed against another node, wherever that is in the

@@ -1705,6 +1705,9 @@ fn node_fingerprint_with(
         calc_size: _,
         // 0.5.7 (#179): where an anchored node is reaches paint as its position.
         anchored: _,
+        // 0.6.13: which children are chosen is the toolkit's to draw (a fill it sets itself).
+        item_selectable: _,
+        selection: _,
     } = node;
     visible.hash(h);
     z_index.hash(h);

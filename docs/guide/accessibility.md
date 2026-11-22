@@ -266,3 +266,19 @@ assert slider.get("value") == 0.75
 An assistive technology's `scroll_into_view` request is testable the same
 way: simulate it on a row, then read its scroll view's
 `get("scroll_offset")`.
+
+## Selection (0.6.13)
+
+A `virtual_list`, `box`, `container` or `scroll_view` with a `selection_mode` (see
+[Selecting rows](nodes-and-layout.md#selecting-rows-of-a-virtual-list)) tells assistive technology what is chosen, so a
+toolkit no longer sets `selected` by hand:
+
+- A `"multiple"` one is **multiselectable**; a `"single"` one is not, and has at most one selected item.
+- Each item says `selected` as the set says: the children of a container (the content's children for a scroll view) and
+  the **built** rows of a virtual list -- a row built later, or rebuilt after scrolling, gets it as it is built. This
+  replaces a `selected` the app set on those nodes; a node of a list or container whose mode is `"none"` keeps its own.
+- `selection_announce="{count} selected"` makes one polite announcement after the set stops changing for
+  `selection_announce_ms` (300): ten changes in that time are announced once. The text is the app's own (translate it);
+  `Window.announce` is the same channel.
+
+Give the items a role (`"option"`, `"listitem"`, `"treeitem"`) and a `label`: the engine does not guess them.

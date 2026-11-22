@@ -75,7 +75,7 @@ impl Tree {
     /// actually on screen.
     pub fn build_access_update(&self, root: NodeId) -> accesskit::TreeUpdate {
         let mut nodes = Vec::new();
-        self.collect_access_nodes(root, 0.0, 0.0, &mut nodes);
+        self.collect_access_nodes(root, 0.0, 0.0, None, &mut nodes);
         let root_id = to_access_id(root);
         self.add_announcements(root_id, &mut nodes);
         let focus = self.focused.map(to_access_id).unwrap_or(root_id);
@@ -190,11 +190,23 @@ impl Tree {
             .map(|(&index, _)| index)
     }
 
+    /// The `selected` of the built row `index`, if `id`'s list chooses its rows (0.6.13).
+    fn virtual_row_selected(&self, id: NodeId, index: usize) -> Option<bool> {
+        let NodeKind::VirtualList(list) = &self.nodes.get(self.nodes.get(id)?.parent?)?.kind else {
+            return None;
+        };
+        (list.selection.mode != crate::selection::SelectionMode::None)
+            .then(|| list.selection.is_selected(index))
+    }
+
+    /// `id` and everything under it. `chosen` is whether `id` is chosen, when it is a child of a
+    /// container that chooses its children (0.6.13): it overrides the node's own `selected`.
     pub(super) fn collect_access_nodes(
         &self,
         id: NodeId,
         offset_x: f64,
         offset_y: f64,
+        chosen: Option<bool>,
         out: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
         let node = self
@@ -287,8 +299,22 @@ impl Tree {
         if !controls.is_empty() {
             access_node.set_controls(controls);
         }
-        if let Some(selected) = access.selected {
+        // 0.6.13: the items of a list or container that chooses them are selected as the set
+        // says, however the app set `selected`; a node of one that does not choose keeps its own.
+        let row_index = self.virtual_row_index(id);
+        let derived = chosen.or_else(|| row_index.and_then(|i| self.virtual_row_selected(id, i)));
+        if let Some(selected) = derived.or(access.selected) {
             access_node.set_selected(selected);
+        }
+        let multiple = |mode| mode == crate::selection::SelectionMode::Multiple;
+        let multiselectable = match &node.kind {
+            NodeKind::VirtualList(list) => multiple(list.selection.mode),
+            _ => self
+                .container_selection(id)
+                .is_some_and(|s| multiple(s.mode)),
+        };
+        if multiselectable {
+            access_node.set_multiselectable();
         }
         if let Some(expanded) = access.expanded {
             access_node.set_expanded(expanded);
@@ -316,7 +342,7 @@ impl Tree {
         }
         let position = match access.pos_in_set {
             Some(pos) => Some(pos - 1),
-            None => self.virtual_row_index(id),
+            None => row_index,
         };
         if let Some(position) = position {
             access_node.set_position_in_set(position);
@@ -356,8 +382,16 @@ impl Tree {
         out.push((to_access_id(id), access_node));
         out.append(&mut text_nodes);
 
-        for child in visible_children() {
-            self.collect_access_nodes(child, x, y, out);
+        // The children of a container that chooses them (the content of a scroll view that
+        // does) are told whether they are chosen.
+        let choosing = self
+            .item_host(id)
+            .and_then(|host| self.container_selection(host));
+        for (index, &child) in node.children.iter().enumerate() {
+            if self.nodes.get(child).is_some_and(|c| c.visible) {
+                let chosen = choosing.map(|s| s.is_selected(index));
+                self.collect_access_nodes(child, x, y, chosen, out);
+            }
         }
     }
 }

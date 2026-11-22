@@ -40,6 +40,7 @@ use peniko::kurbo::BezPath;
 use peniko::kurbo::{Affine, ParamCurveNearest, Point, Rect};
 
 mod access;
+mod container_selection;
 pub use access::{AccessLine, TextPart};
 mod dispatch;
 mod focus;
@@ -52,6 +53,7 @@ pub use text_editing::{FieldRows, RowAnswer, RowQuery};
 mod nodes;
 mod region;
 mod scroll;
+mod selection_announce;
 mod state_layers;
 pub use focus::CancelledGesture;
 pub use scroll::{KEY_SCROLL_LINE, ScrollChange};
@@ -214,6 +216,12 @@ pub struct Tree {
     /// each event).
     list_press: Option<list_selection::ListPress>,
     drag_start_px: f64,
+    /// 0.6.13: the boxes, containers and scroll views whose children are chosen (their
+    /// `selection_mode` is not `none`), kept by `refresh_selection_host`, so the per-event
+    /// look at their changes costs nothing in a tree that has none.
+    selection_hosts: std::collections::BTreeSet<NodeId>,
+    /// 0.6.13: lists and containers with a `selection_announce` waiting for its time.
+    announce_waiting: Vec<NodeId>,
     /// #288: answers a text input's questions about the rows its shaped text shows (a window
     /// installs its shaper here, as for `text_measure`). With none, the caret keys keep
     /// moving by logical line.
@@ -332,6 +340,8 @@ impl Tree {
             overwrite_changes: Vec::new(),
             held: crate::input::Modifiers::default(),
             list_press: None,
+            selection_hosts: Default::default(),
+            announce_waiting: Vec::new(),
             drag_start_px: 0.0,
             field_rows: None,
             snap_pending: Vec::new(),
@@ -514,6 +524,8 @@ impl Tree {
             },
             calc_size: crate::node::CalcSize::default(),
             anchored: None,
+            item_selectable: true,
+            selection: None,
         });
         self.taffy_nodes.insert(id, taffy_node);
         if matches!(self.nodes[id].kind, NodeKind::Text(_)) {
@@ -885,6 +897,8 @@ impl Tree {
         }
         self.nodes.remove(id);
         self.collectible.remove(&id);
+        self.selection_hosts.remove(&id);
+        self.announce_waiting.retain(|&waiting| waiting != id);
         // Review follow-through (M28 Phase 1, §11.3): `close_overlay` is
         // the only other place that ever cleared a `self.overlays`
         // entry -- a caller removing the same content through this
@@ -1168,7 +1182,10 @@ impl Tree {
         // ticks the ones it draws, on its own clock, and decides for itself whether it must draw:
         // another tree may have taken the last step already.
         let shader_active = self.tick_shaders(now);
+        // 0.6.13: the announcement of a selection that changed is made once its burst is over.
+        let announcing = self.tick_selection_announcements(now);
         let any_active = !self.animating.is_empty()
+            || announcing
             || settling
             || paging
             || edge_scrolling

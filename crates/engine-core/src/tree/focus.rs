@@ -243,20 +243,32 @@ impl Tree {
         });
 
         let old = self.focused;
+        // 0.6.13: Tab passes over the items of a list or container that cannot be chosen (AC-SLT-5).
+        let blocked = self.unselectable_item_nodes();
+        let passable =
+            |n: NodeId| blocked.is_empty() || !self.ancestors(n).any(|a| blocked.contains(&a));
         let new = if order.is_empty() {
             None
         } else {
-            let next_index = match old.and_then(|f| order.iter().position(|&n| n == f)) {
-                Some(idx) => match direction {
-                    FocusDirection::Next => (idx + 1) % order.len(),
-                    FocusDirection::Previous => (idx + order.len() - 1) % order.len(),
-                },
-                None => match direction {
-                    FocusDirection::Next => 0,
-                    FocusDirection::Previous => order.len() - 1,
-                },
+            let start = old.and_then(|f| order.iter().position(|&n| n == f));
+            let len = order.len();
+            // The first stop that can be landed on, from the one after (before) where focus is;
+            // with focus nowhere, from the first (last).
+            let step = |idx: usize| match direction {
+                FocusDirection::Next => (idx + 1) % len,
+                FocusDirection::Previous => (idx + len - 1) % len,
             };
-            Some(order[next_index])
+            let mut at = match (start, direction) {
+                (Some(idx), _) => step(idx),
+                (None, FocusDirection::Next) => 0,
+                (None, FocusDirection::Previous) => len - 1,
+            };
+            let mut tries = 0;
+            while !passable(order[at]) && tries < len {
+                at = step(at);
+                tries += 1;
+            }
+            Some(order[at]).filter(|&n| passable(n)).or(old)
         };
         self.transition_focus(new)
     }
