@@ -620,7 +620,9 @@ fn process_input_inner(
         InputEvent::PointerReleased { .. } => io.window.press_cancelled.replace(false),
         _ => false,
     };
-    if !swallowed {
+    // 0.6.12 (P6): the moves of a press that has not gone `drag_start_px` yet.
+    let held = io.window.pointer.holds_move(delivered);
+    if !swallowed && !held {
         listeners::route_input(ctx, target, delivered, py);
     }
     window_drag(ctx, io, delivered, target, py);
@@ -763,7 +765,7 @@ fn window_drag(
     let now = crate::clock::now(ctx.tree);
     let double = io.window.last_drag_press.get().is_some_and(|(then, at)| {
         now.saturating_duration_since(then) <= engine_platform::double_click_time()
-            && (at - position).hypot() <= DOUBLE_CLICK_SLOP
+            && (at - position).hypot() <= io.window.pointer.multi_click_px()
     });
     io.window
         .last_drag_press
@@ -918,9 +920,6 @@ fn system_menu_key(io: &WindowIo<'_>, event: &InputEvent) {
         window.show_window_menu(winit::dpi::PhysicalPosition::new(0.0, 0.0));
     }
 }
-
-/// 0.5.0 M3: how far apart, in pixels, a double-click's two presses may be.
-const DOUBLE_CLICK_SLOP: f64 = 4.0;
 
 /// 0.5.0 M3: the custom-windowing design's Q1 rule. Walking up from the
 /// pressed node: a `window_region="drag"` node moves the window, a

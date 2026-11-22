@@ -392,6 +392,10 @@ pub(crate) fn process(
             terminal_drag,
             clicks,
         } = &mut *state;
+        clicks.configure(
+            handles.pointer.multi_click(),
+            handles.pointer.multi_click_px(),
+        );
         link_clicks.extend(text_pointer_input(
             event,
             &handles.tree,
@@ -477,24 +481,44 @@ pub(crate) struct LinkClick {
 
 /// What `text_pointer_input` remembers between events about links and
 /// multi-clicks (0.5.4, #131).
-#[derive(Default)]
 pub(crate) struct TextClicks {
     /// The link a primary press landed on, until its release.
     link_press: Option<(NodeId, String)>,
     /// The last primary press: when and where, and how many in a row.
     last: Option<(std::time::Instant, Point, u8)>,
+    /// 0.6.12 (P6): how soon and how near a press must follow the last to count on (the window's
+    /// `multi_click_ms` and `multi_click_px`).
+    window: std::time::Duration,
+    slop: f64,
+}
+
+impl Default for TextClicks {
+    fn default() -> Self {
+        Self {
+            link_press: None,
+            last: None,
+            window: std::time::Duration::from_secs_f64(
+                crate::pointer_settings::MULTI_CLICK_MS / 1000.0,
+            ),
+            slop: crate::pointer_settings::MULTI_CLICK_PX,
+        }
+    }
 }
 
 impl TextClicks {
+    /// 0.6.12 (P6): takes the window's current multi-click time and distance.
+    pub(crate) fn configure(&mut self, window: std::time::Duration, slop: f64) {
+        self.window = window;
+        self.slop = slop;
+    }
+
     /// Counts a primary press at `position`: 1, or 2 and 3 for presses in
     /// quick succession on the same spot, then back to 1.
     fn register(&mut self, now: std::time::Instant, position: Point) -> u8 {
-        const WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
-        const SLOP: f64 = 4.0;
         let count = match self.last {
             Some((at, was, n))
-                if now.saturating_duration_since(at) <= WINDOW
-                    && (position - was).hypot() <= SLOP =>
+                if now.saturating_duration_since(at) <= self.window
+                    && (position - was).hypot() <= self.slop =>
             {
                 n % 3 + 1
             }
@@ -1343,6 +1367,40 @@ mod tests {
             1,
             "slow"
         );
+    }
+
+    #[test]
+    fn the_multi_click_time_and_distance_change_what_counts_as_a_run() {
+        let ms = std::time::Duration::from_millis;
+        let now = std::time::Instant::now();
+        let p = Point::new(10.0, 10.0);
+        let near = Point::new(18.0, 10.0);
+        // 700 ms apart: two single clicks by default, a double click with a 800 ms window,
+        // and 200 ms apart stops being one with a 100 ms window.
+        let mut clicks = super::TextClicks::default();
+        clicks.register(now, p);
+        assert_eq!(clicks.register(now + ms(700), p), 1);
+        let mut clicks = super::TextClicks::default();
+        clicks.configure(ms(800), 4.0);
+        clicks.register(now, p);
+        assert_eq!(clicks.register(now + ms(700), p), 2);
+        let mut clicks = super::TextClicks::default();
+        clicks.configure(ms(100), 4.0);
+        clicks.register(now, p);
+        assert_eq!(clicks.register(now + ms(200), p), 1);
+        // 8 px apart: two single clicks by default, a double click within 10 px, and 3 px apart
+        // stops being one within 2 px.
+        let mut clicks = super::TextClicks::default();
+        clicks.register(now, p);
+        assert_eq!(clicks.register(now + ms(100), near), 1);
+        let mut clicks = super::TextClicks::default();
+        clicks.configure(ms(500), 10.0);
+        clicks.register(now, p);
+        assert_eq!(clicks.register(now + ms(100), near), 2);
+        let mut clicks = super::TextClicks::default();
+        clicks.configure(ms(500), 2.0);
+        clicks.register(now, p);
+        assert_eq!(clicks.register(now + ms(100), Point::new(13.0, 10.0)), 1);
     }
 
     #[test]

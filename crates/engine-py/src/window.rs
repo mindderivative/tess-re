@@ -183,6 +183,8 @@ pub(crate) struct WindowHandles {
     pub(crate) press_cancelled: Rc<Cell<bool>>,
     /// 0.5.4 (#113): this window's fingers and gesture recognizer.
     pub(crate) touch: Rc<RefCell<crate::touch::TouchRouter>>,
+    /// 0.6.12 (P6): multi-click time and distance, and the drag start distance.
+    pub(crate) pointer: Rc<crate::pointer_settings::PointerSettings>,
     /// 0.5.4 (review): what a drag, a link press and a run of clicks in text
     /// remember between events, for the live loop and `simulate` alike.
     pub(crate) text_interaction: Rc<RefCell<crate::text_interaction::TextInteraction>>,
@@ -415,6 +417,7 @@ impl PyWindow {
                 icon: Rc::new(RefCell::new(None)),
                 press_cancelled: Rc::new(Cell::new(false)),
                 touch: Rc::new(RefCell::new(crate::touch::TouchRouter::default())),
+                pointer: Rc::new(Default::default()),
                 text_interaction: Rc::new(RefCell::new(Default::default())),
                 sim_text: Rc::new(RefCell::new(None)),
                 files: Rc::new(RefCell::new(crate::files::FileDrops::default())),

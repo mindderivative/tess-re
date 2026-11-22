@@ -676,6 +676,16 @@ class Window:
         skip_taskbar: bool = ...,
         touch_slop: float = ...,
         touch_target_slop: float = ...,
+        gesture_long_press_ms: float = ...,
+        gesture_tap_ms: float = ...,
+        gesture_double_tap_ms: float = ...,
+        gesture_double_tap_px: float = ...,
+        gesture_swipe_speed: float = ...,
+        gesture_swipe_px: float = ...,
+        gesture_rotate_slop: float = ...,
+        multi_click_ms: float = ...,
+        multi_click_px: float = ...,
+        drag_start_px: float = ...,
         pause_when_occluded: bool = ...,
         reduced_motion: bool | None = ...,
         scheme: Literal["light", "dark", "auto"] | None = ...,
@@ -697,7 +707,15 @@ class Window:
         the scene-building time went; off by default (it costs two clock reads a
         node). (0.5.8) `touch_slop`: how far, in layout pixels, a finger may wander and still be
         a tap or a long press (default 10); `touch_target_slop`: how far from a node that
-        listens for touches a touch still counts as on it (default 0, off). (0.5.10)
+        listens for touches a touch still counts as on it (default 0, off). (0.6.12) The other
+        thresholds, each defaulting to the value it always had: `gesture_long_press_ms` (500, more
+        than 0), `gesture_tap_ms` (300, more than 0), `gesture_double_tap_ms` (300) and
+        `gesture_double_tap_px` (30), `gesture_swipe_speed` (600 px/s) and `gesture_swipe_px` (40),
+        `gesture_rotate_slop` (0.12 radians, 0 to pi); `multi_click_ms` (500) and `multi_click_px` (4):
+        how quick and near presses make a double or triple click in text (the px is also the
+        distance of a title-bar double click); `drag_start_px` (0, off): while the primary button is
+        held, `pointer_move` listeners hear nothing until the pointer is that many pixels from the
+        press. Milliseconds run to 3600000, distances to 1e6; anything else raises `ValueError`. (0.5.10)
         `pause_when_occluded`: whether a window the OS reports completely hidden
         (`get("occluded")`, X11 and macOS) draws nothing until it shows again (default
         `True`). (0.5.4)
@@ -796,7 +814,23 @@ class Window:
     @overload
     def get(
         self,
-        name: Literal["width", "height", "scale_factor", "touch_slop", "touch_target_slop"],
+        name: Literal[
+            "width",
+            "height",
+            "scale_factor",
+            "touch_slop",
+            "touch_target_slop",
+            "gesture_long_press_ms",
+            "gesture_tap_ms",
+            "gesture_double_tap_ms",
+            "gesture_double_tap_px",
+            "gesture_swipe_speed",
+            "gesture_swipe_px",
+            "gesture_rotate_slop",
+            "multi_click_ms",
+            "multi_click_px",
+            "drag_start_px",
+        ],
     ) -> float: ...
     @overload
     def get(self, name: Literal["title"]) -> str: ...

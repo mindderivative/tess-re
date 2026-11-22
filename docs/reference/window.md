@@ -744,3 +744,45 @@ to the constructor included) go to the compositor as usual in buffer-less commit
 A deadline counts from the surface's first configure. `background` is a constructor argument too; a layer surface or
 popup clears to nothing (see-through) unless it is set. See [layer-window.md](layer-window.md#first-present-and-ready)
 for the popup case (grab, a parent that closes while the popup is held).
+
+## Gesture, click and drag thresholds (0.6.12)
+
+How quick, how near and how far a touch or a press must be to count as one thing and not another were fixed
+numbers. They are window properties now (`Window.set` / `get`, and the same on `LayerWindow` and `PopupWindow`),
+and each default is the value it always had, so a window that sets none behaves as before. Distances are layout
+pixels (device independent, like `touch_slop`); a bad value (not a number, not finite, out of range) raises
+`ValueError` naming the property and nothing is changed.
+
+| Property | Type, range | Default | Meaning |
+| --- | --- | --- | --- |
+| `gesture_long_press_ms` | ms, more than 0 to 3600000 | `500` | How long a touch held in place (within `touch_slop`) becomes a `long_press` |
+| `gesture_tap_ms` | ms, more than 0 to 3600000 | `300` | A touch released within this is a `tap`; held longer (and not a long press) it is nothing |
+| `gesture_double_tap_ms` | ms, 0 to 3600000 | `300` | A second tap within this of the first is a double tap (`count` 2); `0` makes none |
+| `gesture_double_tap_px` | px, 0 to 1e6 | `30` | ... and within this distance of the first |
+| `gesture_swipe_speed` | px/s, 0 to 1e6 | `600` | A pan is a `swipe` if it lifts at least this fast ... |
+| `gesture_swipe_px` | px, 0 to 1e6 | `40` | ... and has travelled at least this far |
+| `gesture_rotate_slop` | radians, 0 to pi | `0.12` (about 7 degrees) | How far two fingers have to turn before it is a `rotate`; less is the wobble of a pinch |
+| `multi_click_ms` | ms, 0 to 3600000 | `500` | Primary presses in text (static text, `text_input`, terminal) within this and `multi_click_px` of the one before count 2 and 3: a double click selects the word, a triple click the line. `0` makes none |
+| `multi_click_px` | px, 0 to 1e6 | `4` | ... within this distance. Also how far apart the two presses of a title-bar double click (`window_region="drag"`) may be; its time stays the platform's |
+| `drag_start_px` | px, 0 to 1e6 | `0` (off) | While the primary button is held, `pointer_move` listeners hear nothing until the pointer has moved this far from where it was pressed, and every move after that; release ends it. A press that never gets that far is a click, whatever the hand's wobble |
+
+`touch_slop` (10 px) and `touch_target_slop` stay as they were. The thresholds are read at the next touch or
+press, so changing one mid-gesture applies from the next event (a long press already waiting uses the new time at its
+next poll).
+
+```python
+window.set(gesture_long_press_ms=400, gesture_double_tap_ms=250, gesture_double_tap_px=20)
+window.set(multi_click_ms=400, multi_click_px=3)
+window.set(drag_start_px=4)       # the Tesserae UX spec's drag start distance is 4 dp
+
+moves = []
+handle.on("pointer_down", lambda e: handle.capture_pointer())
+handle.on("pointer_move", lambda e: moves.append(e.window_x))   # only once the pointer is 4 px from the press
+```
+
+`drag_start_px` gates what listeners hear, not what the engine does: hover, a scrollbar thumb or a text selection
+drag follow the pointer from the first pixel, as they must to feel right. It applies to the pointer a finger stands
+in for as well. The Tesserae UX spec asks for 4 on `drag_start_px` (its notes "Drag and Drop" and "Drag and Drop Pattern": a
+press then movement of at least 4 dp starts a drag), 400 ms and 4 px for a double click, 500 ms for the long press
+and 10 px for the slop (its note "11 Interaction"); a design system sets its values once at window creation. The defaults here are the engine's historical ones, not a promise of the spec.
+

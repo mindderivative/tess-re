@@ -449,7 +449,10 @@ impl PyWindow {
 const SETTABLE: &str = "title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, \
     min_width, min_height, icon, resize_border, system_menu, titlebar_double_click, resize_cursors, undecorated_shadow, gpu_watchdog, present_mode, \
     dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, \
-touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors, background";
+touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors, background, \
+    gesture_long_press_ms, gesture_tap_ms, gesture_double_tap_ms, gesture_double_tap_px, \
+    gesture_swipe_speed, gesture_swipe_px, gesture_rotate_slop, multi_click_ms, multi_click_px, \
+    drag_start_px";
 
 /// 0.5.8 (#132): a distance in layout pixels, zero or more.
 fn extract_distance(name: &str, value: &Bound<'_, PyAny>) -> PyResult<f64> {
@@ -931,6 +934,7 @@ impl PyWindow {
         let mut undecorated_shadow = None;
         let mut pause_when_occluded = None;
         let (mut touch_slop, mut touch_target_slop) = (None, None);
+        let mut thresholds = Vec::new();
         let mut reduced_motion: Option<Option<bool>> = None;
         let mut scheme = None;
         let mut scheme_colors = None;
@@ -1046,6 +1050,20 @@ impl PyWindow {
                     "touch_target_slop" => {
                         touch_target_slop = Some(extract_distance(&name, &value)?);
                     }
+                    // 0.6.12 (P6): gesture, multi-click and drag start thresholds.
+                    "gesture_long_press_ms"
+                    | "gesture_tap_ms"
+                    | "gesture_double_tap_ms"
+                    | "gesture_double_tap_px"
+                    | "gesture_swipe_speed"
+                    | "gesture_swipe_px"
+                    | "gesture_rotate_slop"
+                    | "multi_click_ms"
+                    | "multi_click_px"
+                    | "drag_start_px" => {
+                        thresholds
+                            .extend(crate::pointer_settings::Threshold::parse(&name, &value)?);
+                    }
                     // 0.6.11: `None` follows the app's scheme again.
                     "scheme" => {
                         scheme = Some(if value.is_none() {
@@ -1147,6 +1165,7 @@ impl PyWindow {
         if let Some(slop) = touch_target_slop {
             self.handles.touch.borrow_mut().set_target_slop(slop);
         }
+        self.handles.apply_thresholds(&thresholds);
         if let Some(on) = glyph_cache {
             self.handles.glyph_cache.set(on);
             // The next frame is drawn again from the cache (or not).
@@ -1303,6 +1322,10 @@ impl PyWindow {
     /// Windows, until `App.run()` opens the window) -- `partial_redraw`,
     /// (0.4.0) `partial_redraw_active`, or (0.4.1) `show_damage`.
     pub(crate) fn get(&self, name: &str, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        // 0.6.12 (P6): gesture, multi-click and drag start thresholds.
+        if let Some(value) = self.handles.threshold(name) {
+            return Ok(value.into_pyobject(py)?.into_any().unbind());
+        }
         Ok(match name {
             "width" => self
                 .handles
@@ -1719,7 +1742,8 @@ impl PyWindow {
                      min_height, platform, resize_border, system_menu, titlebar_double_click, resize_cursors, undecorated_shadow, titlebar_inset, \
                      native_controls, gpu_watchdog, present_mode, dpi_scaling, transparent, \
                      transparent_active, blur_behind, click_through, x, y, always_on_top, resizable, \
-                     skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, scheme, scheme_resolved, scheme_colors, first_present, first_presented, background"
+                     skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, scheme, scheme_resolved, scheme_colors, first_present, first_presented, background, {}",
+                    crate::pointer_settings::NAMES
                 )));
             }
         })
