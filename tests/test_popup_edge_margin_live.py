@@ -2,30 +2,30 @@
 
 The compositor flips and slides the window geometry until it is on the output. `edge_margin` grows that
 geometry by the margin (inside the popup's transparent shadow room) and moves the anchor rectangle so the
-body still attaches where it would without one. Read from a screenshot (grim, headless sway), as in
+body still attaches where it would without one. Read from a screenshot (`tests/live_compositor.py`), as in
 `test_popup_geometry_live.py`, whose child program this reuses.
 
-Needs a layer-shell compositor with `grim` and a private sway (`tools/sway_live.sh`); skips without them.
+Needs a layer-shell compositor: a private sway (`tools/sway_live.sh`, with `grim`) or a private KWin
+(`tools/kwin_live.sh`, the `[kwin]` variants, with `jeepney`); skips without them.
 """
 
 import json
-import os
-import shutil
 import subprocess
 import sys
 import textwrap
 
+import live_compositor
 import pytest
 
 import tess_re
 
-pytestmark = pytest.mark.skipif(
-    not sys.platform.startswith("linux")
-    or not tess_re.supports("layer_shell")
-    or not shutil.which("grim")
-    or not os.environ.get("SWAYSOCK"),
-    reason="needs a private sway (tools/sway_live.sh) with grim",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not sys.platform.startswith("linux") or not tess_re.supports("layer_shell"),
+        reason="needs a compositor with the layer-shell protocol",
+    ),
+    pytest.mark.usefixtures("compositor"),
+]
 
 MARGIN = 20
 EDGE = 8
@@ -66,12 +66,8 @@ app.run(keep_alive=True)
 """
 
 
-WIDTH = 400
-
-
 def output_height():
-    outputs = json.loads(subprocess.run(["swaymsg", "-t", "get_outputs"], capture_output=True, check=True).stdout)
-    return outputs[0]["rect"]["height"]
+    return live_compositor.output_rect()[3]
 
 
 def run(geometry=True, top=50, adjust="()", edge=EDGE):
@@ -91,23 +87,12 @@ def run(geometry=True, top=50, adjust="()", edge=EDGE):
         line = child.stdout.readline()
         assert line, "the child printed nothing"
         info = json.loads(line)
-        region = f"0,0 {WIDTH}x{height}"
-        shot = subprocess.run(
-            ["grim", "-g", region, "-t", "ppm", "-"], capture_output=True, timeout=20, check=False
-        ).stdout
+        shot = live_compositor.screenshot()
     finally:
         child.wait(timeout=20)
-    header, rest = shot.split(b"\n255\n", 1)
-    width, height = (int(v) for v in header.split()[1:3])
-    xs, ys = [], []
-    for y in range(height):
-        row = rest[y * width * 3 : (y + 1) * width * 3]
-        for x in range(width):
-            if row[x * 3 : x * 3 + 3] == b"\xff\x00\x00":
-                xs.append(x)
-                ys.append(y)
-    assert xs, "the popup's red body is not on screen"
-    return info, (min(xs), min(ys), max(xs) + 1, max(ys) + 1)
+    box = shot.find((255, 0, 0))
+    assert box, "the popup's red body is not on screen"
+    return info, box
 
 
 # The bar is at (40, 50) on the output; the anchor point is the bottom-left of the rectangle (100, 0, 60, 32)

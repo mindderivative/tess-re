@@ -1274,7 +1274,7 @@ class PopupWindow(Window):
                        anchor="bottom_left", gravity="bottom_right",
                        constraint_adjustment=("flip_y", "slide_x"))
     menu.root.set(fill=(0x2B, 0x29, 0x30, 0xFF))
-    menu.on("closed", lambda e: print(e.reason))   # "dismissed" on an outside click or Escape
+    menu.on("closed", lambda e: print(e.reason))   # "dismissed" on an outside click
     app.add_window(menu)       # from a click handler, with `bar` already open
     ```
 
@@ -1287,8 +1287,9 @@ class PopupWindow(Window):
     on screen: `"slide_x"`, `"slide_y"`, `"flip_x"`, `"flip_y"`, `"resize_x"`, `"resize_y"` (a name or a
     sequence; the default is `("flip_y", "slide_x")`, and `()` asks for none). `offset` is a fixed `(x, y)` shift after
     placement. `grab=True` (the default) gives the popup the pointer and keyboard, so a click outside
-    it or Escape ends it with `closed`, reason `"dismissed"`; the click is the popup's, not the
-    window's below.
+    it ends it with `closed`, reason `"dismissed"`; the click is the popup's, not the
+    window's below. Escape is not handled by the engine: KWin delivers it to the grabbing popup as a
+    key (close the popup from a `key_down` handler), sway keeps the keyboard on the layer surface below.
 
     `geometry=(x, y, width, height)` (0.6.3, #266) is the popup proper, in the popup's own pixels, when
     the surface is bigger: a transparent margin that holds a shadow. The compositor places and keeps

@@ -319,7 +319,7 @@ menu = PopupWindow(bar, size=(180, 120), anchor_rect=(100, 0, 60, 32),
                    anchor="bottom_left", gravity="bottom_right",
                    constraint_adjustment=("flip_y", "slide_x"))
 menu.root.set(fill=(0x2B, 0x29, 0x30, 0xFF))
-menu.on("closed", lambda e: print(e.reason))   # "dismissed" on an outside click or Escape
+menu.on("closed", lambda e: print(e.reason))   # "dismissed" on an outside click
 app.add_window(menu)                           # from a click handler, with `bar` already open
 ```
 
@@ -398,8 +398,12 @@ the popup stays open (the protocol's rule for a grab, see Dismissal below): list
 and call `close()`. The region is not moved or scaled if a
 compositor resizes the popup (`resize_x`, `resize_y`), so set it again from the `configure` size if you use those.
 
-**Dismissal.** With `grab=True`, a click outside the application, or Escape, ends the popup:
-`closed` with reason `"dismissed"`, and the click is the popup's. A click on **another window of
+**Dismissal.** With `grab=True`, a click outside the application ends the popup:
+`closed` with reason `"dismissed"`, and the click is the popup's. **Escape is not handled by the engine:** the
+compositor decides who hears the key. KWin gives a popup that holds a grab the keyboard, so Escape arrives as a
+`key_down` on the popup's focused node (close the popup from that handler); sway keeps the keyboard on the layer
+surface below, so the popup never hears it. Neither ends the popup by itself (`tests/test_popup_grab_live.py`,
+private sway and private KWin). A click on **another window of
 the same application** is delivered to that window as usual (that is the protocol's rule for a
 grab), so a menu that should close on it listens for the click and calls `close()`. Closing a
 popup closes the submenus hanging off it.
@@ -410,9 +414,11 @@ its `x`, `y` and size) and the configure is acknowledged, but nothing is shown u
 from the first configure). Build the menu's content while it is held, then call `ready()`: the popup appears complete.
 
 * **The parent is not blocked.** The parent keeps drawing and taking input; a held popup is just an unmapped surface.
-* **A grab and a hold.** With `grab=True` the grab is the compositor's to start when the popup is mapped. Checked on
-  sway: a held popup with a grab is not dismissed while it is held, and maps normally at `ready()`. (A dismissal by a
-  click outside after it maps is the existing behaviour, see Dismissal above; not re-tested with a hold.)
+* **A grab and a hold.** With `grab=True` the grab is requested with the role (it cannot be asked for after the first
+  commit), and what a compositor does with it while the popup is held differs. KWin keeps it inert until the popup is
+  mapped: a click outside while it is held does nothing, and `ready()` shows the popup. Sway has it live: a click
+  outside while the popup is held ends it (`closed`, reason `"dismissed"`) before it was ever shown. After
+  `ready()` a click outside dismisses it on both (`tests/test_popup_grab_live.py`).
 * **A parent that closes while the popup is held (or open) ends the popup first:** `closed` arrives on the popup with
   reason `"dismissed"` (the reason for a popup the compositor ends because its parent went), the popup's surface is
   destroyed before the parent's, and any popups hanging off it go the same way, deepest first. `popup.ready()` after

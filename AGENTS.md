@@ -18,7 +18,9 @@
 * No full suites (`tools/verify.sh`, bare `pytest tests`, workspace-wide `cargo test`) without the user's express word in chat, for any reason.
 * Run only the tests the request needs; `python3 -I tools/tests_for.py` suggests them (name match: read its reasons).
 * Headless first (`Window.snapshot`/`advance`, Rust unit tests, `tools/sway_live.sh`); a live GPU or compositor only if headless cannot answer.
-* Tests must not touch the real session: `tests/conftest.py` strips `DISPLAY`/`WAYLAND_DISPLAY` unless `TESS_RE_PRIVATE_COMPOSITOR=1` (set by `sway_live.sh`) or `TESS_RE_ALLOW_REAL_SESSION=1` (the user's runs).
+* KWin is the desktop's compositor and CI has none: `tools/kwin_live.sh -- CMD` runs CMD in a private headless KWin (own bus and runtime dir, no uinput; local only, see `docs/contributing.md`, "Live tests in a private KWin"). Live tests take the compositor from the `compositor` fixture (`[sway]`/`[kwin]`), so one test serves both lanes.
+* **Every PR body states the live-compositor result in one line:** `sway: x passed, KWin(virtual): y passed` or `... / not applicable` (say why: no live test touches the change). Run the live tests your change touches in both lanes before opening it.
+* Tests must not touch the real session: `tests/conftest.py` strips `DISPLAY`/`WAYLAND_DISPLAY` unless `TESS_RE_PRIVATE_COMPOSITOR=1` (set by `sway_live.sh` and `kwin_live.sh`) or `TESS_RE_ALLOW_REAL_SESSION=1` (the user's runs).
 * Never run `TESS_RE_LIVE_INPUT=1` tests (real input via `/dev/uinput`), even in private sway.
 * Visible live tests: HDMI-A-1 only; DP-1 needs the user's express permission and a stated reason. Ask first, give the duration, never run unannounced.
 * Only Linux (RADV, llvmpipe) is testable here; mark Mac, Windows and other-GPU checks unverified.

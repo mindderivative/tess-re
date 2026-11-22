@@ -4,9 +4,9 @@
 A bar is 32 px tall and a `show_layer` menu draws inside its own window, so a menu for the
 bar's button needs a surface of its own. A `PopupWindow` is that surface: an `xdg_popup`
 parented to the bar, sized to the menu, placed by the compositor beside the button and flipped
-above it when the bar is at the bottom edge. A click outside the application, or Escape,
-closes it with `closed` reason `"dismissed"`. Item B opens a submenu, a popup whose parent is
-the menu.
+above it when the bar is at the bottom edge. A click outside the application closes it with
+`closed` reason `"dismissed"`; Escape reaches the popup as a key (KWin) or not at all (sway).
+Item B opens a submenu, a popup whose parent is the menu.
 
 Needs a Wayland compositor with the layer shell (KDE's KWin, wlroots'); elsewhere
 `LayerWindow(...)` raises `tess_re.UnsupportedPlatform`, which this example reports and returns
@@ -77,7 +77,7 @@ def open_menu(e=None):
         app.add_window(sub)
 
     b.on("click", open_sub)
-    # "dismissed" on an outside click or Escape; "app" after close(): either way it is gone.
+    # "dismissed" on an outside click; "app" after close(): either way it is gone.
     menu.on("closed", lambda e: (menus.clear(), print(f"menu closed: {e.reason}")))
     menu.on("configure", lambda e: print(f"menu placed at ({e.x}, {e.y}), {e.width}x{e.height}"))
     menus.append(menu)

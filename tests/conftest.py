@@ -8,7 +8,7 @@ skips with "no display reachable": the live tests, and the clipboard tests, whic
 clipboard service is reachable.
 
 Allowed, any one of:
- - `TESS_RE_PRIVATE_COMPOSITOR=1`, which `tools/sway_live.sh` sets (the session is a private sway);
+ - `TESS_RE_PRIVATE_COMPOSITOR=1`, which `tools/sway_live.sh` and `tools/kwin_live.sh` set (the session is a private sway or KWin);
  - `TESS_RE_ALLOW_REAL_SESSION=1`, which the maintainer sets for a hand run on the desktop
    (docs/contributing.md, "Tests that need hardware or KWin").
 CI runners have no display, so the guard changes nothing there.
@@ -39,3 +39,49 @@ def pytest_report_header(config):
     if _guarded():
         return "real-session guard: ON" + (f" (removed {', '.join(_removed)})" if _removed else "") + f"; {REASON}"
     return "real-session guard: off (private compositor or TESS_RE_ALLOW_REAL_SESSION=1)"
+
+
+# -- the KWin lane (tools/kwin_live.sh) --------------------------------------------------------------------------------
+
+import pytest  # noqa: E402
+
+import live_compositor  # noqa: E402
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "live_kwin: needs the private headless KWin of tools/kwin_live.sh (TESS_RE_COMPOSITOR=kwin, kwin_wayland "
+        "installed); skipped everywhere else, CI included",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    reason = live_compositor.skip_reason("kwin")
+    if reason is None:
+        return
+    skip = pytest.mark.skip(reason=f"live_kwin: {reason}")
+    for item in items:
+        if "live_kwin" in item.keywords:
+            item.add_marker(skip)
+
+
+@pytest.fixture(params=["sway", pytest.param("kwin", marks=pytest.mark.live_kwin)])
+def compositor(request):
+    """The private compositor a live test runs in: `'sway'` (tools/sway_live.sh) or `'kwin'`
+    (tools/kwin_live.sh). A test that asks for it runs once, in the lane it is started in; the other
+    variant skips with the reason. Pixels, windows and input go through `live_compositor`."""
+    reason = live_compositor.skip_reason(request.param)
+    if reason:
+        pytest.skip(reason)
+    return request.param
+
+
+@pytest.fixture
+def pinned_compositor(compositor):
+    """`compositor`, for a test that pins what one compositor does (docs/contributing.md, "What differs in
+    KWin"). The sway answers were taken from a current sway: on a CI runner (Ubuntu's older sway) that variant
+    skips rather than fail on an unchecked version."""
+    if compositor == "sway" and os.environ.get("CI"):
+        pytest.skip("pinned against a current sway; the CI runner's sway is older and not checked")
+    return compositor

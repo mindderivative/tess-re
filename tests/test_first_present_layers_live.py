@@ -4,37 +4,36 @@ A layer surface and an `xdg_popup` are mapped by the first buffer they commit. T
 already acknowledged the configure by then (before the app hears of it), so holding the present is all
 a hold takes: the surface has a role and a size but no buffer, and the compositor shows nothing until
 `ready()` (or the deadline). Read from the protocol log (`WAYLAND_DEBUG`) and, for what the compositor
-shows, from a screenshot of the headless sway's output.
+shows, from a screenshot of the private compositor's output (`tests/live_compositor.py`).
 
-Needs a layer-shell compositor with `grim`, a private sway (`tools/sway_live.sh`); skips without them.
+Needs a layer-shell compositor: a private sway (`tools/sway_live.sh`, with `grim`) or a private KWin
+(`tools/kwin_live.sh`, the `[kwin]` variants, with `jeepney`); skips without them.
 The protocol log's timestamps differ by libwayland (`[HH:MM:SS.us]` locally, `[ms.us]` on Ubuntu's):
 the helpers of `test_first_present_live` read both.
 """
 
-import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 import textwrap
 import time
 
+import live_compositor
 import pytest
 import tess_re
 
 sys.path.insert(0, os.path.dirname(__file__))
 from test_first_present_live import _first_attach, _index, _lines, _seconds
 
-pytestmark = pytest.mark.skipif(
-    not sys.platform.startswith("linux")
-    or not tess_re.supports("layer_shell")
-    or not shutil.which("grim")
-    or not shutil.which("swaymsg")
-    or not os.environ.get("SWAYSOCK"),
-    reason="needs a private sway (tools/sway_live.sh) with grim",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not sys.platform.startswith("linux") or not tess_re.supports("layer_shell"),
+        reason="needs a compositor with the layer-shell protocol",
+    ),
+    pytest.mark.usefixtures("compositor"),
+]
 
 LAYER_SURFACE = re.compile(
     r"get_layer_surface\(new id zwlr_layer_surface_v1[#@]\d+, wl_surface[#@](\d+)"
@@ -106,23 +105,13 @@ POPUP_CHILD = HEAD + textwrap.dedent(
 
 
 def _pixel(x, y):
-    """The colour at output coordinates (x, y), from a screenshot of the sway output."""
-    out = subprocess.run(
-        ["grim", "-g", f"{x},{y} 1x1", "-t", "ppm", "-"],
-        capture_output=True,
-        check=False,
-    ).stdout
-    return tuple(out[-3:])
+    """The colour at output coordinates (x, y), from a screenshot of the output."""
+    return live_compositor.pixel(x, y)
 
 
 def _origin():
-    outputs = json.loads(
-        subprocess.run(
-            ["swaymsg", "-t", "get_outputs", "-r"], check=False, capture_output=True
-        ).stdout
-    )
-    rect = outputs[0]["rect"]
-    return rect["x"], rect["y"]
+    left, top, _, _ = live_compositor.output_rect()
+    return left, top
 
 
 def run_child(template, at, **fill):
