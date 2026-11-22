@@ -722,6 +722,17 @@ order they were added; **Internal (Rust)** lists API changes Python never sees.
 
 ## 0.6.13
 
+0.6.13 is additive and a fix: multi-selection for containers, the selection accessibility and announcement, and an
+opt-in scrollbar on a multiline `text_input`. Nothing changes for an app that did not opt in.
+
+### Changed defaults
+
+None. A `selection_mode` of `none` (the default) and a `scrollbar_show` of `never` leave every list, container and input
+as it was; the rules below apply only where one is set. One fix is visible without opting in (see **A fade's last step
+is drawn**).
+
+### New properties and calls
+
 - **`selection_mode`, `selection`, `selection_anchor`, `select_all_key`, `select_on_focus`, `item_selectable` on a `box`,
   `container` and `scroll_view` (new, opt-in; no default changes; UX note "Selection", AC-SLT-1 to 5 and 8).** The
   children are the items: `selection` is a list of child **nodes**, `item_selectable=False` on a child marks it
@@ -730,19 +741,24 @@ order they were added; **Internal (Rust)** lists API changes Python never sees.
   and drag rule are the virtual list's. **Reordering keeps the choice by index only** -- set `selection` again after you
   insert, remove or move children. The default `selection_mode="none"` leaves everything as it was. See
   [Selecting the children of a container](guide/nodes-and-layout.md#selecting-the-children-of-a-container).
+
 - **Accessibility: `multiselectable` and `selected` from the set (AC-SLT-8).** A list or container with a `selection_mode`
   says `multiselectable` (when `"multiple"`) and each item says `selected` as the set says -- the built rows of a
   `virtual_list` too, including rows built later. A toolkit that set `selected` by hand on those nodes can stop;
   the derived value replaces it while a mode is set. With mode `"none"` a `selected` you set is untouched.
+
 - **`selection_announce` and `selection_announce_ms` (new; AC-SLT-9).** On a `virtual_list` and on a container:
   `selection_announce="{count} selected"` makes one polite announcement once the set has stopped changing for
   `selection_announce_ms` (300); ten changes within that time are announced once. Default `None`: nothing.
+
 - **Behaviour to know, for a list or container with a `selection_mode` only (AC-SLT-5).** Tab passes over an unselectable
   item, and a click on one neither chooses it nor focuses it (before, a click on an unselectable row focused it, and Tab
   visited it). A **right click** on an item that is not chosen chooses it alone; on a chosen item it keeps the set
   (before, a secondary press changed nothing). `node.focus()` still focuses anything. `Event.selection` and `Event.anchor`
   are now typed `list[int] | list[Node] | None` and `int | Node | None`.
+
 - **Removed names.** `Event.source` stays removed; the new field is still `selection_source`.
+
 - **`scrollbar_*`, `wheel_notch`, `page_fraction`, `page_repeat_delay_ms`, `page_repeat_ms` on a multiline `text_input` (new, opt-in;
   no default changes).** A multiline input's own scrollbar: `scrollbar_show` is `"never"` until you set it, then it is the scroll
   view's spec bar over the shaped text, driven by and driving the input's own scroll (a drag, a lane click, the arrows, the page
@@ -754,6 +770,14 @@ order they were added; **Internal (Rust)** lists API changes Python never sees.
   font) instead of the monospace estimate.
   The UX note "Text Field" has the bar on by default (`overflow`); here it is opt-in, a deviation to keep every input as it was.
   See [A scrollbar on a multiline input](guide/text.md#a-scrollbar-on-a-multiline-input-0613).
+
+### Fixes
+
+- **A fade's last step is drawn (a fix).** A fade that ended in a tick that visited every node (an animation had started somewhere
+  since the last tick) left the frame before it on screen until something else drew: a `hover_layer` with a short
+  `hover_layer_ms` (15 to 30 on a compositor with frames about 17 ms apart) stayed faintly there at rest. The tick after an
+  animating one now always asks for a frame. No property or default changes. Found by tess-shell on a layer surface under sway;
+  `tests/test_hover_layer_rest_live.py` pins it in the private sway and KWin lanes.
 
 ### Internal (Rust)
 
@@ -771,9 +795,3 @@ order they were added; **Internal (Rust)** lists API changes Python never sees.
   `announce_ms` and the debounce state (`note_reported`, `take_announcement`, `set_announce`, `fits`) and a hand-written
   `Default`; `Tree` gained `container_selection`, `container_items`, `item_parent`, `holds_items`, `refresh_selection_host`
   (call it after changing a container's selection mode) and `list_secondary_press`.
-
-- **A fade's last step is drawn (a fix).** A fade that ended in a tick that visited every node (an animation had started somewhere
-  since the last tick) left the frame before it on screen until something else drew: a `hover_layer` with a short
-  `hover_layer_ms` (15 to 30 on a compositor with frames about 17 ms apart) stayed faintly there at rest. The tick after an
-  animating one now always asks for a frame. No property or default changes. Found by tess-shell on a layer surface under sway;
-  `tests/test_hover_layer_rest_live.py` pins it in the private sway and KWin lanes.
