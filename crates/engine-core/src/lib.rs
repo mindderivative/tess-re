@@ -65,15 +65,15 @@ pub use input::{
 pub use layout_anim::{LayoutAnim, LayoutProp};
 pub use node::{
     Anchored, Blend, CalcLen, CalcSize, CaretShape, CellColor, ContentFit, CornerRadii, Cursor,
-    FieldOverflow, FitContent, ImageState, InputMode, ItemExtent, Mask, Node, NodeId, NodeKind,
-    NodeTransform, PaintProperties, ResolvedPalette, SCROLLBAR_GRAB_SLOP, SCROLLBAR_MARGIN,
-    SCROLLBAR_MIN_LENGTH, SCROLLBAR_THICKNESS, ScrollViewState, Shadow, Shadows, SnapAlign,
-    TerminalCell, TerminalPalette, TerminalState, TextAlign, TextFieldState, TextOptions, TextSpan,
-    TextState, VerticalAlign, VirtualListState, WindowRegion,
+    FieldOverflow, FitContent, ImageSampling, ImageState, InputMode, ItemExtent, Mask, Node,
+    NodeId, NodeKind, NodeTransform, PaintProperties, ResolvedPalette, SCROLLBAR_GRAB_SLOP,
+    SCROLLBAR_MARGIN, SCROLLBAR_MIN_LENGTH, SCROLLBAR_THICKNESS, ScrollViewState, Shadow, Shadows,
+    SnapAlign, TerminalCell, TerminalPalette, TerminalState, TextAlign, TextFieldState,
+    TextOptions, TextSpan, TextState, VerticalAlign, VirtualListState, WindowRegion,
 };
 pub use outline::{OUTLINE_ROLE, Outline, OutlineStyle, Outlines};
 pub use overlay::{AnchorBox, OverlayMeta, Placement};
-pub use path::{HitShape, MorphMode, PathData, PathState, fit_transform, trim};
+pub use path::{HitShape, MorphMode, PathData, PathState, StrokeStyle, fit_transform, trim};
 pub use path_template::PathTemplate;
 pub use scheme::{Role as SchemeRole, Scheme, SchemeColors};
 pub use scrollbar::{

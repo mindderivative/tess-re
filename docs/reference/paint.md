@@ -36,7 +36,12 @@ listed in [Nodes and Properties](properties.md).
 | `params` | (0.6.4) a dict of names to numbers: what a path **template** reads. `data` with `{expression}` holes is a template; `node.animate_param(name, to, duration_ms, easing)` animates one; see [A path with parameters](../guide/animation.md#a-path-with-parameters) |
 | `hit_shape` | `"box"` (the default) or `"painted"` (0.5.9) — what takes pointer events and counts in an `input_region="auto"`; see [Hit testing a path](#hit-testing-a-path) |
 | `fill` | the path's fill |
-| `stroke_color`, `stroke_width` | the stroke, centered on the path with round caps and joins; its width stays in pixels however the view box scales |
+| `stroke_color`, `stroke_width` | the stroke, centered on the path; its width stays in pixels however the view box scales. Round caps and joins unless the next five say otherwise |
+| `stroke_cap` | (0.6.12) `"round"` (the default, as the stroke always was), `"butt"` or `"square"`; `None` is the default. Path nodes only |
+| `stroke_join` | (0.6.12) `"round"` (the default), `"miter"` or `"bevel"`; `None` is the default |
+| `stroke_miter_limit` | (0.6.12) a number of at least 1, default `4` (the SVG `stroke-miterlimit`): how many half-widths a miter tip may reach before the join is bevelled. Only `stroke_join="miter"` reads it |
+| `stroke_dash` | (0.6.12) a list of non-negative lengths in pixels, on, off, on, off, ... (an odd count repeats, as in SVG; at least one above zero). `None` or `[]`, the default, is a solid line. Reads back `None` for a solid line |
+| `stroke_dash_offset` | (0.6.12) a number of pixels into the dash pattern where the stroke starts, default `0`; `None` is `0` |
 
 A Material Symbols SVG drops straight in: pass its `d` and its `viewBox`.
 
@@ -233,6 +238,28 @@ tuple that was set.
 and as a 4-tuple once they're set (or animated) separately; setting a number
 makes them uniform again. A shadow under a node with differing corner radii uses
 their mean.
+
+### Stroke style of a path (0.6.12)
+
+`stroke_cap`, `stroke_join`, `stroke_miter_limit`, `stroke_dash` and `stroke_dash_offset` are properties of a `path`
+node (any other kind raises `ValueError`), also taken by `create`, `build` and `set_defaults("path", ...)`. The
+defaults are what the stroke always was: round caps, round joins, no dashes, so nothing changes until you set one.
+Dashes follow the trimmed stroke (`trim_start`/`trim_end`), and a `hit_shape="painted"` path is hit by the stroke
+as styled, a gap included. A shadow follows the style too.
+
+```python
+line = window.create("path", data="M0,10 L200,10", width=200, height=20,
+                     stroke_color=(0x67, 0x50, 0xA4, 0xFF), stroke_width=4,
+                     stroke_cap="butt", stroke_dash=[8, 4])   # 8 px on, 4 px off
+```
+
+### Shadows of every kind (0.6.12)
+
+`shadows` works on every node kind: a `box` (a circle or a ring is a box with a corner radius, so its shadow is
+round), `image`, `svg`, `canvas`, `terminal`, `text`, `text_input`, `scroll_view` and `virtual_list` cast their rounded
+box, and a `path` casts its silhouette (below). Engine-render's `paint_hooks.rs` and `tests/test_paint_hooks.py` pin
+this for each kind. A shadow with `blur` > 0 is a Gaussian of standard deviation `blur / 2` for every kind; the
+engine has no other blur mode.
 
 ### Shadows of a path (0.6.12)
 

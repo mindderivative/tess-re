@@ -15,9 +15,7 @@
 
 use super::*;
 use crate::HitShape;
-use peniko::kurbo::{
-    BezPath, Cap, Join, ParamCurveNearest, PathEl, RoundedRect, Shape, Stroke, StrokeOpts,
-};
+use peniko::kurbo::{BezPath, ParamCurveNearest, PathEl, RoundedRect, Shape, StrokeOpts};
 
 /// `(x, y, width, height)` in whole logical pixels.
 pub type RegionRect = (i32, i32, i32, i32);
@@ -372,9 +370,7 @@ impl Tree {
                         out.push(contours(fill.elements().iter().copied(), origin));
                     }
                     if let Some((stroke, width)) = &painted.stroke {
-                        let style = Stroke::new(*width)
-                            .with_caps(Cap::Round)
-                            .with_join(Join::Round);
+                        let style = painted.style.stroke(*width);
                         let outline = peniko::kurbo::stroke(
                             stroke.elements().iter().copied(),
                             &style,
@@ -417,6 +413,8 @@ impl Tree {
 pub(super) struct PaintedPath {
     pub(super) fill: Option<BezPath>,
     pub(super) stroke: Option<(BezPath, f64)>,
+    /// 0.6.12 (P9): the caps, joins and dashes the stroke is drawn with.
+    pub(super) style: crate::StrokeStyle,
     pub(super) origin: peniko::kurbo::Vec2,
 }
 
@@ -439,12 +437,14 @@ pub(super) fn painted_path(node: &Node, layout: &Layout) -> Option<PaintedPath> 
     (filled || stroked).then(|| PaintedPath {
         fill: filled.then_some(fill),
         stroke: stroked.then_some((stroke, stroke_width)),
+        style: state.stroke_style.clone(),
         origin: peniko::kurbo::Vec2::new(left, top),
     })
 }
 
 /// Whether `point` (node-local) is on what a `path` node paints: inside its fill, or within
-/// half the stroke width of its stroke (round caps and joins, as painted).
+/// half the stroke width of its stroke (round caps and joins, the default), or in its stroked
+/// outline when the stroke has another style.
 pub(super) fn painted_contains(node: &Node, layout: &Layout, point: Point) -> bool {
     let Some(painted) = painted_path(node, layout) else {
         return false;
@@ -456,6 +456,17 @@ pub(super) fn painted_contains(node: &Node, layout: &Layout, point: Point) -> bo
         return true;
     }
     if let Some((stroke, width)) = &painted.stroke {
+        // A stroke with butt or square caps, miters or dashes is not everything within half its
+        // width of the centre line: test the stroked outline itself.
+        if painted.style != crate::StrokeStyle::default() {
+            let outline = peniko::kurbo::stroke(
+                stroke.elements().iter().copied(),
+                &painted.style.stroke(*width),
+                &StrokeOpts::default(),
+                0.1,
+            );
+            return outline.contains(local);
+        }
         let reach = width / 2.0;
         return stroke
             .segments()

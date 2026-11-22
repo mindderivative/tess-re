@@ -383,6 +383,7 @@ scheme.
 | --- | --- |
 | `rgba`, `pixel_width`, `pixel_height` | Straight-alpha RGBA8 pixels and their size — always set together |
 | `fit` | `"fill"`, `"contain"`, or `"cover"` |
+| `image_sampling` | (0.6.12) how pixels are sampled when the image is scaled: `"linear"` (bilinear, the default, as every image was drawn), `"nearest"` (hard pixel edges, for pixel art) or `"cubic"` (bicubic, sharper when scaling down). `None` is `"linear"`. Image nodes only; an svg's embedded images and shader textures stay linear |
 
 ## Canvas
 

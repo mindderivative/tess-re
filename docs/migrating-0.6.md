@@ -509,6 +509,22 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   given to the constructor only; `set(first_present=...)` raises `ValueError`. `ready()` is a no-op on a window that
   presents immediately and after the first call. `LayerWindow` and `PopupWindow` took `first_present` in 0.6.11 but only
   `"immediate"` (anything else raised `ValueError`); 0.6.12 lifts that (see `## 0.6.12`). Verified on Wayland (sway) only;
+
+- **`stroke_cap`, `stroke_join`, `stroke_miter_limit`, `stroke_dash`, `stroke_dash_offset` (new, opt-in; `path` nodes, P9).**
+  A path's stroke was always round-capped and round-joined and could not be dashed. Now `stroke_cap` (`"round"` default,
+  `"butt"`, `"square"`), `stroke_join` (`"round"` default, `"miter"`, `"bevel"`), `stroke_miter_limit` (at least 1, default
+  `4`), `stroke_dash` (a list of on/off lengths in pixels; `None` or `[]`, the default, is solid) and `stroke_dash_offset`
+  (default `0`) are properties of a `path` node, taken by `create`, `set` and `set_defaults("path", ...)`; `None` restores the
+  default and a bad value raises `ValueError`. **No default changed.** A `hit_shape="painted"` path is hit by the styled stroke
+  and a path's shadow follows it. Setting them on another kind raises `ValueError`.
+
+- **`image_sampling` (new, opt-in; `image` nodes, P9).** `"linear"` (the default, bilinear, as every image was drawn),
+  `"nearest"` or `"cubic"`; `None` is `"linear"`. **No default changed.** An svg's embedded images and shader textures stay
+  linear.
+
+- **`shadows` on every kind (verified, P9).** Headless pixel tests (`engine-render` `paint_hooks.rs`, `tests/test_paint_hooks.py`)
+  show `shadows` already works on a box (so a circle or ring, which are boxes with a corner radius, casts a round shadow),
+  `image`, `svg`, `canvas`, `terminal`, `scroll_view` and `path` (since #339); nothing needed a fix and nothing changed.
   the X11, macOS and Windows paths (window created hidden, shown after the first present) are written but unverified. See
   [First present and background](reference/window.md#first-present-and-background-0611).
 

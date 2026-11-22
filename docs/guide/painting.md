@@ -143,7 +143,11 @@ check = window.create("path", data="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"
 
 A path has a `fill`, a `stroke_color` and `stroke_width` (in pixels however
 the view box scales), and `trim_start`/`trim_end`, which draw only part of
-the stroke. Animating `trim_end` from 0 to 1 draws a line on; moving both
+the stroke. A stroke is round-capped and round-joined by default;
+`stroke_cap` (`"butt"`, `"round"`, `"square"`), `stroke_join` (`"miter"`,
+`"round"`, `"bevel"`), `stroke_miter_limit` and `stroke_dash` (a list of
+on/off lengths in pixels, with `stroke_dash_offset`) change that (0.6.12).
+Animating `trim_end` from 0 to 1 draws a line on; moving both
 ends together makes a spinner:
 
 ```python
@@ -171,6 +175,8 @@ photo = window.create("image", rgba=img.tobytes(), pixel_width=img.width,
 ```
 
 `fit` is `"fill"` (stretch), `"contain"` (letterbox), or `"cover"` (crop).
+`image_sampling` (0.6.12) is `"linear"` (the default), `"nearest"` (hard
+pixel edges, for pixel art) or `"cubic"`.
 Video is the same node with each frame set as it arrives:
 `photo.set(rgba=frame, pixel_width=w, pixel_height=h)`.
 

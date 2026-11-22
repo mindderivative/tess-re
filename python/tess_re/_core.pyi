@@ -339,6 +339,14 @@ class Node:
         multiline. `letter_spacing` and `line_height` work on a `text_input`
         too.
 
+        (0.6.12) A path node takes `stroke_cap` (`"round"` by default, `"butt"`,
+        `"square"`), `stroke_join` (`"round"` by default, `"miter"`, `"bevel"`),
+        `stroke_miter_limit` (at least 1, default `4`), `stroke_dash` (a list of
+        on/off lengths in pixels, `None` or `[]` is solid) and `stroke_dash_offset`
+        (pixels, default `0`); `None` sets any of them back to its default. An image
+        takes `image_sampling` (`"linear"` by default, `"nearest"`, `"cubic"`).
+        `shadows` works on every kind.
+
         (0.6.11) A scroll view and a virtual list take the scrollbar and scroll-feel
         properties -- `scrollbar_width`, `_hit_width`, `_margin`, `_min_length`,
         `_gutter`, `_corner`, `_radius`, `_opacity`, `_opacity_hover`, `_opacity_drag`,
