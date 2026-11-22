@@ -236,6 +236,7 @@ jobs:
           python tools/gen_python_api.py
           git diff --exit-code -- docs/api/python.md
       - name: Check the generated Rust API page is current
+        if: needs.plan.outputs.rust == 'true' || needs.plan.outputs.build_ext == 'true'
         run: |
           for crate in engine-core engine-render engine-platform; do
             RUSTC_BOOTSTRAP=1 cargo rustdoc -p "$crate" --lib -- -Z unstable-options --output-format json

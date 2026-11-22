@@ -25,6 +25,10 @@
 * Visible live tests: HDMI-A-1 only; DP-1 needs the user's express permission and a stated reason. Ask first, give the duration, never run unannounced.
 * Only Linux (RADV, llvmpipe) is testable here; mark Mac, Windows and other-GPU checks unverified.
 * Failing pixel tests: `pixel-test-triage` skill. Timing work: `perf-profiling` skill.
+* **Before every push run `tools/pre_push_gates.sh`** (stubtest, `mypy --strict`, `check_agent_docs`, `python.md`/`rust.md` regenerated with no diff; `--expect X` adds `check_version`): CI runs the same and a red gate costs a ~15 minute cycle. Stub defaults must equal the runtime defaults.
+* **Build hazards (shared cargo target dir):** `~/.cargo/config.toml` may point every worktree at one target dir, and workspace-crate fingerprints are mtime-based and identical across worktrees, so a build or `cargo rustdoc` in another worktree can silently reuse another branch's artifacts (compile errors naming foreign fields, `docs/api/rust.md` listing items this branch lacks). Before any cargo/maturin/rustdoc run in a worktree: `unset CARGO_TARGET_DIR` (a stale exported value overrides the config and leaks between worktrees), `find crates -name '*.rs' -exec touch {} +`, and delete `<target>/doc/engine_*.json` before regenerating `rust.md`. Never set a per-worktree `CARGO_TARGET_DIR`; never `cargo clean` the shared one.
+* **Heavy jobs** (cargo build/test/clippy/rustdoc, maturin, pytest, uv, mkdocs, gen scripts) go through the owner's CPU cap, one at a time: `flock /home/phil/.cache/tre-heavy.lock /home/phil/.orca/bots/orchestrator/bin/capped <cmd>`, `CARGO_BUILD_JOBS` 6 at most, pytest `-n 6` at most (never `-n auto`).
+* **Never signal a process by name or pattern** (`pkill`, `killall`, `pgrep -f`, `kill $(pgrep ...)`, `xargs kill`): a `pkill -f` once killed the owner's desktop shell. Signal only a PID or process group you started in the same command and saved (`$!`, a pid file, `start_new_session`).
 
 ## Docs, Memory, Releases
 * Update relevant docs immediately on finishing any milestone, phase, step or feature; `python3 -I tools/wrapup.py` lists what is left. History is in `LOG.md`, issues and git.
