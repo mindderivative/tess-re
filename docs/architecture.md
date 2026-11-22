@@ -165,3 +165,7 @@ records the work from 0.5.0 on,
 [`BUILD_TRACKER_ARCHIVE_0.3.md`](https://github.com/mindderivative/tess-re/blob/main/BUILD_TRACKER_ARCHIVE_0.3.md)
 every earlier milestone, including the 0.3.5 program that moved Material
 Design 3 and the declarative layer out to the framework.
+
+## The renderer dependency
+
+The renderer is `vello_gpu` 0.4.0 with `vello_common` 0.4.0 and `glifo` 0.5.0 from crates.io, pinned with exact `=` versions in the root `Cargo.toml` (0.6.14; before, one upstream git commit). They move together, deliberately, with the pixel tests re-run. Since 0.4.0 the shader features are opt-in: `blurred_rounded_rect` (box shadows), `full_image_support` (image sampling modes, textures, the glyph atlas) and `gradient_sweep` are on; `wgpu_external_texture` is off on purpose (nothing binds an external texture). **Risks:** the renderer owns the `wgpu` device and queue, so a path that rebuilds the device must rebuild the shared renderer (none exists today); a render target's size is the target texture's, not a separate argument; `glifo` brings its own `skrifa` copy beside the one `parley` uses (no type crosses).
