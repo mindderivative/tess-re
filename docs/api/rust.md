@@ -373,6 +373,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- | --- |
 | `image` | `ImageData` | The image's pixel data. |
 | `content_fit` | `ContentFit` | How the image fits a box of a different aspect ratio, like CSS object-fit. |
+| `sampling` | `ImageSampling` | How the pixels are sampled when the image is scaled. |
 
 | Method | Description |
 | --- | --- |
@@ -618,6 +619,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `template` | `Option<PathTemplate>` | When set, `data` is this template filled in with `params`, and is evaluated again whenever a parameter moves. |
 | `params` | `Vec<(String, Animated<f64>)>` | The named numbers a template reads, each animatable. |
 | `view_box` | `Option<Rect>` | The region of path space fitted into the node's box; None uses pixels. |
+| `stroke_style` | `StrokeStyle` | The stroke's caps, joins, miter limit and dashes. |
 | `trim_start` | `Animated<f64>` | Where the drawn stroke starts along the path, from 0.0 to 1.0. |
 | `trim_end` | `Animated<f64>` | Where the drawn stroke ends along the path, from 0.0 to 1.0. |
 
@@ -928,6 +930,29 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn tick(&mut self, now: Instant, completed: &mut Vec<CompletionHandle>) -> bool` | Advances the fade; whether it is still running. |
 | `fn timing(&self, state: LayerState) -> (f64, Easing)` | The duration (ms) and easing of `state`'s fades: its own override, else the shared pair. |
 | `fn visible(&self) -> Option<Color>` | The colour to draw now, if any. |
+
+### StrokeStyle { #strokestyle }
+
+*struct.* How a path node's stroke is drawn beyond its width and colour: the line caps, the joins, the miter limit and the dash pattern.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `cap` | `Cap` |  |
+| `join` | `Join` |  |
+| `miter_limit` | `f64` | How far a miter join may reach, as a multiple of half the width, before it is bevelled (the SVG `stroke-miterlimit`; at least 1). |
+| `dash` | `Vec<f64>` | Alternating on and off lengths in pixels; empty draws a solid line. |
+| `dash_offset` | `f64` | How far into the pattern the stroke starts, in pixels. |
+
+| Method | Description |
+| --- | --- |
+| `fn cap_name(cap: Cap) -> &'static str` |  |
+| `fn join_name(join: Join) -> &'static str` |  |
+| `fn parse_cap(name: &str) -> Option<Cap>` | The cap named `name` (`butt`, `round`, `square`). |
+| `fn parse_join(name: &str) -> Option<Join>` | The join named `name` (`miter`, `round`, `bevel`). |
+| `fn reach(&self, width: f64) -> f64` | How far a stroke of `width` can reach from its centre line: half the width, more for a square cap's corners and a miter join's tips. |
+| `fn stroke(&self, width: f64) -> Stroke` | The stroke of `width` in this style. |
 
 ### SvgBitmap { #svgbitmap }
 
@@ -1884,6 +1909,23 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- | --- |
 | `Box` |  | The node's box, with its corners rounded as painted: how every node was hit before, and the default. |
 | `Painted` |  | What is painted: the fill region (when the fill has colour or a gradient) united with the stroke (when the stroke has width and colour), so a click… |
+
+| Method | Description |
+| --- | --- |
+| `fn name(self) -> &'static str` |  |
+| `fn parse(name: &str) -> Option<Self>` |  |
+
+### ImageSampling { #imagesampling }
+
+*enum.* How an image node's pixels are sampled when it is drawn at another size.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Linear` |  | Bilinear: the default, and what every image was drawn with before. |
+| `Nearest` |  | The nearest pixel: hard edges, for pixel art and exact pixel grids. |
+| `Cubic` |  | Bicubic: sharper than bilinear when an image is scaled down. |
 
 | Method | Description |
 | --- | --- |

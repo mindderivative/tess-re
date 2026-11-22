@@ -16,7 +16,7 @@ use crate::node_layout::lookup;
 use crate::node_props::{color_to_py, parse_color};
 
 /// Every kind-specific property this module handles, in error order.
-pub(crate) const KIND_PROPS: [&str; 43] = [
+pub(crate) const KIND_PROPS: [&str; 49] = [
     "text",
     "font_family",
     "font_weight",
@@ -60,6 +60,13 @@ pub(crate) const KIND_PROPS: [&str; 43] = [
     "svg_images",
     "svg_time",
     "svg_duration",
+    // 0.6.12 (P9): a path's stroke style, and how an image is sampled.
+    "stroke_cap",
+    "stroke_join",
+    "stroke_miter_limit",
+    "stroke_dash",
+    "stroke_dash_offset",
+    "image_sampling",
 ];
 
 const TEXT_ALIGN: [(&str, TextAlign); 3] = [
@@ -72,6 +79,24 @@ pub(crate) const FIT: [(&str, ContentFit); 3] = [
     ("cover", ContentFit::Cover),
     ("contain", ContentFit::Contain),
     ("fill", ContentFit::Fill),
+];
+
+pub(crate) const IMAGE_SAMPLING: [(&str, engine_core::ImageSampling); 3] = [
+    ("linear", engine_core::ImageSampling::Linear),
+    ("nearest", engine_core::ImageSampling::Nearest),
+    ("cubic", engine_core::ImageSampling::Cubic),
+];
+
+const STROKE_CAP: [(&str, peniko::kurbo::Cap); 3] = [
+    ("butt", peniko::kurbo::Cap::Butt),
+    ("round", peniko::kurbo::Cap::Round),
+    ("square", peniko::kurbo::Cap::Square),
+];
+
+const STROKE_JOIN: [(&str, peniko::kurbo::Join); 3] = [
+    ("miter", peniko::kurbo::Join::Miter),
+    ("round", peniko::kurbo::Join::Round),
+    ("bevel", peniko::kurbo::Join::Bevel),
 ];
 
 /// `true` for italic.
@@ -344,6 +369,9 @@ fn applies(name: &str) -> (&'static str, fn(&NodeKind) -> bool) {
     fn image(kind: &NodeKind) -> bool {
         matches!(kind, NodeKind::Image(_))
     }
+    fn path(kind: &NodeKind) -> bool {
+        matches!(kind, NodeKind::Path(_))
+    }
     fn svg(kind: &NodeKind) -> bool {
         matches!(kind, NodeKind::Svg(_))
     }
@@ -370,7 +398,9 @@ fn applies(name: &str) -> (&'static str, fn(&NodeKind) -> bool) {
         "multiline" | "overwrite" | "tab_navigates" | "show_whitespace" | "syntax_spans"
         | "folded_ranges" | "selection_start" | "selection_end" => ("a text_input", text_input),
         "selection" => ("a text, text_input or terminal", selectable),
-        "rgba" | "pixel_width" | "pixel_height" | "fit" => ("an image", image),
+        "rgba" | "pixel_width" | "pixel_height" | "fit" | "image_sampling" => ("an image", image),
+        "stroke_cap" | "stroke_join" | "stroke_miter_limit" | "stroke_dash"
+        | "stroke_dash_offset" => ("a path", path),
         "svg" | "svg_size" | "svg_color" | "svg_images" | "svg_time" | "svg_duration" => {
             ("an svg", svg)
         }
@@ -950,6 +980,110 @@ fn parse_known(
                 }
             })
         }
+        "image_sampling" => {
+            let sampling = if value.is_none() {
+                engine_core::ImageSampling::Linear
+            } else {
+                keyword(&IMAGE_SAMPLING, value, name)
+                    .map_err(|_| invalid(name, "\"linear\", \"nearest\" or \"cubic\", or None"))?
+            };
+            change(move |node| {
+                if let NodeKind::Image(state) = &mut node.kind {
+                    state.sampling = sampling;
+                }
+            })
+        }
+        "stroke_cap" => {
+            let cap = if value.is_none() {
+                peniko::kurbo::Cap::Round
+            } else {
+                keyword(&STROKE_CAP, value, name)
+                    .map_err(|_| invalid(name, "\"butt\", \"round\" or \"square\", or None"))?
+            };
+            change(move |node| {
+                if let NodeKind::Path(state) = &mut node.kind {
+                    state.stroke_style.cap = cap;
+                }
+            })
+        }
+        "stroke_join" => {
+            let join = if value.is_none() {
+                peniko::kurbo::Join::Round
+            } else {
+                keyword(&STROKE_JOIN, value, name)
+                    .map_err(|_| invalid(name, "\"miter\", \"round\" or \"bevel\", or None"))?
+            };
+            change(move |node| {
+                if let NodeKind::Path(state) = &mut node.kind {
+                    state.stroke_style.join = join;
+                }
+            })
+        }
+        "stroke_miter_limit" => {
+            let expected = "a number of at least 1, or None";
+            let limit = if value.is_none() {
+                4.0
+            } else {
+                not_bool(value, name, expected)?;
+                value
+                    .extract::<f64>()
+                    .ok()
+                    .filter(|v| v.is_finite() && *v >= 1.0)
+                    .ok_or_else(|| invalid(name, expected))?
+            };
+            change(move |node| {
+                if let NodeKind::Path(state) = &mut node.kind {
+                    state.stroke_style.miter_limit = limit;
+                }
+            })
+        }
+        "stroke_dash_offset" => {
+            let expected = "a number, or None";
+            let offset = if value.is_none() {
+                0.0
+            } else {
+                not_bool(value, name, expected)?;
+                value
+                    .extract::<f64>()
+                    .ok()
+                    .filter(|v| v.is_finite())
+                    .ok_or_else(|| invalid(name, expected))?
+            };
+            change(move |node| {
+                if let NodeKind::Path(state) = &mut node.kind {
+                    state.stroke_style.dash_offset = offset;
+                }
+            })
+        }
+        "stroke_dash" => {
+            let expected = "a list of non-negative lengths with at least one above zero (on, off, \
+                            on, off, ...), or None or [] for a solid line";
+            let dash: Vec<f64> = if value.is_none() {
+                Vec::new()
+            } else {
+                let items: Vec<Bound<'_, PyAny>> =
+                    value.extract().map_err(|_| invalid(name, expected))?;
+                let mut lengths = Vec::with_capacity(items.len());
+                for item in &items {
+                    not_bool(item, name, expected)?;
+                    lengths.push(
+                        item.extract::<f64>()
+                            .ok()
+                            .filter(|v| v.is_finite() && *v >= 0.0)
+                            .ok_or_else(|| invalid(name, expected))?,
+                    );
+                }
+                if !lengths.is_empty() && lengths.iter().all(|v| *v == 0.0) {
+                    return Err(invalid(name, expected));
+                }
+                lengths
+            };
+            change(move |node| {
+                if let NodeKind::Path(state) = &mut node.kind {
+                    state.stroke_style.dash = dash;
+                }
+            })
+        }
         "orientation" => {
             let orientation = keyword(&ORIENTATION, value, name)?;
             change(move |node| {
@@ -1246,6 +1380,20 @@ fn read_known(name: &str, kind: &NodeKind, py: Python<'_>) -> PyResult<Py<PyAny>
         ("pixel_width", NodeKind::Image(s)) => to_py(s.image.width, py),
         ("pixel_height", NodeKind::Image(s)) => to_py(s.image.height, py),
         ("fit", NodeKind::Image(s)) => to_py(name_of(&FIT, &s.content_fit), py),
+        ("image_sampling", NodeKind::Image(s)) => to_py(name_of(&IMAGE_SAMPLING, &s.sampling), py),
+        ("stroke_cap", NodeKind::Path(s)) => to_py(name_of(&STROKE_CAP, &s.stroke_style.cap), py),
+        ("stroke_join", NodeKind::Path(s)) => {
+            to_py(name_of(&STROKE_JOIN, &s.stroke_style.join), py)
+        }
+        ("stroke_miter_limit", NodeKind::Path(s)) => to_py(s.stroke_style.miter_limit, py),
+        ("stroke_dash_offset", NodeKind::Path(s)) => to_py(s.stroke_style.dash_offset, py),
+        ("stroke_dash", NodeKind::Path(s)) => {
+            if s.stroke_style.dash.is_empty() {
+                Ok(py.None())
+            } else {
+                to_py(s.stroke_style.dash.clone(), py)
+            }
+        }
         ("scroll_snap", NodeKind::ScrollView(s)) => to_py(
             s.snap.map_or("none", |a| {
                 engine_core::SnapAlign::ALL

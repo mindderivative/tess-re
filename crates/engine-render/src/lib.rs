@@ -959,7 +959,7 @@ fn paint_shader_texture(
             region,
             true,
         ),
-        sampler: image_sampler(),
+        sampler: image_sampler(engine_core::ImageSampling::Linear),
     });
     scene.set_paint_transform(transform);
     scene.fill_rect(&Rect::new(0.0, 0.0, w, h));
@@ -1261,12 +1261,14 @@ fn draw_own(
             if shadow.color.components[3] <= 0.0 {
                 continue;
             }
-            if let Some((content, fill, stroke)) = &path_geometry {
+            if let (Some((content, fill, stroke)), NodeKind::Path(state)) =
+                (&path_geometry, &node.kind)
+            {
                 paint_path_shadow(
                     scene,
                     composed * Affine::translate((content.x, content.y)),
                     shadow,
-                    PathSilhouette::of(node, fill, stroke),
+                    PathSilhouette::of(node, &state.stroke_style, fill, stroke),
                     own_alpha,
                 );
                 continue;
@@ -1638,7 +1640,7 @@ fn draw_own(
                         source_region,
                         true,
                     ),
-                    sampler: image_sampler(),
+                    sampler: image_sampler(state.sampling),
                 });
                 scene.set_paint_transform(transform);
                 scene.fill_rect(&transform.transform_rect_bbox(region));
@@ -1653,9 +1655,10 @@ fn draw_own(
         // M95 (D4): any vector path, in node-local pixels once fitted
         // into the view box. The fill is the whole path; the stroke is
         // the trimmed outline, centered on the path as in SVG, with round
-        // caps and joins, and its width stays in pixels however the view
-        // box scales the path.
-        NodeKind::Path(_) => {
+        // caps and joins unless `stroke_cap`, `stroke_join`, `stroke_miter_limit`
+        // and `stroke_dash` say otherwise (0.6.12), and its width stays in
+        // pixels however the view box scales the path.
+        NodeKind::Path(state) => {
             let Some((content, fill, stroke)) = &path_geometry else {
                 return;
             };
@@ -1684,11 +1687,7 @@ fn draw_own(
                     stroke.bounding_box(),
                     own_alpha,
                 );
-                scene.set_stroke(
-                    Stroke::new(stroke_width)
-                        .with_caps(peniko::kurbo::Cap::Round)
-                        .with_join(peniko::kurbo::Join::Round),
-                );
+                scene.set_stroke(state.stroke_style.stroke(stroke_width));
                 scene.stroke_path(stroke);
                 if shaped {
                     scene.reset_paint_transform();
@@ -1705,12 +1704,19 @@ struct PathSilhouette<'a> {
     fill: Option<&'a BezPath>,
     /// The trimmed stroke outline and its width, when the node strokes.
     stroke: Option<(&'a BezPath, f64)>,
+    /// The caps, joins and dashes the stroke is drawn with.
+    style: &'a engine_core::StrokeStyle,
 }
 
 impl<'a> PathSilhouette<'a> {
     /// A node that paints neither fill nor stroke still casts the shadow of its filled path,
     /// as a box with no fill casts its box's.
-    fn of(node: &engine_core::Node, fill: &'a BezPath, stroke: &'a BezPath) -> Self {
+    fn of(
+        node: &engine_core::Node,
+        style: &'a engine_core::StrokeStyle,
+        fill: &'a BezPath,
+        stroke: &'a BezPath,
+    ) -> Self {
         let filled =
             node.paint.gradient.is_some() || node.paint.background.current.components[3] > 0.0;
         let width = node.paint.border_width.current;
@@ -1718,6 +1724,7 @@ impl<'a> PathSilhouette<'a> {
         Self {
             fill: (filled || !stroked).then_some(fill),
             stroke: stroked.then_some((stroke, width)),
+            style,
         }
     }
 }
@@ -1757,7 +1764,7 @@ fn paint_path_shadow(
     if let Some((stroke, width)) = silhouette.stroke {
         grow(
             stroke.bounding_box(),
-            (width / 2.0 + spread).max(0.0) + reach,
+            (silhouette.style.reach(width) + spread).max(0.0) + reach,
         );
     }
     let Some(extent) = extent else { return };
@@ -1799,11 +1806,7 @@ fn paint_path_shadow(
     if let Some((stroke, width)) = silhouette.stroke {
         let width = width + spread * 2.0;
         if width > 0.0 {
-            scene.set_stroke(
-                Stroke::new(width)
-                    .with_caps(peniko::kurbo::Cap::Round)
-                    .with_join(peniko::kurbo::Join::Round),
-            );
+            scene.set_stroke(silhouette.style.stroke(width));
             scene.stroke_path(stroke);
         }
     }
@@ -1820,11 +1823,18 @@ fn paint_path_shadow(
 /// coordinate inside the image as it is, so the edge is exact; every image
 /// is drawn only over its own rectangle, so no coordinate is ever outside it.
 /// (#148; remove once vello fixes `Pad`.)
-fn image_sampler() -> peniko::ImageSampler {
+///
+/// 0.6.12 (P9): an image node's `image_sampling` picks the quality (`Low` is the nearest texel,
+/// `High` bicubic); everything else is drawn bilinear.
+fn image_sampler(sampling: engine_core::ImageSampling) -> peniko::ImageSampler {
     peniko::ImageSampler {
         x_extend: peniko::Extend::Reflect,
         y_extend: peniko::Extend::Reflect,
-        quality: peniko::ImageQuality::Medium,
+        quality: match sampling {
+            engine_core::ImageSampling::Linear => peniko::ImageQuality::Medium,
+            engine_core::ImageSampling::Nearest => peniko::ImageQuality::Low,
+            engine_core::ImageSampling::Cubic => peniko::ImageQuality::High,
+        },
         ..Default::default()
     }
 }
@@ -1980,7 +1990,7 @@ fn paint_svg_image(image: &engine_core::SvgImage, scene: &mut Scene) {
     );
     scene.set_paint(vello_common::paint::Image {
         image: source,
-        sampler: image_sampler(),
+        sampler: image_sampler(engine_core::ImageSampling::Linear),
     });
     scene.set_paint_transform(Affine::scale_non_uniform(
         image.width / f64::from(bw),

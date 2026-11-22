@@ -1488,7 +1488,7 @@ pub(crate) fn painted_rect(
 fn path_extent(node: &Node, state: &PathState, w: f64, h: f64) -> Rect {
     let bounds = fit_transform(state.view_box, w, h)
         .transform_rect_bbox(state.data.current.0.bounding_box());
-    let half = node.paint.border_width.current / 2.0;
+    let half = state.stroke_style.reach(node.paint.border_width.current);
     bounds.inflate(half, half)
 }
 
@@ -2116,7 +2116,11 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
 }
 
 fn image_fingerprint(h: &mut impl Hasher, state: &ImageState) {
-    let ImageState { image, content_fit } = state;
+    let ImageState {
+        image,
+        content_fit,
+        sampling,
+    } = state;
     // A new frame is a new blob; hashing its bytes every frame would cost
     // megabytes.
     image.data.id().hash(h);
@@ -2125,6 +2129,7 @@ fn image_fingerprint(h: &mut impl Hasher, state: &ImageState) {
     std::mem::discriminant(&image.format).hash(h);
     std::mem::discriminant(&image.alpha_type).hash(h);
     std::mem::discriminant(content_fit).hash(h);
+    std::mem::discriminant(sampling).hash(h);
 }
 
 fn path_fingerprint(h: &mut impl Hasher, state: &PathState) {
@@ -2135,10 +2140,20 @@ fn path_fingerprint(h: &mut impl Hasher, state: &PathState) {
         template: _,  // what `data` is made from; `data` is what is drawn
         params: _,
         view_box,
+        stroke_style,
         trim_start,
         trim_end,
     } = state;
     bez_path(h, &data.current.0);
+    // 0.6.12 (P9): how the stroke is drawn.
+    std::mem::discriminant(&stroke_style.cap).hash(h);
+    std::mem::discriminant(&stroke_style.join).hash(h);
+    num(h, stroke_style.miter_limit);
+    num(h, stroke_style.dash_offset);
+    stroke_style.dash.len().hash(h);
+    for length in &stroke_style.dash {
+        num(h, *length);
+    }
     view_box.is_some().hash(h);
     if let Some(r) = view_box {
         rect(h, *r);

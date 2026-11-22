@@ -1044,6 +1044,39 @@ pub struct ImageState {
     /// built through `ImageState::new` (every Phase 1 call site) keeps
     /// byte-for-byte the same paint as before this phase.
     pub content_fit: ContentFit,
+    /// 0.6.12 (P9): how the pixels are sampled when the image is scaled.
+    pub sampling: ImageSampling,
+}
+
+/// 0.6.12 (P9): how an image node's pixels are sampled when it is drawn at another size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ImageSampling {
+    /// Bilinear: the default, and what every image was drawn with before.
+    #[default]
+    Linear,
+    /// The nearest pixel: hard edges, for pixel art and exact pixel grids.
+    Nearest,
+    /// Bicubic: sharper than bilinear when an image is scaled down.
+    Cubic,
+}
+
+impl ImageSampling {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "linear" => Some(Self::Linear),
+            "nearest" => Some(Self::Nearest),
+            "cubic" => Some(Self::Cubic),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::Nearest => "nearest",
+            Self::Cubic => "cubic",
+        }
+    }
 }
 
 impl ImageState {
@@ -1051,6 +1084,7 @@ impl ImageState {
         Self {
             image,
             content_fit: ContentFit::Fill,
+            sampling: ImageSampling::Linear,
         }
     }
 

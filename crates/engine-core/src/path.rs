@@ -13,8 +13,8 @@
 //! the last frame is the exact target path.
 
 use peniko::kurbo::{
-    Affine, BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Point, QuadBez,
-    Rect,
+    Affine, BezPath, Cap, CubicBez, Join, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg,
+    Point, QuadBez, Rect, Stroke,
 };
 
 use crate::animation::{Animated, Interpolate};
@@ -52,6 +52,103 @@ impl HitShape {
             Self::Box => "box",
             Self::Painted => "painted",
         }
+    }
+}
+
+/// 0.6.12 (P9): how a path node's stroke is drawn beyond its width and colour: the line caps,
+/// the joins, the miter limit and the dash pattern. The default is what the stroke always was:
+/// round caps, round joins, no dashes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StrokeStyle {
+    pub cap: Cap,
+    pub join: Join,
+    /// How far a miter join may reach, as a multiple of half the width, before it is bevelled
+    /// (the SVG `stroke-miterlimit`; at least 1). Used only by `Join::Miter`.
+    pub miter_limit: f64,
+    /// Alternating on and off lengths in pixels; empty draws a solid line. An odd count is
+    /// repeated to an even one, as SVG does.
+    pub dash: Vec<f64>,
+    /// How far into the pattern the stroke starts, in pixels.
+    pub dash_offset: f64,
+}
+
+impl Default for StrokeStyle {
+    fn default() -> Self {
+        Self {
+            cap: Cap::Round,
+            join: Join::Round,
+            miter_limit: 4.0,
+            dash: Vec::new(),
+            dash_offset: 0.0,
+        }
+    }
+}
+
+impl StrokeStyle {
+    /// The cap named `name` (`butt`, `round`, `square`).
+    pub fn parse_cap(name: &str) -> Option<Cap> {
+        match name {
+            "butt" => Some(Cap::Butt),
+            "round" => Some(Cap::Round),
+            "square" => Some(Cap::Square),
+            _ => None,
+        }
+    }
+
+    pub fn cap_name(cap: Cap) -> &'static str {
+        match cap {
+            Cap::Butt => "butt",
+            Cap::Round => "round",
+            Cap::Square => "square",
+        }
+    }
+
+    /// The join named `name` (`miter`, `round`, `bevel`).
+    pub fn parse_join(name: &str) -> Option<Join> {
+        match name {
+            "miter" => Some(Join::Miter),
+            "round" => Some(Join::Round),
+            "bevel" => Some(Join::Bevel),
+            _ => None,
+        }
+    }
+
+    pub fn join_name(join: Join) -> &'static str {
+        match join {
+            Join::Bevel => "bevel",
+            Join::Miter => "miter",
+            Join::Round => "round",
+        }
+    }
+
+    /// The stroke of `width` in this style.
+    pub fn stroke(&self, width: f64) -> Stroke {
+        let mut stroke = Stroke::new(width)
+            .with_caps(self.cap)
+            .with_join(self.join)
+            .with_miter_limit(self.miter_limit);
+        if !self.dash.is_empty() {
+            let pattern = self.dash.iter().copied();
+            stroke = if self.dash.len() % 2 == 1 {
+                stroke.with_dashes(self.dash_offset, pattern.chain(self.dash.iter().copied()))
+            } else {
+                stroke.with_dashes(self.dash_offset, pattern)
+            };
+        }
+        stroke
+    }
+
+    /// How far a stroke of `width` can reach from its centre line: half the width, more for a
+    /// square cap's corners and a miter join's tips.
+    pub fn reach(&self, width: f64) -> f64 {
+        let mut factor: f64 = 1.0;
+        if self.cap == Cap::Square {
+            factor = factor.max(std::f64::consts::SQRT_2);
+        }
+        if self.join == Join::Miter {
+            factor = factor.max(self.miter_limit);
+        }
+        width / 2.0 * factor
     }
 }
 
@@ -403,6 +500,8 @@ pub struct PathState {
     /// fitted into the node's box; `None` draws `data` in node-local
     /// pixels.
     pub view_box: Option<Rect>,
+    /// 0.6.12 (P9): the stroke's caps, joins, miter limit and dashes.
+    pub stroke_style: StrokeStyle,
     /// Trim fractions for the stroke, `0.0..=1.0`.
     pub trim_start: Animated<f64>,
     pub trim_end: Animated<f64>,
@@ -417,6 +516,7 @@ impl PathState {
             template: None,
             params: Vec::new(),
             view_box: None,
+            stroke_style: StrokeStyle::default(),
             trim_start: Animated::new(0.0),
             trim_end: Animated::new(1.0),
         }
