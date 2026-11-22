@@ -965,7 +965,7 @@ class Window:
         flip: bool = True,
         viewport_margin: float | tuple[float, float, float, float] | None = None,
         flip_threshold: float | None = None,
-        align: Literal["start", "center", "end"] = "start",
+        align: Literal["start", "center", "end"] | None = None,
         shift: bool | None = None,
     ) -> None:
         """M96: shows `node` over the window's content, above every layer
