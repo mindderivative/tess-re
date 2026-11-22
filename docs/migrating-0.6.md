@@ -545,6 +545,21 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `ScrollAxis` it grabbed. The Python API has no such change.
 
 ## 0.6.12
+- **`selection_mode`, `selection`, `selection_anchor`, `select_all_key`, `select_on_focus`, `unselectable_keys` and the
+  `selection_change` event on a `virtual_list` (new, opt-in; no default changes; UX note "Selection", AC-SLT-1 to 6 and 13).**
+  The engine had no selection for lists: `selected` was an accessibility flag the toolkit set by hand and every framework
+  wrote its own Shift and Ctrl rules. A `virtual_list` can now choose its rows (`selection_mode` `"single"` or
+  `"multiple"`; the default `"none"` leaves every click and key exactly as it was, Space still a `click`, the arrows
+  still scrolling by 40). A row's key is its index; the set is stored as ranges, so Shift+End or Ctrl+A over 100 000 rows
+  builds no row. Clicks (Ctrl toggles, Shift ranges, Ctrl+Shift adds, empty space clears, a press on a chosen row of
+  several chooses it alone on release unless the pointer went `drag_start_px`) and keys (Up, Down, Home, End, Page keys
+  move focus to a selectable row, Shift extends from the anchor, Ctrl moves focus alone, Space and Ctrl+Space toggle,
+  Ctrl+A with `select_all_key`, Escape never clears) are the engine's; `selection_change` carries `selection`, `ranges`,
+  `count`, `anchor` and `source`. **Behaviour to know:** with a `selection_mode` a list takes the arrow, Home, End and Page
+  keys itself (focus moves to the next row and the list scrolls by the least distance) instead of scrolling by 40 and the
+  page; with the default none of that happens. New `Event` fields `selection`, `ranges`, `anchor`, `source`. Not built:
+  container children as items, the `selected` and `multiselectable` accessibility flags set from the set, and the
+  announcement of the count (the next change). See [Selecting rows of a virtual list](guide/nodes-and-layout.md#selecting-rows-of-a-virtual-list).
 - **`titlebar_double_click`, `resize_cursors`, `undecorated_shadow` (new `Window` properties, P11; no default changes).**
   `titlebar_double_click` is what a double-click on a `window_region="drag"` node does: `None` (default, as before: the
   user's setting on macOS, maximize elsewhere), `"maximize"`, `"minimize"`, `"none"`, or `"event"` (nothing happens;

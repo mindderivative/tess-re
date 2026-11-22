@@ -562,6 +562,12 @@ rows = window.create("virtual_list", item_count=len(items), item_extent=32,
 | `item_extent` | Every row's height, or `None` once `size_hint` is set |
 | `size_hint` | `size_hint(index)` → that row's height, for rows of different heights |
 | `materialize` | `materialize(index)` → a node this window made, for that row |
+| `selection_mode` | (0.6.12) `"none"` (default: the engine chooses nothing and handles no selection input), `"single"` or `"multiple"` |
+| `selection` | (0.6.12) The chosen rows' keys (a row's key is its index), ascending. Set: replaces the whole set; `ValueError` for a key outside `0..item_count`, an unselectable key, more than one key in a `"single"` list, or a key in a `"none"` list. `None` or `[]` chooses nothing |
+| `selection_anchor` | (0.6.12) Read only: the row a range starts from, or `None` |
+| `select_all_key` | (0.6.12) `True` lets Ctrl+A choose every selectable row while focus is in a `"multiple"` list and not in a text input. Default `False` |
+| `select_on_focus` | (0.6.12) `True` makes Up, Down, Home, End, Page Up and Page Down also choose the row focus lands on. Default `False` |
+| `unselectable_keys` | (0.6.12) Keys that no click, key, range or Ctrl+A chooses and that focus never lands on by a key; a list of keys, default `[]` |
 
 Tesserae Engine keeps exactly the rows the viewport shows built: whenever layout runs —
 each frame, `window.advance`, `window.simulate`, and any `layout_*` read — it
@@ -577,6 +583,10 @@ rules apply). `node.scroll_to_index(index, align="nearest")` scrolls to a row by
 index, built or not; `scroll_into_view()` and focus reveal a built row by the least
 distance; `scroll` fires for every change. A row holding focus is kept built when it
 scrolls out of the window.
+
+(0.6.12) A list with a `selection_mode` chooses its own rows by click and key and fires `selection_change`; the stored set
+is ranges, so any range or select-all builds no row. The rules (Shift, Ctrl, the anchor, the drag rule and the keys) are in
+[Selecting rows of a virtual list](../guide/nodes-and-layout.md#selecting-rows-of-a-virtual-list).
 
 (0.6.11) A virtual list takes every [scrollbar and scroll-feel property](#scrollbar-and-scroll-feel-0611) a scroll
 view does (`scrollbar_*`, `wheel_notch`, `key_line`, `page_fraction`, `scroll_smooth_ms`, `scroll_easing`,

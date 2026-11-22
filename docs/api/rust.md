@@ -445,6 +445,17 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `prop` | `LayoutProp` |  |
 | `value` | `Animated<f64>` |  |
 
+### ListKey { #listkey }
+
+*struct.* What `Tree::list_selection_key` did with a key.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `consumed` | `bool` | The key was the list's: it must not also scroll the list, and a Space must not also click the row. |
+| `focus` | `Option<(Option<NodeId>, Option<NodeId>)>` | Focus moved from the first node to the second. |
+
 ### Modifiers { #modifiers }
 
 *struct.* The modifier keys held while an event happens.
@@ -709,6 +720,30 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `margin` | `Edges` | The distance a flipped or shifted layer keeps from each window edge. |
 | `flip_threshold` | `f64` | The extra free space the preferred side must have beyond the layer's own size before the layer stays on it. |
 
+### RangeSet { #rangeset }
+
+*struct.* A set of `usize` kept as sorted, disjoint, non-adjacent, non-empty ranges.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Method | Description |
+| --- | --- |
+| `fn clear(&mut self)` |  |
+| `fn clip(&mut self, len: usize)` | Takes out every index from `len` on. |
+| `fn contains(&self, i: usize) -> bool` |  |
+| `fn first(&self) -> Option<usize>` |  |
+| `fn from_indices(items: impl IntoIterator<Item = usize>) -> Self` | The set of every index in `items`, each once, however they are ordered. |
+| `fn insert(&mut self, range: Range<usize>)` | Adds every index of `range`. |
+| `fn insert_except(&mut self, range: Range<usize>, except: &RangeSet)` | Adds every index of `range` that is not in `except`. |
+| `fn is_empty(&self) -> bool` |  |
+| `fn iter(&self) -> impl Iterator<Item = usize> + '_` | Every index, ascending. |
+| `fn len(&self) -> usize` | How many indices the set holds. |
+| `fn new() -> Self` |  |
+| `fn ranges(&self) -> &[Range<usize>]` | The ranges, ascending. |
+| `fn remove(&mut self, range: Range<usize>)` | Takes out every index of `range`. |
+| `fn subtract(&mut self, other: &RangeSet)` | Takes out every index of `other`. |
+| `fn toggle(&mut self, i: usize) -> bool` | Adds `i` if it is not in the set and takes it out if it is; whether it is in now. |
+
 ### ResolvedPalette { #resolvedpalette }
 
 *struct.* A `TerminalPalette` with the scheme's colors filled in: what a terminal paints with.
@@ -894,6 +929,58 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn thumb_color(&self, m: &ScrollbarMetrics, axis: ScrollAxis, default_fill: Color) -> Color` | The thumb's colour for `axis` now: `fill`, `fill_hover` or `fill_drag` by how emphasised it is (`default_fill` when none is set), at that level's… |
 | `fn tick(&mut self, d: Defaults, offsets: (f64, f64), now: Instant, reduced: bool, completed: &mut Vec<CompletionHandle>) -> bool` | Advances the bar to `now`: the emphasis fades, and `auto_hide`'s visibility. |
 | `fn track_color(&self, m: &ScrollbarMetrics) -> Option<Color>` | The track's colour now, `None` when no `scrollbar_track_fill` is set (a track-less bar, the default). |
+
+### SelectionChange { #selectionchange }
+
+*struct.* A list's chosen set changed (`Tree::take_selection_changes`).
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `list` | `NodeId` |  |
+| `selected` | `RangeSet` |  |
+| `anchor` | `Option<usize>` |  |
+| `source` | `SelectionSource` |  |
+
+### SelectionState { #selectionstate }
+
+*struct.* A virtual list's selection.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `mode` | `SelectionMode` |  |
+| `select_all_key` | `bool` | `select_all_key`: whether Ctrl+A selects every selectable row. |
+| `select_on_focus` | `bool` | `select_on_focus`: whether moving focus by Up, Down, Home, End, Page Up or Page Down also chooses the row focus lands on. |
+| `active` | `Option<usize>` | The row the keyboard is on while focus is not in a row (the list itself holds it). |
+| `pending_focus` | `Option<usize>` | The row focus should go to when it is built (`Tree::focus_list_row`). |
+
+| Method | Description |
+| --- | --- |
+| `fn anchor(&self) -> Option<usize>` |  |
+| `fn clear(&mut self, source: SelectionSource)` | Chooses no row. |
+| `fn clip(&mut self, count: usize, source: SelectionSource)` | The list has `count` rows now: nothing past them stays chosen, anchored or active. |
+| `fn ensure_anchor(&mut self, row: usize)` | `row` is the anchor if there is none. |
+| `fn first_selectable(&self, count: usize) -> Option<usize>` |  |
+| `fn has_pending(&self) -> bool` | Whether a change is waiting to be reported. |
+| `fn is_selectable(&self, i: usize, count: usize) -> bool` | Whether row `i` of `count` can be chosen. |
+| `fn is_selected(&self, i: usize) -> bool` |  |
+| `fn last_selectable(&self, count: usize) -> Option<usize>` |  |
+| `fn nearest_selectable(&self, i: usize, count: usize, forward: bool) -> Option<usize>` | The selectable row nearest `i` going `forward` (or back). |
+| `fn next_selectable(&self, from: usize, count: usize) -> Option<usize>` | The first selectable row after `from`. |
+| `fn prev_selectable(&self, from: usize) -> Option<usize>` | The last selectable row before `from`. |
+| `fn select_all(&mut self, count: usize, source: SelectionSource)` | Chooses every selectable row. |
+| `fn select_only(&mut self, i: usize, count: usize, source: SelectionSource)` | Chooses row `i` and nothing else; it is the anchor. |
+| `fn select_range(&mut self, to: usize, count: usize, add: bool, source: SelectionSource)` | Chooses every selectable row from the anchor to `to`. |
+| `fn selected(&self) -> &RangeSet` |  |
+| `fn set_mode(&mut self, mode: SelectionMode, source: SelectionSource)` | `selection_mode`: `None` clears the set, `Single` keeps one row (the anchor if chosen, else the first). |
+| `fn set_selected(&mut self, set: RangeSet, source: SelectionSource)` | `selection`: the set becomes exactly `set`, which the caller has checked. |
+| `fn set_unselectable(&mut self, set: RangeSet, source: SelectionSource)` | `unselectable_keys`: those rows can no longer be chosen, and leave the set. |
+| `fn take_pending(&mut self) -> Option<SelectionSource>` | The change since the last call, if there is one, and what made it. |
+| `fn toggle(&mut self, i: usize, count: usize, keep_anchor_off: bool, source: SelectionSource)` | Flips row `i`. |
+| `fn unselectable(&self) -> &RangeSet` |  |
 
 ### Shader { #shader }
 
@@ -1533,6 +1620,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn layout(&self, id: NodeId) -> &Layout` | Returns a node's computed layout box from the last layout pass. |
 | `fn layout_epoch(&self) -> u64` | How many times a layout has been computed. |
 | `fn layout_target(&self, id: NodeId, prop: LayoutProp) -> Option<f64>` | Where `id`'s running animation of `prop` is heading. |
+| `fn list_selection_key(&mut self, key: Key, shift: bool) -> ListKey` | The key `key` (with the held modifiers) pressed while focus is in a list that chooses rows (AC-SLT-2, 3, 5): Up, Down, Home, End, Page Up and Page… |
 | `fn local_to_window(&self, id: NodeId, point: Point) -> Point` | Converts a point in a node's own space into window space. |
 | `fn margin_drag_allowed(&self) -> bool` |  |
 | `fn mark_dirty(&mut self)` | Marks the tree as needing a frame. |
@@ -1552,6 +1640,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn relayout(&mut self, id: NodeId)` | Marks `id` for layout again: its text, font or fit changed, and a fit side's size depends on all of those. |
 | `fn remove(&mut self, id: NodeId) -> bool` | Removes a node and its whole subtree, detaching it from its parent. |
 | `fn reparse_svgs(&mut self, fonts: &SvgFonts)` | Every SVG node whose document has text is parsed again with `fonts`. |
+| `fn resolve_list_focus(&mut self) -> Vec<(Option<NodeId>, Option<NodeId>)>` | Moves focus into the rows `focus_list_row` was waiting for and that are built now (call it after layout), as long as focus is still in their list or… |
 | `fn resolve_text_part(&self, id: NodeId) -> Option<TextPart>` | What the synthetic accessibility id `id` stands for, if it is the run or link of one of this tree's text nodes (0.5.4, #151). |
 | `fn root_of(&self, id: NodeId) -> NodeId` | Returns the top of a node's tree, or the node itself if it has no parent. |
 | `fn scheme_colors(&self) -> &SchemeColors` | The scheme colours a node with no colour of its own paints in. |
@@ -1568,6 +1657,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn scroll_virtual_list_to_index(&mut self, list: NodeId, index: usize, align: ScrollAlign) -> Option<bool>` | Scrolls virtual list `list` so row `index` shows as `align` says, from the offsets the list knows. |
 | `fn scrollbar_pressed(&self) -> bool` | Whether the last primary press landed on a scrollbar and was used up by it, so whatever sits under the bar (a terminal's cell selection) is not to… |
 | `fn select_across(&mut self, anchor: (NodeId, usize), focus: (NodeId, usize)) -> bool` | Selects from `anchor` to `focus`, each a text node and a byte offset (clamped to a character boundary). |
+| `fn select_all_in_focused_list(&mut self) -> bool` | Ctrl+A: chooses every selectable row of the multiple selection list focus is in, if it has `select_all_key`. |
 | `fn select_all_static_text(&mut self) -> bool` | Ctrl+A in static text: selects all of the text node the selection started in. |
 | `fn select_all_text_field(&mut self, field: NodeId) -> bool` | Selects all the text in a text field. |
 | `fn select_text_field_unit(&mut self, field: NodeId, character: usize, row_start: usize, row_end: usize, triple: bool) -> bool` | A double or triple click in a text input selects around the character the pointer is on, inside the visual row `row_start..row_end` (the row's text… |
@@ -1575,6 +1665,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn set_anchor(&mut self, id: NodeId, anchored: Option<Anchored>) -> bool` | Places `id` against another node in the tree (`Some`), or puts it back in the flow (`None`). |
 | `fn set_calc_size(&mut self, id: NodeId, height: bool, calc: Option<CalcLen>)` | Makes one side of `id`'s size a `calc` (or, with `None`, an ordinary size again). |
 | `fn set_canvas_content(&mut self, id: NodeId, commands: Vec<DrawCommand>, hit_test: Option<CustomHitTest>) -> Option<()>` | Replaces a canvas node's draw commands and optional custom hit test. |
+| `fn set_drag_start_px(&mut self, px: f64)` | `drag_start_px` of the window, which the window sets before each event. |
 | `fn set_field_rows(&mut self, rows: FieldRows)` | Installs what answers a text input's questions about its shaped rows. |
 | `fn set_fit_content(&mut self, id: NodeId, fit: FitContent)` | Sets which sides of text node `id` take the text's own size. |
 | `fn set_focus_to(&mut self, node: NodeId) -> Option<(Option<NodeId>, Option<NodeId>)>` | Moves keyboard focus directly to a node and returns the old and new focus. |
@@ -1619,6 +1710,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn take_layout_changes(&mut self) -> Vec<LayoutChange>` | Every watched node whose laid-out size has changed since this was last asked, as `(node, old, new)` with `old` `None` the first time. |
 | `fn take_overwrite_changes(&mut self) -> Vec<(NodeId, bool)>` | The text fields whose caret moved, or whose text changed, since the last call, each with the bytes the edit inserted, if it did. |
 | `fn take_scroll_changes(&mut self) -> Vec<ScrollChange>` | Returns each scroll view whose offset changed since the last call, as (view, old, new). |
+| `fn take_selection_changes(&mut self) -> Vec<SelectionChange>` | The lists whose chosen set changed since the last call, each with the whole set. |
 | `fn take_touched(&self) -> Touched` | The nodes handed out mutably since the last call (see `Touched`), and a fresh start. |
 | `fn terminal_selected_text(&self, id: NodeId) -> Option<String>` | Returns the text selected in a terminal, if any. |
 | `fn text_field_selected_text(&self, field: NodeId) -> Option<String>` | Returns the text selected in a text field, if any. |
@@ -1631,6 +1723,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn update_layer(&mut self, id: NodeId, edit: impl FnOnce(&mut OverlayMeta)) -> bool` | Replaces the open layer `id`'s placement policy (`viewport_margin`, `flip_threshold`, `align`, `no_flip`, `no_shift`; the rest of its meta is kept)… |
 | `fn virtual_list_adopt(&mut self, list: NodeId, index: usize, row: NodeId) -> bool` | Attaches a caller-built node as a given row of a virtual list. |
 | `fn virtual_list_release_outside(&mut self, list: NodeId, keep: Range<usize>) -> Vec<NodeId>` | Detaches the list's rows outside a range and returns them, still alive. |
+| `fn virtual_list_selection(&self, list: NodeId) -> Option<&SelectionState>` | `list`'s selection, if it is a virtual list. |
 | `fn virtual_list_visible(&self, list: NodeId) -> Range<usize>` | Returns the range of rows a virtual list's viewport currently shows. |
 | `fn watch_layout(&mut self, id: NodeId, on: bool)` | Starts (or, with `false`, stops) reporting `id`'s laid-out size through `take_layout_changes`. |
 | `fn window_drag_allowed(&self) -> bool` |  |
@@ -1651,9 +1744,11 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `resolved_offsets` | `BTreeMap<usize, f64>` | Cached top offsets of items in a variable-height list. |
 | `bar` | `Box<ScrollbarState>` | The scrollbar and scroll feel of the list. |
 | `reported` | `f64` | The offset last reported as a `scroll` event (see `ScrollViewState::reported`). |
+| `selection` | `Box<SelectionState>` | Which rows are chosen (`selection_mode`, `selection`, ...). |
 
 | Method | Description |
 | --- | --- |
+| `fn index_at(&self, y: f64) -> usize` | The row that holds offset `y`: the last whose top is at or before it (row 0 for any offset before the first row; the last row past the end). |
 | `fn new(item_count: usize, item_extent: ItemExtent) -> Self` | Creates list state for a number of items and an extent rule. |
 | `fn offset_of(&self, idx: usize) -> f64` | Returns the top offset of an item. |
 | `fn thumb_geometry(&self, viewport_extent: f64) -> (f64, f64, f64)` | Returns the scrollbar track length, thumb length and thumb position. |
@@ -2579,6 +2674,34 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn from_name(name: &str) -> Option<Self>` | The property called `name`. |
 | `const fn kind(self) -> Kind` | How its value is checked. |
 | `const fn name(self) -> &'static str` | The node property's name. |
+
+### SelectionMode { #selectionmode }
+
+*enum.* How a list's rows are chosen.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `None` |  | Nothing is chosen by the engine: no keys, clicks or set (the default). |
+| `Single` |  | At most one row. |
+| `Multiple` |  | Any set of rows. |
+
+### SelectionSource { #selectionsource }
+
+*enum.* What made the selection change.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Pointer` |  |  |
+| `Keyboard` |  |  |
+| `Api` |  | A property: `selection`, `selection_mode`, `unselectable_keys`, `item_count`. |
+
+| Method | Description |
+| --- | --- |
+| `fn name(self) -> &'static str` |  |
 
 ### ShaderMode { #shadermode }
 

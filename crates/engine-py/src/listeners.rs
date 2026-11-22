@@ -156,10 +156,13 @@ pub(crate) enum EventType {
     /// 0.6.11 (UXREQ-006): a focused terminal's `escape_chord` was pressed and focus left it;
     /// carries `key` (the chord, `"ctrl+shift+escape"`) and `related_target` (the node focus moved to).
     TerminalEscape,
+    /// 0.6.12: the chosen rows of a `virtual_list` with a `selection_mode` changed; carries
+    /// `selection`, `ranges`, `count`, `anchor` and `source`.
+    SelectionChange,
 }
 
 impl EventType {
-    const ALL: [EventType; 41] = [
+    const ALL: [EventType; 42] = [
         Self::PointerEnter,
         Self::PointerLeave,
         Self::PointerDown,
@@ -201,6 +204,7 @@ impl EventType {
         Self::OverwriteChange,
         Self::Layout,
         Self::TerminalEscape,
+        Self::SelectionChange,
     ];
 
     pub(crate) fn name(self) -> &'static str {
@@ -246,6 +250,7 @@ impl EventType {
             Self::OverwriteChange => "overwrite_change",
             Self::Layout => "layout",
             Self::TerminalEscape => "terminal_escape",
+            Self::SelectionChange => "selection_change",
         }
     }
 
@@ -268,6 +273,7 @@ impl EventType {
                 | Self::CaretMove
                 | Self::OverwriteChange
                 | Self::Layout
+                | Self::SelectionChange
         )
     }
 

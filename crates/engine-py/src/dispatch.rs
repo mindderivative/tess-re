@@ -701,6 +701,10 @@ fn process_input_inner(
     ctx.tree
         .borrow_mut()
         .set_held_modifiers(listeners::modifiers());
+    // 0.6.12: a press on a chosen list row is a click unless the pointer goes this far.
+    ctx.tree
+        .borrow_mut()
+        .set_drag_start_px(io.window.pointer.drag_start_px());
     let shifted = shift_wheel(event);
     let delivered = shifted.as_ref().unwrap_or(event);
     let target = listeners::target_before(&ctx.tree.borrow(), root, delivered);
@@ -731,6 +735,8 @@ fn process_input_inner(
         listeners::deliver(ctx, py, listeners::EventType::Dismiss, layer, None, |_| {});
     }
     dock_drag(ctx, io.dock, io.listeners, root, event, py);
+    // 0.6.12: a list that chooses rows takes the keys that move its rows' focus and choose them.
+    let (outcome, list_key) = crate::list_selection::key(ctx, event, outcome);
     run_dispatch_outcome(
         ctx.handlers,
         ctx.tree,
@@ -740,9 +746,12 @@ fn process_input_inner(
         py,
     );
     shortcuts(ctx, io, root, event, py);
-    keyboard_scroll(ctx, event);
+    if !list_key {
+        keyboard_scroll(ctx, event);
+    }
     system_menu_key(io, event);
     listeners::fire_scroll_changes(ctx, py);
+    crate::list_selection::fire_changes(ctx, py);
     listeners::fire_caret_changes(ctx, py);
     listeners::fire_overwrite_changes(ctx, py);
     outcome
@@ -1190,7 +1199,8 @@ fn shortcuts(
             let focused = ctx.tree.borrow().focused();
             let in_input =
                 focused.is_some_and(|field| ctx.tree.borrow_mut().select_all_text_field(field));
-            if !in_input {
+            // 0.6.12: a list with `select_all_key` that focus is in chooses all its rows.
+            if !in_input && !ctx.tree.borrow_mut().select_all_in_focused_list() {
                 // 0.5.4 (#131): with no input to select in (nothing focused, or a
                 // button or row), the selected static text.
                 ctx.tree.borrow_mut().select_all_static_text();

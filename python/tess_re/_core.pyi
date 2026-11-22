@@ -66,7 +66,8 @@ class Event:
     declares one parameter -- never constructed directly. A field is
     `None` when the event has nothing to say about it (never fabricated).
     M100 removed the legacy `kind`, `source`, `node`, and `position`:
-    `type` and `target` replace the first and third.
+    `type` and `target` replace the first and third. (0.6.12) `source` is back, for
+    `selection_change` only.
     """
 
     button: str | None
@@ -183,7 +184,15 @@ class Event:
     phase: str | None
     """`pan` and `pinch`: `"began"`, `"changed"`, `"ended"` or `"cancelled"`."""
     count: int | None
-    """`tap`: 1, or 2 for a double tap."""
+    """`tap`: 1, or 2 for a double tap. `selection_change` (0.6.12): how many rows are chosen."""
+    selection: list[int] | None
+    """`selection_change` (0.6.12): the keys of the chosen rows, ascending; the whole set."""
+    ranges: list[tuple[int, int]] | None
+    """`selection_change` (0.6.12): the same set as half-open `(start, end)` ranges, ascending."""
+    anchor: int | None
+    """`selection_change` (0.6.12): the row a range starts from, or `None`."""
+    source: str | None
+    """`selection_change` (0.6.12): what changed the set: `"pointer"`, `"keyboard"` or `"api"`."""
     scale: float | None
     """`pinch`: the distance between fingers over what it was at the start."""
     scale_delta: float | None
@@ -385,6 +394,19 @@ class Node:
         at 60 Hz, `(8, 32)`). Each is a number, a bool, a colour `(r, g, b, a)`, a name or an
         easing (a preset name or a cubic bezier `(x1, y1, x2, y2)`); `None` is the
         default, and `get` reads the value in force.
+
+        (0.6.12) A virtual list chooses its own rows when `selection_mode` is `"single"` or
+        `"multiple"` (default `"none"`: the engine chooses nothing and no key or click
+        changes): `selection` (get: the chosen rows' keys -- a row's key is its index --
+        ascending; set: replaces the whole set, `ValueError` for a key outside
+        `0..item_count`, an unselectable one, or more than one in a single list),
+        `selection_anchor` (get only), `select_all_key` (bool, `False`: Ctrl+A chooses every
+        selectable row while focus is in the list and not in a text input),
+        `select_on_focus` (bool, `False`: Up, Down, Home, End, Page Up and Page Down also
+        choose the row focus lands on) and `unselectable_keys` (a list of keys that no
+        click, key or range chooses and that focus never lands on by a key). The set is
+        stored as ranges, so a range or select-all over any number of rows builds no row.
+        See the guide "Selecting rows of a virtual list".
         """
         ...
     def redraw(self) -> None:
@@ -432,6 +454,9 @@ class Node:
         (0.6.11) Also `terminal_escape` (a focused terminal's `escape_chord` was
         pressed; `event.key` is the chord, `event.related_target` the node
         focus moved to).
+        (0.6.12) Also `selection_change` (the chosen rows of a `virtual_list` with a
+        `selection_mode` changed: `event.selection`, `event.ranges`, `event.count`,
+        `event.anchor`, `event.source`; once for a key press, click or `set`).
         (0.6.7) Also `overwrite_change` (the user toggled a text input's overwrite
         mode with Insert; `event.old_value` and `event.new_value`).
         (0.5.7) Also `layout` (the node's laid-out size changed, or it was
@@ -439,7 +464,7 @@ class Node:
         `event.new_value` as `(width, height)`; only a node with a listener is
         watched).
         All but `pointer_enter`/`pointer_leave`/
-        `change`/`dismiss`/`scroll`/`animation_end`/`layout` bubble to ancestors
+        `change`/`dismiss`/`scroll`/`animation_end`/`layout`/`selection_change` bubble to ancestors
         until a listener calls `event.stop()`. `handler` receives an
         `Event`, or nothing if it takes no parameters. Raises
         `ValueError` for an unknown event.

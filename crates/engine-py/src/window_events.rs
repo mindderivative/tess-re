@@ -1945,7 +1945,14 @@ impl PyWindow {
             root,
             py,
         );
-        node_callbacks::layout(&tree, root, self.available(), &handlers, py);
+        node_callbacks::layout(
+            &tree,
+            root,
+            self.available(),
+            &handlers,
+            &self.handles.completions,
+            py,
+        );
         listeners::fire_layout_changes(&ctx, py);
         listeners::fire_scroll_changes(&ctx, py);
         Ok(())
@@ -2034,7 +2041,14 @@ impl PyWindow {
             Some(node) => Some(node.id),
             None => None,
         };
-        node_callbacks::layout(&tree, root, self.available(), &handlers, py);
+        node_callbacks::layout(
+            &tree,
+            root,
+            self.available(),
+            &handlers,
+            &self.handles.completions,
+            py,
+        );
         let ctx = NodeContext {
             tree: &tree,
             handlers: &handlers,

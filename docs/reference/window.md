@@ -785,7 +785,10 @@ handle.on("pointer_move", lambda e: moves.append(e.window_x))   # only once the 
 
 `drag_start_px` gates what listeners hear, not what the engine does: hover, a scrollbar thumb or a text selection
 drag follow the pointer from the first pixel, as they must to feel right. It applies to the pointer a finger stands
-in for as well. The Tesserae UX spec asks for 4 on `drag_start_px` (its notes "Drag and Drop" and "Drag and Drop Pattern": a
+in for as well. (0.6.12) One thing the engine does decide with it: a press on a chosen row of a `virtual_list` with a
+`selection_mode` chooses that row alone on its release, unless the pointer went `drag_start_px` first
+([the drag rule](../guide/nodes-and-layout.md#selecting-rows-of-a-virtual-list)); with 0 no move is a drag.
+The Tesserae UX spec asks for 4 on `drag_start_px` (its notes "Drag and Drop" and "Drag and Drop Pattern": a
 press then movement of at least 4 dp starts a drag), 400 ms and 4 px for a double click, 500 ms for the long press
 and 10 px for the slop (its note "11 Interaction"); a design system sets its values once at window creation. The defaults here are the engine's historical ones, not a promise of the spec.
 

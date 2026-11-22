@@ -35,6 +35,7 @@ mod path_template;
 mod scheme;
 mod scrollbar;
 mod scrollbar_props;
+mod selection;
 mod shader;
 mod state_layer;
 mod svg;
@@ -89,6 +90,7 @@ pub use scrollbar_props::{
     MAX_MILLIS as MAX_SCROLL_MILLIS, Overrides, Prop as ScrollProp, Show, VERTICAL_SIDE_NAMES,
     Value as PropValue,
 };
+pub use selection::{RangeSet, SelectionMode, SelectionSource, SelectionState};
 pub use shader::{
     FRAME_BLOCK_SIZE, Shader, ShaderError, ShaderMode, UniformKind, UniformValue, frame_block,
     shader_animations_pending,
@@ -100,6 +102,7 @@ pub use svg::{
 };
 pub use tree::{
     AccessLine, CancelledGesture, FIT_CONTENT_SLACK, FieldRows, FocusDirection, KEY_SCROLL_LINE,
-    LayoutAnimError, LayoutChange, RowAnswer, RowQuery, ScrollAlign, ScrollChange, TextMeasure,
-    TextPart, Touched, Tree, from_access_id, node_id_as_u64, to_access_id,
+    LayoutAnimError, LayoutChange, ListKey, RowAnswer, RowQuery, ScrollAlign, ScrollChange,
+    SelectionChange, TextMeasure, TextPart, Touched, Tree, from_access_id, node_id_as_u64,
+    to_access_id,
 };

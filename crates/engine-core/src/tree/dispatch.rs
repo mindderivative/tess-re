@@ -125,6 +125,8 @@ impl Tree {
                 }
                 // 0.6.11: the thumb under the pointer takes its hover opacity.
                 self.update_scrollbar_hover(new_hovered, position, now);
+                // 0.6.12: a press on a chosen list row may turn into the app's drag.
+                self.list_press_moved(position);
                 if old_hovered != new_hovered {
                     DispatchOutcome::HoverChanged {
                         old: old_hovered,
@@ -213,6 +215,10 @@ impl Tree {
                         }
                         current = self.nodes[id].parent;
                     }
+                }
+                // 0.6.12: a click chooses rows of a virtual list that has a `selection_mode`.
+                if button == PointerButton::Primary {
+                    self.list_press(hit, position);
                 }
                 if let Some(node) = hit {
                     self.set_pressed(Some((button, node)));
@@ -311,6 +317,7 @@ impl Tree {
                 self.set_pressed(None);
 
                 if button == PointerButton::Primary {
+                    self.list_release(hit);
                     // M38 Phase 6 (§5, §7, §11.7): a real scrollbar
                     // thumb's own drag bookkeeping is genuinely per-
                     // gesture -- mirrors pyCopper's own real `on_
