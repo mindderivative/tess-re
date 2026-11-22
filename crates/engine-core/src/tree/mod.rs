@@ -1070,13 +1070,13 @@ impl Tree {
         }
     }
 
-    /// 0.5.4 (#116): how many nodes the tree holds.
     /// 0.6.12: whether the last primary press landed on a scrollbar and was used up by it, so
     /// whatever sits under the bar (a terminal's cell selection) is not to start from it.
     pub fn scrollbar_pressed(&self) -> bool {
         self.scrollbar_pressed
     }
 
+    /// 0.5.4 (#116): how many nodes the tree holds.
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
