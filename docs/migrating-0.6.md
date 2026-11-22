@@ -540,6 +540,17 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `PopupWindow` refuse all three like `system_menu`. Skipped: separate corner size for the resize border (one
   `resize_border` serves edges and corners), double-click time/slop (the OS value, and P6's multi-click settings).
   See [Custom title bars](reference/window.md#window-controls-and-state).
+- **`gesture_long_press_ms`, `gesture_tap_ms`, `gesture_double_tap_ms`, `gesture_double_tap_px`, `gesture_swipe_speed`,
+  `gesture_swipe_px`, `gesture_rotate_slop`, `multi_click_ms`, `multi_click_px`, `drag_start_px` (new, opt-in; window
+  properties, P6).** The touch recogniser's long press (500 ms), tap (300 ms), double tap (300 ms and 30 px), swipe
+  (600 px/s and 40 px) and rotate (0.12 rad) thresholds, the text multi-click's 500 ms and 4 px, and a drag start
+  distance were fixed numbers beside the existing `touch_slop`. They are now `Window.set` / `get` properties (also on
+  `LayerWindow` and `PopupWindow`; milliseconds, pixels, px/s, radians), each default the old value, so no default
+  changes. `drag_start_px` is new behaviour with an off default (0): while the primary button is held, `pointer_move`
+  listeners hear nothing until the pointer is that far from the press (the engine's own hover, thumb and selection
+  drags are not held back), because tre had no drag threshold at all and the Tesserae spec wants 4 dp.
+  `multi_click_px` is also the title-bar double click's press distance (it was a separate fixed 4). Bad values raise
+  `ValueError` naming the property. See [Gesture, click and drag thresholds](reference/window.md#gesture-click-and-drag-thresholds-0612).
 - **A path node's `shadows` follow the path, holes included (a fix).** Every node's shadow was its box, blurred, so a
   `path` ring's hole filled with solid shadow. A path now casts the silhouette of what it paints (the fill under the
   non-zero rule, plus the trimmed stroke), offset, grown by `spread` and blurred by the same `blur / 2` as a box.

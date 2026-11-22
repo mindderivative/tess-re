@@ -324,10 +324,12 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 | Method | Description |
 | --- | --- |
+| `fn config(&self) -> GestureConfig` | Every threshold the recognizer uses. |
 | `fn deadline(&self) -> Option<Instant>` | When `poll` next has something to say, if a touch is waiting to become a long press. |
 | `fn is_active(&self) -> bool` | Whether any finger is down: the caller should keep polling while so. |
 | `fn new(config: GestureConfig) -> Self` |  |
 | `fn poll(&mut self, now: Instant) -> Vec<Gesture>` | The time passing: a touch held in place for the long-press time becomes a long press. |
+| `fn set_config(&mut self, config: GestureConfig)` | Replaces every threshold. |
 | `fn set_slop(&mut self, slop: f64)` | The distance, in layout pixels, a touch may wander and still be a tap or a long press. |
 | `fn slop(&self) -> f64` |  |
 | `fn touch(&mut self, id: u64, phase: TouchPhase, position: Point, now: Instant) -> Vec<Gesture>` | Feeds one touch at `now`; returns the gestures it completes or advances. |

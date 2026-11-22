@@ -36,6 +36,7 @@ mod node_layout;
 mod node_props;
 mod outline_props;
 mod outputs;
+mod pointer_settings;
 mod popup_window;
 mod scale;
 mod scheme;

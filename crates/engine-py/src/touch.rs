@@ -15,8 +15,8 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use engine_core::{
-    Gesture, GestureKind, GesturePhase, GestureRecognizer, InputEvent, NodeId, PointerButton,
-    ScrollDelta, TouchPhase,
+    Gesture, GestureConfig, GestureKind, GesturePhase, GestureRecognizer, InputEvent, NodeId,
+    PointerButton, ScrollDelta, TouchPhase,
 };
 use peniko::kurbo::Point;
 use pyo3::prelude::*;
@@ -80,6 +80,15 @@ impl TouchRouter {
 
     pub(crate) fn slop(&self) -> f64 {
         self.recognizer.slop()
+    }
+
+    /// 0.6.12 (P6): the recognizer's thresholds: long press, tap, double tap, swipe, rotate.
+    pub(crate) fn gesture_config(&self) -> GestureConfig {
+        self.recognizer.config()
+    }
+
+    pub(crate) fn set_gesture_config(&mut self, config: GestureConfig) {
+        self.recognizer.set_config(config);
     }
 
     pub(crate) fn set_target_slop(&mut self, slop: f64) {

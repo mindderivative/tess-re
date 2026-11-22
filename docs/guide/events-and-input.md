@@ -124,6 +124,17 @@ nearest one, when nothing under the finger listens: its touch events come from t
 press stands in for a pointer press on its box, so a near miss still clicks. The box is the node's layout box,
 before any transform. A touch that lands on a listening node, or inside one, is never pulled elsewhere.
 
+The rest of the recogniser's thresholds are properties too (0.6.12), each with its old value as the default:
+`gesture_long_press_ms` (500), `gesture_tap_ms` (300), `gesture_double_tap_ms` (300) and `gesture_double_tap_px` (30),
+`gesture_swipe_speed` (600 px/s) and `gesture_swipe_px` (40), `gesture_rotate_slop` (0.12 rad). For the mouse,
+`multi_click_ms` (500) and `multi_click_px` (4) say how quick and near presses make a double or triple click in text,
+and `drag_start_px` (0, off) holds back `pointer_move` listeners until a held press has moved that far. See
+[Gesture, click and drag thresholds](../reference/window.md#gesture-click-and-drag-thresholds-0612).
+
+```python
+window.set(gesture_long_press_ms=400, multi_click_ms=400, drag_start_px=4)
+```
+
 Limits: layout pixels are not millimetres, so a screen that reports a scale factor of
 1 but is physically dense gets a smaller finger than the default expects; `touch_slop`
 and `touch_target_slop` are the app's to raise there (winit gives no physical size to

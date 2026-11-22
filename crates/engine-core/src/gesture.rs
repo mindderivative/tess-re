@@ -282,6 +282,17 @@ impl GestureRecognizer {
         self.config.slop
     }
 
+    /// 0.6.12 (P6): every threshold the recognizer uses.
+    pub fn config(&self) -> GestureConfig {
+        self.config
+    }
+
+    /// 0.6.12 (P6): replaces every threshold. Takes effect with the next touch, and a touch already
+    /// waiting to become a long press uses the new time from its next `poll`.
+    pub fn set_config(&mut self, config: GestureConfig) {
+        self.config = config;
+    }
+
     /// Whether any finger is down: the caller should keep polling while so.
     pub fn is_active(&self) -> bool {
         !matches!(self.state, State::Idle)
@@ -1109,5 +1120,154 @@ mod tests {
         );
         let g = r.touch(1, TouchPhase::Moved, p(35.0, 0.0), c.at(20));
         assert_eq!(g[0].kind, GestureKind::Pan);
+    }
+
+    fn with(change: impl FnOnce(&mut GestureConfig)) -> GestureRecognizer {
+        let mut config = GestureConfig::default();
+        change(&mut config);
+        GestureRecognizer::new(config)
+    }
+
+    fn tap_pair(r: &mut GestureRecognizer, c: &Clock, gap: u64, apart: f64) -> GestureKind {
+        r.touch(1, TouchPhase::Started, p(20.0, 10.0), c.at(0));
+        r.touch(1, TouchPhase::Ended, p(20.0, 10.0), c.at(50));
+        r.touch(
+            1,
+            TouchPhase::Started,
+            p(20.0 + apart, 10.0),
+            c.at(50 + gap),
+        );
+        r.touch(1, TouchPhase::Ended, p(20.0 + apart, 10.0), c.at(100 + gap))[0].kind
+    }
+
+    #[test]
+    fn the_config_is_read_back_and_replaced_whole() {
+        let mut r = GestureRecognizer::default();
+        assert_eq!(r.config(), GestureConfig::default());
+        let config = GestureConfig {
+            slop: 3.0,
+            long_press: Duration::from_millis(900),
+            ..GestureConfig::default()
+        };
+        r.set_config(config);
+        assert_eq!(r.config(), config);
+        assert_eq!(r.slop(), 3.0);
+    }
+
+    #[test]
+    fn the_long_press_time_moves_the_deadline_and_the_gesture() {
+        let c = clock();
+        // The default has fired by 500 ms; a 900 ms press has not, and a 200 ms one fired long ago.
+        let mut d = GestureRecognizer::default();
+        d.touch(1, TouchPhase::Started, p(10.0, 10.0), c.at(0));
+        assert_eq!(d.poll(c.at(500))[0].kind, GestureKind::LongPress);
+        for ms in [900, 200] {
+            let mut r = with(|g| g.long_press = Duration::from_millis(ms));
+            r.touch(1, TouchPhase::Started, p(10.0, 10.0), c.at(0));
+            assert_eq!(r.deadline(), Some(c.at(ms)));
+            assert!(r.poll(c.at(ms - 1)).is_empty());
+            assert_eq!(r.poll(c.at(ms))[0].kind, GestureKind::LongPress);
+        }
+    }
+
+    #[test]
+    fn the_tap_time_decides_how_long_a_touch_may_be_held_and_still_tap() {
+        let c = clock();
+        let hold = |r: &mut GestureRecognizer| {
+            r.touch(1, TouchPhase::Started, p(5.0, 5.0), c.at(0));
+            // Released after 400 ms without polling, so no long press fired first.
+            r.touch(1, TouchPhase::Ended, p(5.0, 5.0), c.at(400))
+        };
+        // The default 300 ms: a 400 ms hold is nothing; a 450 ms tap time makes it a tap.
+        assert!(hold(&mut GestureRecognizer::default()).is_empty());
+        let g = hold(&mut with(|g| g.tap_max = Duration::from_millis(450)));
+        assert_eq!(g[0].kind, GestureKind::Tap { count: 1 });
+        // And a shorter one makes a 100 ms hold nothing.
+        let mut r = with(|g| g.tap_max = Duration::from_millis(50));
+        r.touch(1, TouchPhase::Started, p(5.0, 5.0), c.at(0));
+        assert!(
+            r.touch(1, TouchPhase::Ended, p(5.0, 5.0), c.at(100))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn the_double_tap_gap_and_distance_decide_what_is_a_double() {
+        let c = clock();
+        // 400 ms between taps: two singles by default, a double with a 500 ms gap.
+        assert_eq!(
+            tap_pair(&mut GestureRecognizer::default(), &c, 350, 0.0),
+            GestureKind::Tap { count: 1 }
+        );
+        assert_eq!(
+            tap_pair(
+                &mut with(|g| g.double_tap_gap = Duration::from_millis(500)),
+                &c,
+                350,
+                0.0
+            ),
+            GestureKind::Tap { count: 2 }
+        );
+        // And a short gap stops being a double with a 100 ms gap.
+        assert_eq!(
+            tap_pair(
+                &mut with(|g| g.double_tap_gap = Duration::from_millis(100)),
+                &c,
+                200,
+                0.0
+            ),
+            GestureKind::Tap { count: 1 }
+        );
+        // 45 px apart: two singles by default, a double with a 60 px distance, and 20 px
+        // stops being a double with a 10 px distance.
+        assert_eq!(
+            tap_pair(&mut GestureRecognizer::default(), &c, 100, 45.0),
+            GestureKind::Tap { count: 1 }
+        );
+        assert_eq!(
+            tap_pair(&mut with(|g| g.double_tap_distance = 60.0), &c, 100, 45.0),
+            GestureKind::Tap { count: 2 }
+        );
+        assert_eq!(
+            tap_pair(&mut with(|g| g.double_tap_distance = 10.0), &c, 100, 20.0),
+            GestureKind::Tap { count: 1 }
+        );
+    }
+
+    #[test]
+    fn the_rotate_slop_decides_when_a_turn_is_a_rotation() {
+        let turned = |slop: f64| {
+            let (mut r, c) = (with(|g| g.rotate_slop = slop), clock());
+            let (a0, b0) = pair(0.0, 100.0);
+            r.touch(1, TouchPhase::Started, a0, c.at(0));
+            r.touch(2, TouchPhase::Started, b0, c.at(10));
+            let g = turn_to(&mut r, &c, 20, 0.2);
+            !rotates(&g).is_empty()
+        };
+        // 0.2 rad: past the default 0.12, under 0.5, past 0.05.
+        assert!(turned(0.12));
+        assert!(!turned(0.5));
+        assert!(turned(0.05));
+    }
+
+    #[test]
+    fn the_swipe_speed_and_distance_decide_what_is_a_swipe() {
+        let swiped = |change: fn(&mut GestureConfig), to: Point, ms: u64| {
+            let (mut r, c) = (with(change), clock());
+            flick(&mut r, &c, p(0.0, 0.0), to, ms)
+                .iter()
+                .any(|g| matches!(g.kind, GestureKind::Swipe { .. }))
+        };
+        // 200 px in 150 ms (1333 px/s) is a swipe; a 2000 px/s bar says it is not.
+        assert!(swiped(|_| {}, p(200.0, 0.0), 150));
+        assert!(!swiped(|g| g.swipe_velocity = 2000.0, p(200.0, 0.0), 150));
+        // 200 px in 500 ms (400 px/s) is not, until the bar is 300 px/s.
+        assert!(!swiped(|_| {}, p(200.0, 0.0), 500));
+        assert!(swiped(|g| g.swipe_velocity = 300.0, p(200.0, 0.0), 500));
+        // 25 px at 1250 px/s is short by default; a 20 px distance makes it a swipe, and
+        // a 300 px distance makes 200 px short.
+        assert!(!swiped(|_| {}, p(25.0, 0.0), 20));
+        assert!(swiped(|g| g.swipe_distance = 20.0, p(25.0, 0.0), 20));
+        assert!(!swiped(|g| g.swipe_distance = 300.0, p(200.0, 0.0), 150));
     }
 }
