@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The CI's cheap, non-test gates, run locally before a push (a red gate costs a ~15 minute CI cycle):
-#   cargo fmt --check, stubtest, mypy --strict, check_agent_docs, python.md and rust.md regenerated (no diff allowed), check_version.
+#   cargo fmt --check, clippy -D warnings on the affected crates, stubtest, mypy --strict, check_agent_docs, python.md and rust.md regenerated (no diff allowed), check_version.
 #
 #     tools/pre_push_gates.sh [--venv DIR] [--expect VERSION]
 #
@@ -45,6 +45,14 @@ step "build the extension from this checkout"
 VIRTUAL_ENV="$venv" "${heavy[@]}" "$venv/bin/maturin" develop --release -m crates/engine-py/Cargo.toml >/tmp/pre_push_build.log 2>&1 \
     || { echo "build failed (see /tmp/pre_push_build.log):" >&2; grep -n '^error' /tmp/pre_push_build.log | head >&2; exit 1; }
 step "cargo fmt --check (all crates, tests included)"; check cargo fmt --all -- --check
+step "clippy --all-targets -D warnings on the affected crates (the partial job's command)"
+affected=$(python3 -I tools/ci_plan.py --base origin/main --github-output /dev/stdout 2>/dev/null | sed -n 's/^affected_args=//p')
+if [ -n "$affected" ]; then
+    # shellcheck disable=SC2086
+    check "${heavy[@]}" cargo clippy $affected --all-targets -- -D warnings
+else
+    echo "(no Rust crate affected against origin/main)"
+fi
 step "stubtest";           check "${heavy[@]}" "$venv/bin/python" -m mypy.stubtest tess_re --allowlist tools/stubtest_allowlist.txt
 step "mypy --strict";      check "${heavy[@]}" "$venv/bin/mypy" --strict python/tess_re
 step "check_agent_docs";   check python3 -I tools/check_agent_docs.py
