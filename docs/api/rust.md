@@ -198,6 +198,17 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- |
 | `fn any(self) -> bool` | Whether either side is a calc size. |
 
+### CancelledGesture { #cancelledgesture }
+
+*struct.* What `Tree::cancel_gesture` ended.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `holder` | `Option<NodeId>` | The node that held the pointer capture. |
+| `pressed` | `Option<NodeId>` | The node the press was on. |
+
 ### CanvasState { #canvasstate }
 
 *struct.* The drawing commands and hit-test rule of a canvas node.
@@ -552,6 +563,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn flag(&self, prop: Prop) -> Option<bool>` |  |
 | `fn get(&self, prop: Prop) -> Option<Value>` | What is set for `prop`. |
 | `fn number(&self, prop: Prop) -> Option<f64>` |  |
+| `fn pair(&self, prop: Prop) -> Option<(f64, f64)>` |  |
 | `fn set(&mut self, prop: Prop, value: Option<Value>) -> bool` | Sets `prop` to `value`, or back to its default with `None`. |
 | `fn set_number(&mut self, prop: Prop, value: Option<f64>) -> bool` | `set` with a number; `None` unsets. |
 
@@ -789,6 +801,9 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fling_tau_ms` | `f64` | The time constant of a fling's decay, milliseconds. |
 | `fling_stop_speed` | `f64` | A fling ends at this speed, pixels a second. |
 | `fling_min_speed` | `f64` | A flick slower than this does not coast, pixels a second. |
+| `edge_scroll` | `bool` | Whether a held gesture near the view's edge scrolls it. |
+| `edge_scroll_band` | `f64` | How far in from the edge the scrolling starts, dp. |
+| `edge_scroll_speed` | `(f64, f64)` | Dp per frame at 60 Hz at the band's inner edge and at the edge. |
 
 | Method | Description |
 | --- | --- |
@@ -1399,6 +1414,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn build_access_update_titled(&self, root: NodeId, scale: f64, title: &str) -> TreeUpdate` | `build_access_update_scaled`, with the root named after the window's `title` (a `LayerWindow`'s namespace) when the app gave it no label. |
 | `fn can_scroll(&self, id: NodeId, delta: f64) -> bool` | Returns whether a scroll view or list can move by the given amount along its axis. |
 | `fn can_scroll_axis(&self, id: NodeId, axis: ScrollAxis, delta: f64) -> bool` | `can_scroll` for scroller `id` along `axis`. |
+| `fn cancel_gesture(&mut self, now: Instant) -> CancelledGesture` | Ends the gesture in progress without its release: the pointer capture and the press go, a held lane press stops, and a dragged scrollbar thumb puts… |
 | `fn cancel_press(&mut self) -> Option<NodeId>` | Ends the current press without a click and releases any pointer capture. |
 | `fn caret_following_fields(&self) -> Vec<NodeId>` | The text inputs whose scroll follows the caret by the shaped layout, which `engine-core` cannot do (no font), so the window's text renderer does… |
 | `fn children_in_paint_order(&self, id: NodeId) -> Cow<'_, [NodeId]>` | Returns a node's children bottom first, ordered by z-index then child order. |
@@ -1422,6 +1438,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn fling_scroll(&mut self, from: NodeId, velocity: Vec2, now: Instant) -> bool` | Lets the scroller under a lifted finger coast. |
 | `fn focus_visible(&self) -> bool` | Whether the current focus is "visible": it came from the keyboard or assistive technology, not a pointer press. |
 | `fn focused(&self) -> Option<NodeId>` | Returns the node that currently has keyboard focus, if any. |
+| `fn gesture_active(&self) -> bool` | Whether a gesture the engine can cancel is held: a captured pointer, a scrollbar thumb drag, or one `set_gesture_hold` was told of (a dock drag). |
 | `fn get(&self, id: NodeId) -> Option<&Node>` | Returns a node by id, or None if it no longer exists. |
 | `fn get_mut(&mut self, id: NodeId) -> Option<&mut Node>` | Returns a mutable node by id and marks the tree as needing a frame. |
 | `fn has_images(&self) -> bool` | Every real `Image` node currently in this tree. |
@@ -1433,6 +1450,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn hit_test(&self, root: NodeId, point: Point) -> Option<NodeId>` | Returns the topmost node at a point, testing in reverse paint order. |
 | `fn hit_test_input(&self, root: NodeId, point: Point) -> Option<NodeId>` | Returns the node that input at a point reaches, with open modal layers blocking others. |
 | `fn hit_test_local(&self, root: NodeId, point: Point) -> Option<(NodeId, Point)>` | Returns the node at a point together with the point in that node's own space. |
+| `fn hovered(&self) -> Option<NodeId>` | `update_hover`'s own transition half, split out so `InputEvent::PointerLeft` can clear hover without a hit-test. |
 | `fn image_nodes(&self) -> impl Iterator<Item = (NodeId, &ImageState)>` | Iterates every image node in the tree with its image state. |
 | `fn input_region(&self, root: NodeId, bounds: (f64, f64), max_rects: usize) -> Vec<(i32, i32, i32, i32)>` | The rectangles, in logical pixels inside `bounds` (the surface's `(width, height)`), where a click lands on something drawn: every visible… |
 | `fn insert(&mut self, kind: NodeKind, layout_style: Style, paint: PaintProperties) -> NodeId` | Creates a new parentless node and returns its id. |
@@ -1487,6 +1505,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn set_fit_content(&mut self, id: NodeId, fit: FitContent)` | Sets which sides of text node `id` take the text's own size. |
 | `fn set_focus_to(&mut self, node: NodeId) -> Option<(Option<NodeId>, Option<NodeId>)>` | Moves keyboard focus directly to a node and returns the old and new focus. |
 | `fn set_focus_visible(&mut self, visible: bool)` | See `Tree::focus_visible`. |
+| `fn set_gesture_hold(&mut self, hold: bool)` | Tells the tree a gesture it cannot see (a dock drag) starts or ends, which is what edge auto-scroll waits for. |
 | `fn set_held_modifiers(&mut self, held: Modifiers)` | Tells the tree which modifier keys are held; the window calls it before each event. |
 | `fn set_hit_testable(&mut self, id: NodeId, hit_testable: Option<bool>)` | Sets whether a node can claim a hit by itself. |
 | `fn set_hovered(&mut self, hit: Option<NodeId>) -> Option<NodeId>` | Sets the hovered node and returns the previous one if it changed. |
@@ -1521,6 +1540,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn take_caret_changes(&mut self) -> Vec<(NodeId, Option<Range<usize>>)>` |  |
 | `fn take_dirty(&mut self) -> bool` | Returns whether the tree needs a frame and clears the flag. |
 | `fn take_dismissals(&mut self) -> Vec<NodeId>` | Returns the layers an outside press or Escape asked to dismiss since the last call. |
+| `fn take_edge_scrolled(&mut self) -> Option<Point>` | Where the pointer was when edge auto-scroll last moved a view, once (the caller re-reads hover and the dock target there). |
 | `fn take_layout_changes(&mut self) -> Vec<LayoutChange>` | Every watched node whose laid-out size has changed since this was last asked, as `(node, old, new)` with `old` `None` the first time. |
 | `fn take_overwrite_changes(&mut self) -> Vec<(NodeId, bool)>` | The text fields whose caret moved, or whose text changed, since the last call, each with the bytes the edit inserted, if it did. |
 | `fn take_scroll_changes(&mut self) -> Vec<ScrollChange>` | Returns each scroll view whose offset changed since the last call, as (view, old, new). |
@@ -2224,6 +2244,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Flag` |  | `true` or `false`. |
 | `Choice` | `(&'static [&'static str])` | One of these names, by index. |
 | `Easing` |  | A preset name or a cubic bezier (`Easing`). |
+| `Pair` | `{ min: f64, max: f64 }` | Two finite numbers, each from `min` to `max`. |
 
 | Method | Description |
 | --- | --- |
@@ -2242,6 +2263,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Flag` | `(bool)` |  |
 | `Choice` | `(u8)` | The index into the property's `Kind::Choice` names. |
 | `Easing` | `(Easing)` |  |
+| `Pair` | `(f64, f64)` |  |
 
 ### RowQuery { #rowquery }
 
@@ -2452,6 +2474,9 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `FlingTau` |  |  |
 | `FlingStop` |  |  |
 | `FlingMin` |  |  |
+| `EdgeScroll` |  |  |
+| `EdgeScrollBand` |  |  |
+| `EdgeScrollSpeed` |  |  |
 
 | Method | Description |
 | --- | --- |

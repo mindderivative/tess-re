@@ -577,6 +577,20 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `caret_width` (a `text_input`'s, 1.5 px by default) is unchanged. `TextOptions` gained `selection_fill`,
   `selection_foreground` and `selection_radius` and `TextFieldState` gained `selection_foreground` and `selection_radius`
   (Rust). See [Selection appearance](guide/text.md#selection-appearance-0612).
+- **Escape ends a drag (UXREQ-007; behaviour change).** While a gesture is held — a node holds the pointer capture, a
+  scrollbar thumb is dragged, or a dock drag runs — Escape is **consumed**: the capture holder (else the pressed node)
+  gets one `pointer_cancel`, no `pointer_up` and no `click` follow, and the key goes no further (no `key_down`, no byte to
+  a focused terminal, no text edit, no `dismiss_on_escape` overlay closing, no keyboard scroll). A thumb drag restores its
+  start offset. Without a gesture Escape is unchanged. An app that closed a popup with Escape mid-drag now sees the drag
+  end first and needs a second Escape. A node that holds the capture still gets no `key_down`.
+- **`dock_cancel` (new window event).** Escape during a dock drag leaves the panel in its zone, fires `dock_target` with
+  `side=None` if a zone was highlighted (so the highlight goes within the frame), then `dock_cancel` (`event.panel`);
+  `dock_drop` never fires. Add `window.on("dock_cancel", ...)` next to your `dock_drop` handler to clear drag state.
+- **`edge_scroll`, `edge_scroll_band`, `edge_scroll_speed` (new, opt-in; `scroll_view` and `virtual_list`).** While a
+  gesture is held, a pointer within `edge_scroll_band` dp (24) of the view's edge scrolls it, from `edge_scroll_speed[0]`
+  (8) dp per frame at 60 Hz at the inner edge of the band to `[1]` (32) at the edge. Default `edge_scroll=False`, so
+  nothing changes until set.
+
 - **A path node's `shadows` follow the path, holes included (a fix).** Every node's shadow was its box, blurred, so a
   `path` ring's hole filled with solid shadow. A path now casts the silhouette of what it paints (the fill under the
   non-zero rule, plus the trimmed stroke), offset, grown by `spread` and blurred by the same `blur / 2` as a box.

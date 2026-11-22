@@ -62,6 +62,19 @@ handle.on("pointer_move", lambda e: resize_to(e.window_x))
 
 Capture ends when the button is released, or on `release_pointer()`.
 
+**Cancelling a drag (0.6.12).** Escape while a gesture is held — a captured pointer, a scrollbar thumb drag, a
+[dock drag](docking.md) — ends it: the node that held the capture gets one `pointer_cancel` (no `pointer_up`, no
+`click`; the later release reaches nothing), a thumb drag puts its view back where it started, and a dock drag
+leaves its panel in its zone (`dock_cancel`, never `dock_drop`). That Escape is consumed: it does not also reach
+`key_down`, a focused terminal or text input, or close a popup or overlay. Without a gesture Escape is unchanged.
+A node that holds the capture does not receive `key_down` (keys go to the focused node), so Escape-cancel is the
+supported route; a splitter or slider an app drives itself is the app's to restore in its `pointer_cancel` handler.
+
+**Scrolling at the edge during a drag (0.6.12).** `edge_scroll=True` on a `scroll_view` or `virtual_list` scrolls it
+while a gesture is held and the pointer is within `edge_scroll_band` (24 dp) of its edge, from `edge_scroll_speed`
+(8 dp per frame at 60 Hz at the band's inner edge) to 32 at the edge; see
+[properties](../reference/properties.md#scrollbar-and-scroll-feel-0611).
+
 ## Touch and gestures
 
 A touch screen (0.5.4) delivers each finger as `touch_start`, `touch_move`,
@@ -226,7 +239,7 @@ or cuts.
 | `scale_factor` | it moved to a display with another scale (`scale_factor`) |
 | `close_requested` | the user asked to close it — `event.cancel()` keeps it open |
 | `closed` | it closed |
-| `dock_target`, `dock_drop` | a [docking](docking.md) drag moved or ended |
+| `dock_target`, `dock_drop`, `dock_cancel` | a [docking](docking.md) drag moved, ended or was cancelled with Escape |
 
 ```python
 window.on("close_requested", lambda e: e.cancel() if unsaved() else None)

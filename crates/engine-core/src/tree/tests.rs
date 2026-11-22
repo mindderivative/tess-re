@@ -10805,3 +10805,194 @@ mod access_sets_0_6_11 {
         assert_eq!(live_of(&mut tree, Role::Group, None), None);
     }
 }
+
+/// 0.6.12 (UXREQ-007): edge auto-scroll and cancelling a gesture.
+mod edge_scroll {
+    use super::*;
+    use crate::scrollbar::Scroller;
+    use crate::scrollbar_props::{Prop, Value};
+
+    fn ms(n: u64) -> Duration {
+        Duration::from_millis(n)
+    }
+
+    /// A 200 x 100 scroll view over 1000 of content; `on` turns `edge_scroll` on.
+    fn view(on: bool) -> (Tree, NodeId) {
+        let mut state = ScrollViewState::new(false);
+        if on {
+            assert!(
+                state
+                    .bar_mut()
+                    .settings
+                    .set(Prop::EdgeScroll, Some(Value::Flag(true)))
+            );
+        }
+        let mut tree = Tree::new();
+        let id = tree.insert(
+            NodeKind::ScrollView(state),
+            Style {
+                size: Size {
+                    width: length(200.0),
+                    height: length(100.0),
+                },
+                ..Default::default()
+            },
+            PaintProperties::new(Color::from_rgba8(0, 0, 0, 0), 0.0, 1.0),
+        );
+        let (k, s, p) = leaf(200.0, 1000.0);
+        let child = tree.insert(k, s, p);
+        tree.add_child(id, child);
+        for _ in 0..2 {
+            tree.compute_layout(
+                id,
+                Size {
+                    width: AvailableSpace::Definite(200.0),
+                    height: AvailableSpace::Definite(100.0),
+                },
+            );
+        }
+        (tree, id)
+    }
+
+    fn offset(tree: &Tree, view: NodeId) -> f64 {
+        tree.get(view)
+            .unwrap()
+            .kind
+            .scroller()
+            .unwrap()
+            .scroll_offsets()
+            .1
+    }
+
+    fn point_at(tree: &mut Tree, view: NodeId, y: f64, now: Instant) {
+        tree.dispatch(
+            view,
+            InputEvent::PointerMoved {
+                position: Point::new(50.0, y),
+            },
+            now,
+        );
+    }
+
+    /// Holds the pointer at `y` with the capture on `view` and ticks once at `t0`
+    /// (the first step, a frame at 60 Hz), then once `gap` later; the second step's size.
+    fn second_step(y: f64, gap: Duration) -> f64 {
+        let (mut tree, v) = view(true);
+        let t0 = Instant::now();
+        tree.set_pointer_capture(Some(v));
+        point_at(&mut tree, v, y, t0);
+        tree.tick_all(t0);
+        let before = offset(&tree, v);
+        tree.tick_all(t0 + gap);
+        (offset(&tree, v) - before).abs()
+    }
+
+    #[test]
+    fn the_step_rises_from_the_inner_edge_of_the_band_to_the_edge() {
+        let frame = Duration::from_secs_f64(1.0 / 60.0);
+        // 10 dp from the bottom: t = 14/24, 8 + 24 * 14/24 = 22 dp.
+        assert!((second_step(90.0, frame) - 22.0).abs() < 0.01);
+        assert!((second_step(100.0, frame) - 32.0).abs() < 0.01);
+        assert!(
+            (second_step(120.0, frame) - 32.0).abs() < 0.01,
+            "past the edge"
+        );
+        assert!((second_step(76.5, frame) - 8.5).abs() < 0.01);
+        assert_eq!(
+            second_step(76.0, frame),
+            0.0,
+            "the inner edge itself is outside"
+        );
+        assert_eq!(second_step(70.0, frame), 0.0, "outside the band");
+        assert_eq!(second_step(50.0, frame), 0.0);
+    }
+
+    #[test]
+    fn the_start_edge_scrolls_back() {
+        let (mut tree, v) = view(true);
+        let t0 = Instant::now();
+        tree.scroll_scroll_view_by(v, 300.0);
+        tree.set_pointer_capture(Some(v));
+        point_at(&mut tree, v, 10.0, t0);
+        tree.tick_all(t0);
+        assert!((offset(&tree, v) - (300.0 - 22.0)).abs() < 0.01);
+    }
+
+    #[test]
+    fn the_step_scales_with_the_time_since_the_last_one_and_is_capped() {
+        let frame = Duration::from_secs_f64(1.0 / 60.0);
+        assert!((second_step(90.0, frame * 2) - 44.0).abs() < 0.01, "30 Hz");
+        // A stall of a second counts as 0.1 s: six frames.
+        assert!((second_step(90.0, ms(1_000)) - 132.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn it_is_opt_in_and_needs_a_gesture() {
+        let (mut tree, v) = view(false);
+        let t0 = Instant::now();
+        tree.set_pointer_capture(Some(v));
+        point_at(&mut tree, v, 95.0, t0);
+        assert!(!tree.tick_all(t0).0);
+        assert_eq!(offset(&tree, v), 0.0);
+
+        let (mut tree, v) = view(true);
+        point_at(&mut tree, v, 95.0, t0);
+        tree.tick_all(t0);
+        assert_eq!(offset(&tree, v), 0.0, "no capture, no scrolling");
+        // A gesture the tree cannot see (a dock drag) counts too, and ends with it.
+        tree.set_gesture_hold(true);
+        let (active, _) = tree.tick_all(t0 + ms(16));
+        assert!(active);
+        assert!(offset(&tree, v) > 0.0);
+        tree.set_gesture_hold(false);
+        let at = offset(&tree, v);
+        let (active, _) = tree.tick_all(t0 + ms(33));
+        assert!(!active);
+        assert_eq!(offset(&tree, v), at);
+    }
+
+    #[test]
+    fn it_stops_at_the_end_the_tick_after_the_pointer_leaves_and_when_the_gesture_ends() {
+        let (mut tree, v) = view(true);
+        let t0 = Instant::now();
+        tree.set_pointer_capture(Some(v));
+        point_at(&mut tree, v, 95.0, t0);
+        assert!(tree.tick_all(t0).0, "scrolling keeps the loop ticking");
+        point_at(&mut tree, v, 50.0, t0 + ms(10));
+        let at = offset(&tree, v);
+        assert!(!tree.tick_all(t0 + ms(17)).0);
+        assert_eq!(
+            offset(&tree, v),
+            at,
+            "zero one frame after it leaves the band"
+        );
+        // The pointer leaving the window keeps the last position.
+        point_at(&mut tree, v, 99.0, t0 + ms(20));
+        tree.dispatch(v, InputEvent::PointerLeft, t0 + ms(21));
+        assert!(tree.tick_all(t0 + ms(37)).0);
+        // The release ends it.
+        tree.set_pointer_capture(None);
+        assert!(!tree.tick_all(t0 + ms(54)).0);
+        // And the end of the content stops it.
+        tree.set_pointer_capture(Some(v));
+        for i in 0..200 {
+            tree.tick_all(t0 + ms(100 + i * 17));
+        }
+        assert_eq!(offset(&tree, v), 900.0, "clamped at the end");
+        assert!(!tree.tick_all(t0 + ms(10_000)).0);
+    }
+
+    #[test]
+    fn cancelling_a_gesture_releases_the_capture_and_the_press() {
+        let (mut tree, v) = view(true);
+        let t0 = Instant::now();
+        tree.set_pointer_capture(Some(v));
+        point_at(&mut tree, v, 95.0, t0);
+        assert!(tree.gesture_active());
+        let cancelled = tree.cancel_gesture(t0);
+        assert_eq!(cancelled.holder, Some(v));
+        assert!(!tree.gesture_active());
+        assert_eq!(tree.pointer_capture(), None);
+        assert!(!tree.tick_all(t0 + ms(17)).0);
+    }
+}

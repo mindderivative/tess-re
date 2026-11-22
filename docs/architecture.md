@@ -122,6 +122,7 @@ properties (`engine_core::ScrollProp`), one geometry (`ScrollbarMetrics::thumbs`
 | Buttons and lane | `scrollbar_arrows` (`"none"`), `scrollbar_arrow_step` (40), `scrollbar_lane_click` (`"page"`; `"none"` one-axis/list) |
 | Feel | `wheel_notch` (40), `key_line` (40), `page_fraction` (0.9; 1.0 one-axis), `scroll_smooth_ms` (0), `scroll_easing` (`"standard"`), `page_repeat_delay_ms` (400), `page_repeat_ms` (100) |
 | Snap and fling | `scroll_snap_settle_ms` (120), `scroll_snap_duration_ms` (200), `scroll_snap_easing` (`"standard"`), `fling_tau_ms` (350), `fling_stop_speed` (30 px/s), `fling_min_speed` (150 px/s) |
+| Edge auto-scroll | `edge_scroll` (`False`), `edge_scroll_band` (24 dp), `edge_scroll_speed` (`(8, 32)` dp per frame at 60 Hz) |
 
 The named easings live in one table (`engine_core::EASINGS`: `linear`, `standard`, `standard_decelerate`,
 `standard_accelerate`, `emphasized`, `emphasized_decelerate`, `emphasized_accelerate` (the Tesserae Motion note) and the

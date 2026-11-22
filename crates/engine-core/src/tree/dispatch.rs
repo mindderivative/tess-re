@@ -103,6 +103,7 @@ impl Tree {
         self.dirty = true;
         match event {
             InputEvent::PointerMoved { position } => {
+                self.pointer_at = Some(position);
                 // M4 Phase 6 (§7.3): captured before `update_hover` runs
                 // -- it mutates `self.hovered` internally and returns
                 // only the new value, so the *old* value has to be read
@@ -126,6 +127,7 @@ impl Tree {
                 }
             }
             InputEvent::PointerPressed { position, button } => {
+                self.pointer_at = Some(position);
                 // M96: a press outside dismissible layers asks them to be
                 // dismissed, and is consumed like a legacy outside press.
                 if self.report_outside_press(position) {

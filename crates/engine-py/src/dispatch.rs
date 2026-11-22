@@ -432,10 +432,108 @@ pub(crate) fn process_input(
     event: &InputEvent,
     py: Python<'_>,
 ) -> DispatchOutcome {
+    if let Some(outcome) = cancel_gesture_on_escape(ctx, io, event, py) {
+        return outcome;
+    }
     if let Some(outcome) = terminal_escape(ctx, io, root, event, py) {
         return outcome;
     }
     process_input_inner(ctx, io, root, event, true, py)
+}
+
+/// 0.6.12 (UXREQ-007, AC-DND-7, AC-DCK-6): Escape while a gesture is held -- a
+/// captured pointer, a scrollbar thumb drag, a dock drag -- ends it and goes no
+/// further: no `key_down`, no byte to a terminal, no text edit, no overlay
+/// dismissal, no scroll. The node that held the capture (else the one pressed)
+/// gets one `pointer_cancel`, with no `pointer_up` and no `click` (the release,
+/// if it comes, is swallowed); a thumb drag puts its view back where it began; a
+/// dock drag leaves its panel in its zone, takes the highlight down
+/// (`dock_target` with no side) and reports `dock_cancel`, never `dock_drop`.
+/// Without a gesture Escape is unchanged. `Some` when `event` was consumed.
+fn cancel_gesture_on_escape(
+    ctx: &NodeContext<'_>,
+    io: &WindowIo<'_>,
+    event: &InputEvent,
+    py: Python<'_>,
+) -> Option<DispatchOutcome> {
+    let escape = match event {
+        InputEvent::Key {
+            name,
+            pressed: true,
+            ..
+        } => name == "escape",
+        InputEvent::KeyPressed {
+            key: Key::Escape, ..
+        } => true,
+        _ => false,
+    };
+    if !escape || !ctx.tree.borrow().gesture_active() {
+        return None;
+    }
+    let cancelled = ctx
+        .tree
+        .borrow_mut()
+        .cancel_gesture(crate::clock::now(ctx.tree));
+    io.window.press_cancelled.set(true);
+    // The rest of this key press (its engine key, its control byte) is dropped too.
+    ESCAPE_SWALLOW.with(|s| s.set(true));
+    if let Some((panel, last)) = dock::cancel(io.dock, ctx.tree) {
+        if last.is_some() {
+            listeners::deliver_window(io.listeners, py, WindowEventType::DockTarget, |_| {});
+        }
+        let panel = match Event::build_node(py, panel, ctx) {
+            Ok(panel) => Some(panel),
+            Err(err) => {
+                log_uncaught_exception(&err, py);
+                None
+            }
+        };
+        listeners::deliver_window(io.listeners, py, WindowEventType::DockCancel, |e| {
+            e.panel = panel;
+        });
+    }
+    if let Some(node) = cancelled.holder.or(cancelled.pressed) {
+        listeners::deliver(ctx, py, EventType::PointerCancel, node, None, |e| {
+            listeners::stamp_modifiers(e);
+        });
+    }
+    listeners::fire_scroll_changes(ctx, py);
+    Some(DispatchOutcome::None)
+}
+
+/// 0.6.12 (UXREQ-007): after a tick whose edge auto-scroll moved a view, what is
+/// under the pointer is not what it was: hover (`pointer_enter`/`pointer_leave`)
+/// and the dock target are read again at the pointer, which has not moved. No
+/// `pointer_move` is delivered.
+pub(crate) fn follow_edge_scroll(
+    ctx: &NodeContext<'_>,
+    io: &WindowIo<'_>,
+    root: NodeId,
+    py: Python<'_>,
+) {
+    let Some(position) = ctx.tree.borrow_mut().take_edge_scrolled() else {
+        return;
+    };
+    let moved = InputEvent::PointerMoved { position };
+    let outcome = {
+        let mut tree = ctx.tree.borrow_mut();
+        let old = tree.hovered();
+        let new = tree.update_hover(root, position);
+        if old == new {
+            DispatchOutcome::None
+        } else {
+            DispatchOutcome::HoverChanged { old, new }
+        }
+    };
+    run_dispatch_outcome(
+        ctx.handlers,
+        ctx.tree,
+        ctx.completions,
+        &outcome,
+        Some(&moved),
+        py,
+    );
+    dock_drag(ctx, io.dock, io.listeners, root, &moved, py);
 }
 
 thread_local! {

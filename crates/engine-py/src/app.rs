@@ -1767,6 +1767,22 @@ impl App {
                     now,
                     py,
                 );
+                // 0.6.12 (UXREQ-007): hover and the dock target follow an edge auto-scroll step.
+                crate::dispatch::follow_edge_scroll(
+                    &crate::event::NodeContext {
+                        tree: &runtime.handles.tree,
+                        handlers: &runtime.handles.handlers,
+                        completions: &runtime.handles.completions,
+                    },
+                    &WindowIo {
+                        dock: &runtime.handles.dock,
+                        listeners: &runtime.handles.window_listeners,
+                        terminals: &runtime.handles.terminals,
+                        window: &runtime.handles,
+                    },
+                    runtime.handles.root,
+                    py,
+                );
                 // 0.5.4 (#114): files dragged over or dropped since the last frame.
                 if runtime.handles.files.borrow().pending() {
                     let handles = &runtime.handles;

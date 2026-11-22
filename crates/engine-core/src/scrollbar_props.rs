@@ -31,6 +31,8 @@ pub enum Kind {
     Choice(&'static [&'static str]),
     /// A preset name or a cubic bezier (`Easing`).
     Easing,
+    /// Two finite numbers, each from `min` to `max`.
+    Pair { min: f64, max: f64 },
 }
 
 /// A property's value: what a `Kind` checks.
@@ -42,6 +44,7 @@ pub enum Value {
     /// The index into the property's `Kind::Choice` names.
     Choice(u8),
     Easing(Easing),
+    Pair(f64, f64),
 }
 
 impl Kind {
@@ -54,6 +57,9 @@ impl Kind {
             (Kind::Colour, Value::Colour(_)) | (Kind::Flag, Value::Flag(_)) => true,
             (Kind::Choice(names), Value::Choice(i)) => usize::from(*i) < names.len(),
             (Kind::Easing, Value::Easing(_)) => true,
+            (Kind::Pair { min, max }, Value::Pair(a, b)) => [a, b]
+                .iter()
+                .all(|n| n.is_finite() && (min..=max).contains(*n)),
             _ => false,
         }
     }
@@ -285,6 +291,9 @@ props! {
     FlingTau, "fling_tau_ms", number(1.0, MAX_MILLIS);
     FlingStop, "fling_stop_speed", number(0.1, MAX_SPEED);
     FlingMin, "fling_min_speed", number(0.0, MAX_SPEED);
+    EdgeScroll, "edge_scroll", Kind::Flag;
+    EdgeScrollBand, "edge_scroll_band", NON_NEGATIVE;
+    EdgeScrollSpeed, "edge_scroll_speed", Kind::Pair { min: 0.0, max: MAX_SPEED };
 }
 
 impl Prop {
@@ -365,6 +374,13 @@ impl Overrides {
         }
     }
 
+    pub fn pair(&self, prop: Prop) -> Option<(f64, f64)> {
+        match self.get(prop) {
+            Some(Value::Pair(a, b)) => Some((a, b)),
+            _ => None,
+        }
+    }
+
     pub fn easing(&self, prop: Prop) -> Option<Easing> {
         match self.get(prop) {
             Some(Value::Easing(e)) => Some(e),
@@ -390,6 +406,7 @@ mod tests {
                     || ["wheel_notch", "key_line", "page_fraction"].contains(&prop.name())
                     || prop.name().starts_with("scroll_")
                     || prop.name().starts_with("fling_")
+                    || prop.name().starts_with("edge_scroll")
                     || prop.name().starts_with("page_"),
                 "{}",
                 prop.name()

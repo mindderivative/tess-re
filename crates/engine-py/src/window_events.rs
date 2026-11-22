@@ -1862,6 +1862,18 @@ impl PyWindow {
             now,
             py,
         );
+        // 0.6.12 (UXREQ-007): hover and the dock target follow an edge auto-scroll step.
+        crate::dispatch::follow_edge_scroll(
+            &ctx,
+            &WindowIo {
+                dock: &self.handles.dock,
+                listeners: &self.handles.window_listeners,
+                terminals: &self.handles.terminals,
+                window: &self.handles,
+            },
+            root,
+            py,
+        );
         node_callbacks::layout(&tree, root, self.available(), &handlers, py);
         listeners::fire_layout_changes(&ctx, py);
         listeners::fire_scroll_changes(&ctx, py);

@@ -159,6 +159,7 @@ pub(crate) fn start_drag(
         ));
     }
     dock.dragging = Some((panel, None));
+    tree.borrow_mut().set_gesture_hold(true);
     Ok(())
 }
 
@@ -196,11 +197,27 @@ pub(crate) fn drop(
     dock.borrow().dragging?;
     forget_freed(dock, tree);
     let (panel, _) = dock.borrow_mut().dragging.take()?;
+    tree.borrow_mut().set_gesture_hold(false);
     let target = zone_at(dock, tree, root, position);
     if let Some(target) = target {
         move_panel(dock, tree, panel, target);
     }
     Some((panel, target))
+}
+
+/// 0.6.12 (UXREQ-007): the drag is cancelled (Escape): nothing is dropped, the
+/// panel stays in its zone. Returns the panel and the zone the last
+/// `dock_target` named (`Some` means the highlight is still up and must be
+/// taken down). `None` when no drag was in progress.
+pub(crate) fn cancel(
+    dock: &SharedDockState,
+    tree: &Rc<RefCell<Tree>>,
+) -> Option<(NodeId, Option<DockSide>)> {
+    dock.borrow().dragging?;
+    forget_freed(dock, tree);
+    let dragging = dock.borrow_mut().dragging.take();
+    tree.borrow_mut().set_gesture_hold(false);
+    dragging
 }
 
 fn zone_at(
@@ -232,6 +249,7 @@ pub(crate) fn undock_panel(
     };
     if dock.dragging.is_some_and(|(dragged, _)| dragged == panel) {
         dock.dragging = None;
+        tree.borrow_mut().set_gesture_hold(false);
     }
     let mut tree = tree.borrow_mut();
     take_out_of_zone(&mut dock, &mut tree, panel, source);
@@ -317,6 +335,7 @@ fn forget_freed(dock: &SharedDockState, tree: &Rc<RefCell<Tree>>) {
         .is_some_and(|(dragged, _)| tree.get(dragged).is_none())
     {
         dock.dragging = None;
+        tree.set_gesture_hold(false);
     }
 }
 
