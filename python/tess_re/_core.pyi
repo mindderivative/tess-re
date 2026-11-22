@@ -380,6 +380,14 @@ class Node:
         and `page_fraction`, `page_repeat_delay_ms`, `page_repeat_ms`, with
         `scrollbar_show` defaulting to `"never"` (opt-in; `"overflow"` shows it).
 
+        (0.6.13) A multiline `text_input` takes the same `scrollbar_*` properties
+        for its own scrollbar (not `_gutter`, `_gutter_reserve`) and `wheel_notch`,
+        `page_fraction`, `page_repeat_delay_ms`, `page_repeat_ms`, with
+        `scrollbar_show` defaulting to `"never"` (opt-in). A drag, a lane click, the
+        arrows and, while the bar is on, the wheel scroll the input; the caret-follow
+        moves the thumb; the keys stay the caret's. A single-line input keeps the
+        properties and shows no bar.
+
         (0.6.11) A scroll view and a virtual list take the scrollbar and scroll-feel
         properties -- `scrollbar_width`, `_hit_width`, `_margin`, `_min_length`,
         `_gutter`, `_corner`, `_radius`, `_opacity`, `_opacity_hover`, `_opacity_drag`,

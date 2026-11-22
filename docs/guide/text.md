@@ -341,6 +341,44 @@ name = window.create("text_input", width=160, height=28, overflow="ellipsis", te
 - `caret_rect()` and `text_rects()` read the scroll as it is, so they are right straight
   after you set `selection` or `text`.
 
+### A scrollbar on a multiline input (0.6.13)
+
+A multiline input scrolls its text by its own offsets (the caret-follow above); a scrollbar over them is opt-in, so
+an input that never asked for one draws none and behaves as it did:
+
+```python
+note = window.create("text_input", width=240, height=120, multiline=True, wrap="word",
+                     padding_right=12, scrollbar_show="overflow")   # the bar shows while the text overflows
+```
+
+It is the scroll view's bar, so `scrollbar_width`, `scrollbar_fill`, `scrollbar_opacity`, `scrollbar_arrows`,
+`scrollbar_lane_click`, `scrollbar_show="auto_hide"` and the rest apply, with the spec's defaults (an 8 px thumb 2 px
+from the edge, at least 32 px long, 70 % opaque and 80 % hovered). Its content is the shaped text and the input's
+padding, so ten screens of text is a thumb of a tenth of the lane (32 px if that is less).
+
+- **Drag, lane click, arrows.** Dragging the thumb, pressing the lane (a page of `page_fraction` of the box,
+  repeating while held) or an arrow scrolls the input; a press on the bar places no caret and selects nothing. The
+  caret does not move, and the scroll is **not pulled back** to it until the caret moves or the text changes (typing
+  shows the caret again, as in any editor).
+- **The caret-follow moves the thumb.** An edit, a caret key or a click that scrolls the text to the caret moves the
+  thumb with it. With the bar on the scroll follows the caret by the shaped text **even with no `wrap`** (the
+  monospace estimate of the old scroll cannot size a thumb); the keys themselves still go by logical line unless a
+  `wrap` is set.
+- **Axes.** A vertical bar always. A horizontal one too when the lines are not wrapped (`wrap` other than
+  `"word"`), which is the multiline input's default; `scrollbar_corner` keeps the two lanes apart.
+- **Keys and wheel.** The keys stay the caret's (the bar adds none). The wheel scrolls the input while its bar is on
+  (`wheel_notch` a notch; Shift turns it sideways) and passes to the scroll view around it at the ends; with the bar
+  off the wheel is not the input's, as before.
+- **Single-line inputs** take the properties and read them back, and show no bar; set `multiline` and it appears, in
+  either order.
+- The properties that make no sense on an input (`scrollbar_gutter`, `scrollbar_gutter_reserve`, `key_line`,
+  `scroll_smooth_ms`, `scroll_easing`, the snap, fling and edge-scroll ones) raise `ValueError`.
+- The Tesserae UX note "Text Field" says a multiline field shows this bar when its content exceeds the box;
+  here it is **opt-in** (`scrollbar_show="never"` by default) so that no existing input changes. Set
+  `scrollbar_show="overflow"` for the spec's behaviour.
+- The bar draws over the input's right (and bottom) edge and reserves no space: give the input padding on that
+  side if the last column matters.
+
 ### Keys, rows and clicks in a text input (0.6.7)
 
 | Key | In any text input | In a multiline input with a `wrap` (`"word"` or `"none"`) |

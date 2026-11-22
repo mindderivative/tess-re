@@ -2086,7 +2086,17 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
         vertical_align: _, // hashed below, resolved against `multiline`
         letter_spacing,
         line_height,
+        // 0.6.13: the bar's settings and fades are hashed below (while it is on), and how big
+        // the text is, which sizes its thumb; the stamp is bookkeeping.
+        bar: _,
+        content_extent,
+        extent_stamp: _,
     } = state;
+    if state.bar_on() {
+        bar_fingerprint(h, state);
+        num(h, content_extent.0);
+        num(h, content_extent.1);
+    }
     caret_visible.hash(h);
     caret_width.to_bits().hash(h);
     selection_radius.to_bits().hash(h);

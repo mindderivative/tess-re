@@ -1980,12 +1980,7 @@ impl TextRenderer {
         state: &TextFieldState,
         viewport: (f32, f32),
     ) -> Option<(f64, f64, u64)> {
-        let stamp = follow_stamp(
-            state,
-            viewport,
-            state.horizontal_scroll_offset.current,
-            state.scroll_offset.current,
-        );
+        let stamp = follow_stamp(state, viewport);
         if state.follow_stamp == stamp {
             return None;
         }
@@ -2039,12 +2034,37 @@ impl TextRenderer {
         } else {
             state.scroll_offset.current
         };
-        // What the stamp must say next time is the stamp of the *new* offsets.
-        Some((
-            horizontal,
-            vertical,
-            follow_stamp(state, viewport, horizontal, vertical),
-        ))
+        Some((horizontal, vertical, stamp))
+    }
+
+    /// 0.6.13: how big the shaped text of input `state` is, `(width, height)` in pixels, for a
+    /// content box `viewport` wide (a wrapped input's lines break at it), which is what its
+    /// scrollbar's thumb is sized from, and the stamp of what it was measured from; `None` when
+    /// the answer is what it was (`state.extent_stamp`). The width has room for the caret after
+    /// the last character, so the end of a line can be scrolled to with it in view.
+    pub fn field_content_extent(
+        &mut self,
+        state: &TextFieldState,
+        viewport: (f32, f32),
+    ) -> Option<((f64, f64), u64)> {
+        let stamp = extent_stamp(state, viewport.0);
+        if state.extent_stamp == stamp {
+            return None;
+        }
+        let at = TextPlacement {
+            x: 0.0,
+            y: 0.0,
+            max_width: viewport.0,
+            color: peniko::Color::TRANSPARENT,
+            box_height: None,
+        };
+        let (layout, _, _) = self.field_geometry_layout(state, at);
+        let width = if state.wraps() {
+            f64::from(viewport.0)
+        } else {
+            f64::from(layout.full_width()) + f64::from(state.caret_width.max(0.0))
+        };
+        Some(((width, f64::from(layout.height())), stamp))
     }
 
     /// 0.5.6 (#165): the rectangles covering `start..end` (bytes of
@@ -2436,13 +2456,10 @@ impl TextRenderer {
 /// layout`'s own existing `f32` parameter, just the right value at
 /// the two real call sites that know `state.multiline`.
 /// #285: what `follow_caret` worked an input's scroll out from -- its text, caret, font, wrap
-/// mode and box, and the offsets in force -- so an input that did not change is not shaped again.
-fn follow_stamp(
-    state: &TextFieldState,
-    viewport: (f32, f32),
-    horizontal: f64,
-    vertical: f64,
-) -> u64 {
+/// mode and box -- so an input that did not change is not shaped again. The offsets are not in
+/// it: a scrollbar or a wheel that moved them away from the caret is not undone until the caret
+/// moves or the text changes (0.6.13).
+fn follow_stamp(state: &TextFieldState, viewport: (f32, f32)) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     state.content.hash(&mut h);
@@ -2463,7 +2480,35 @@ fn follow_stamp(
         .hash(&mut h);
     state.preedit.hash(&mut h);
     (viewport.0.to_bits(), viewport.1.to_bits()).hash(&mut h);
-    (horizontal.to_bits(), vertical.to_bits()).hash(&mut h);
+    h.finish() | 1
+}
+
+/// 0.6.13: what `field_content_extent` measured an input's text from: what shapes it (the text,
+/// what is shown in its place, the font, the wrap and the width it breaks at), not the caret.
+fn extent_stamp(state: &TextFieldState, width: f32) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    state.content.hash(&mut h);
+    state.preedit.hash(&mut h);
+    state.placeholder.hash(&mut h);
+    state.folded_ranges.hash(&mut h);
+    (state.show_whitespace, state.obscured, state.multiline).hash(&mut h);
+    state.font_family.hash(&mut h);
+    state.font_weight.to_bits().hash(&mut h);
+    (state.font_size.to_bits(), state.caret_width.to_bits()).hash(&mut h);
+    (state.wraps(), width.to_bits()).hash(&mut h);
+    (
+        state.letter_spacing.to_bits(),
+        state.line_height.map(f32::to_bits),
+    )
+        .hash(&mut h);
+    // The cursor matters only while a composition is spliced in at it.
+    state
+        .preedit
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .map(|_| state.cursor)
+        .hash(&mut h);
     h.finish() | 1
 }
 

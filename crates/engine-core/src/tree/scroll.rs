@@ -412,6 +412,8 @@ impl Tree {
                     size.1 + state.history_len as f64 * f64::from(state.line_px),
                 ),
             )),
+            // 0.6.13: a text input's content is its shaped text and the padding around it.
+            NodeKind::TextField(state) => Some((size, self.field_content_box(view, state, size))),
             _ => None,
         }
     }
@@ -716,6 +718,7 @@ impl Tree {
         if self.scroll_view_count == 0
             && self.virtual_list_count == 0
             && self.terminal_count == 0
+            && self.text_field_count == 0
             && self.scrollbar_hover.is_none()
         {
             return;
@@ -1080,8 +1083,9 @@ impl Tree {
             _ => return None,
         };
         self.ancestors(from).find(|&id| {
-            // A terminal's keys are the shell's, whatever its history bar shows.
-            !matches!(self.nodes[id].kind, NodeKind::Terminal(_))
+            // A terminal's keys are the shell's, and a text input's the caret's, whatever their
+            // bars show.
+            self.nodes[id].kind.takes_scroll_keys()
                 && self.nodes[id]
                     .kind
                     .scroller()

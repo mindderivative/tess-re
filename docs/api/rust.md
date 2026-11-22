@@ -1403,6 +1403,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 *struct.* The state of an editable text field: content, cursor, selection and styling.
 
+**Implements:** [`Scroller`](#scroller)
+
 | Field | Type | Description |
 | --- | --- | --- |
 | `content` | `String` | The field's text. |
@@ -1448,9 +1450,13 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `vertical_align` | `Option<VerticalAlign>` | Where the lines sit in the content box when it is taller than they are. |
 | `letter_spacing` | `f32` | Extra space after each character, in pixels (as on a `text` node). |
 | `line_height` | `Option<f32>` | A line height as a multiple of the font size (as on a `text` node); `None` is the font's own. |
+| `bar` | `Box<ScrollbarState>` | The input's own scrollbar, the same state as a scroll view's. |
+| `content_extent` | `(f64, f64)` | How big the shaped text is, `(width, height)` in pixels, which the bar's thumb is sized from: measured by the window's text renderer, as only it has… |
+| `extent_stamp` | `u64` | What `content_extent` was last measured from, so a field that did not change is not shaped again. |
 
 | Method | Description |
 | --- | --- |
+| `fn bar_on(&self) -> bool` | Whether the input's bar is on: a multiline input that has `scrollbar_show` set to something but `never`. |
 | `fn clips(&self) -> bool` | Whether the painted text is clipped to the box (every input but a legacy single line, which wraps inside it). |
 | `fn effective_vertical_align(&self) -> VerticalAlign` | The vertical alignment in force: what was set, or `Center` for a single-line input (text in a field taller than its line sits in the middle, as in… |
 | `fn fit<'a>(&self, text: &'a str) -> &'a str` | `text` cut to what `room` allows, on a character boundary. |
@@ -1459,6 +1465,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn new(content: impl Into<String>, font_family: impl Into<String>, font_weight: f32, font_size: f32) -> Self` | Creates a field with the caret at the end of the content. |
 | `fn resets_when_unfocused(&self) -> bool` | Whether a single-line input goes back to its start when it loses the focus. |
 | `fn room(&self) -> usize` | How many more characters an insertion could add now, counting the selection as replaced. |
+| `fn shaped_scroll(&self) -> bool` | Whether a multiline input's scroll follows its caret by the shaped layout: one that has a `wrap`, and one whose scrollbar is on (`bar_on`), whose… |
 | `fn wraps(&self) -> bool` | Whether the input's lines are broken at its width (`true`) or each is laid out whole (`false`, and the box clips or scrolls it). |
 
 ### TextOptions { #textoptions }
@@ -1577,6 +1584,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn animate_layout(&mut self, id: NodeId, prop: LayoutProp, to: f64, duration: Duration, curve: MotionCurve, now: Instant, completion: Option<CompletionHandle>) -> Result<(), LayoutAnimError>` | Starts animating a layout property of `id` to `to` pixels. |
 | `fn announce(&mut self, text: &str, assertive: bool)` | TRE-REQ-021: raises one live announcement through the accessibility tree, with no node of the caller's. |
 | `fn apply_active_tab(&mut self, container: NodeId, zone: &DockZone)` | Attaches only the zone's active tab panel to the container and detaches the others. |
+| `fn bar_fields(&self) -> Vec<NodeId>` | The text inputs whose scrollbar is on: the ones the window's text renderer measures (`set_text_field_extent`). |
 | `fn build_access_update(&self, root: NodeId) -> TreeUpdate` | Builds a fresh accessibility tree update from the current nodes. |
 | `fn build_access_update_scaled(&self, root: NodeId, scale: f64) -> TreeUpdate` | `build_access_update` with every node's bounds multiplied by `scale`: layout is in logical pixels, and assistive technology wants the window's… |
 | `fn build_access_update_titled(&self, root: NodeId, scale: f64, title: &str) -> TreeUpdate` | `build_access_update_scaled`, with the root named after the window's `title` (a `LayerWindow`'s namespace) when the app gave it no label. |
@@ -1584,7 +1592,6 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn can_scroll_axis(&self, id: NodeId, axis: ScrollAxis, delta: f64) -> bool` | `can_scroll` for scroller `id` along `axis`. |
 | `fn cancel_gesture(&mut self, now: Instant) -> CancelledGesture` | Ends the gesture in progress without its release: the pointer capture and the press go, a held lane press stops, and a dragged scrollbar thumb puts… |
 | `fn cancel_press(&mut self) -> Option<NodeId>` | Ends the current press without a click and releases any pointer capture. |
-| `fn caret_following_fields(&self) -> Vec<NodeId>` | The text inputs whose scroll follows the caret by the shaped layout, which `engine-core` cannot do (no font), so the window's text renderer does… |
 | `fn children_in_paint_order(&self, id: NodeId) -> Cow<'_, [NodeId]>` | Returns a node's children bottom first, ordered by z-index then child order. |
 | `fn clear_focus(&mut self) -> Option<(Option<NodeId>, Option<NodeId>)>` | Leaves nothing focused and returns the old and new focus if it changed. |
 | `fn clear_text_selection(&mut self)` | Clears the selection in static text, wherever it is. |
@@ -1699,6 +1706,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn set_terminal_selection_start(&mut self, id: NodeId, row: u16, col: u16) -> bool` | Starts a terminal selection at a cell, collapsing any existing selection. |
 | `fn set_text_access_lines(&mut self, lines: HashMap<NodeId, Vec<AccessLine>>)` | Hands the tree the shaped lines of its text nodes, for their runs' bounds and character positions (the text renderer makes them; see `AccessLine`). |
 | `fn set_text_field_cursor(&mut self, field: NodeId, offset: usize) -> bool` | Moves a text field's cursor to a character offset and clears its selection. |
+| `fn set_text_field_extent(&mut self, id: NodeId, extent: (f64, f64), stamp: u64)` | Sets how big the shaped text of input `id` is, `(width, height)` in pixels, and the stamp of what it was measured from… |
 | `fn set_text_field_scroll(&mut self, id: NodeId, horizontal: f64, vertical: f64, stamp: u64)` | Sets text input `id`'s scroll offsets (and the stamp of what they were worked out from), touching the node only when something changed, so a settled… |
 | `fn set_text_measure(&mut self, measure: TextMeasure)` | Sets how text is measured for `FitContent`. |
 | `fn set_text_selection(&mut self, id: NodeId, anchor: usize, focus: usize) -> bool` | Selects `anchor..focus` (bytes, either order, clamped to character boundaries) in a text node, clearing any other selection first. |
@@ -1708,6 +1716,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn set_window_drag_allowed(&mut self, allowed: bool)` | The tree of a layer surface refuses `window_region="drag"`. |
 | `fn shader_cycle(&self, id: NodeId, shader: &Shader) -> bool` | Returns whether giving a node a shader would make a shader depend on itself. |
 | `fn shader_frame_owed(&self) -> bool` | Whether a shader this tree draws has moved, or is moving, since the tree last looked: a frame is owed that nothing in the tree itself asked for. |
+| `fn shaped_fields(&self) -> Vec<NodeId>` | The text inputs the window's text renderer must shape to work something out for, which `engine-core` cannot do (no font): those whose scroll follows… |
 | `fn show_layer(&mut self, root: NodeId, node: NodeId, meta: OverlayMeta) -> bool` | Shows a node as a layer on top of every open layer, anchored by its settings. |
 | `fn static_selected_text(&self) -> Option<String>` | The text a Copy of the static selection would take, the nodes' pieces joined by newlines: `None` for no selection or an empty one. |
 | `fn static_selection_ends(&self) -> Option<((NodeId, usize), (NodeId, usize))>` | The selection's anchor and its moving end: a text node and a byte offset each. |
@@ -2389,6 +2398,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn name(&self) -> &'static str` | The kind's name as `window.create` takes it (0.5.4, #135: one list, for `get("kind")` and for statistics by kind). |
 | `fn scroller(&self) -> Option<&dyn Scroller>` | The scrollbar-carrying view of a scroll view or a virtual list. |
 | `fn scroller_mut(&mut self) -> Option<&mut dyn Scroller>` |  |
+| `fn takes_scroll_keys(&self) -> bool` | Whether the arrow, Page and Home/End keys move this scroller when it holds the focus (`Tree::scroll_view_for_key`): not a terminal's (the shell's)… |
+| `fn takes_wheel(&self) -> bool` | Whether the wheel over this scroller moves it (`Tree::dispatch`): a scroll view, a virtual list, and a text input whose bar is on… |
 
 ### Placement { #placement }
 
@@ -2601,10 +2612,12 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Legacy` |  | What a `vertical` or `horizontal` scroll view always had: a 4 px thumb with the colour's own alpha, a 6 px slop, no lane click, a page that is the… |
 | `List` |  | What a virtual list always had: the legacy bar, and a page of nine tenths of the viewport. |
 | `Terminal` |  | A terminal's history bar. |
+| `Field` |  | A multiline text input's own bar (`tree/field_bar.rs`). |
 
 | Method | Description |
 | --- | --- |
-| `fn is_spec(self) -> bool` | Whether the measures are the Tesserae UX spec's (a `both` scroll view, a terminal). |
+| `fn is_opt_in(self) -> bool` | Whether the bar is off until `scrollbar_show` is set (a terminal's, a text input's). |
+| `fn is_spec(self) -> bool` | Whether the measures are the Tesserae UX spec's (a `both` scroll view, a terminal, a text input). |
 
 ### ScrollDelta { #scrolldelta }
 
@@ -2684,6 +2697,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | Method | Description |
 | --- | --- |
 | `fn applies_to_terminal(self) -> bool` | Whether a terminal's history bar takes the property (0.6.12, UXREQ-006): the bar's measures, colours, fades, arrows and lane, and the page and its… |
+| `fn applies_to_text_input(self) -> bool` | Whether a multiline text input's own bar takes the property (0.6.13): the bar's measures, colours, fades, arrows and lane, the page and its repeat… |
 | `fn choices(self) -> Option<&'static [&'static str]>` | The choice names of the property, for a `Kind::Choice` one. |
 | `fn from_name(name: &str) -> Option<Self>` | The property called `name`. |
 | `const fn kind(self) -> Kind` | How its value is checked. |
@@ -2938,7 +2952,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 *trait.* A node that scrolls and carries a scrollbar: a scroll view or a virtual list, so the bar's geometry, hit-testing, hover, drag and fade are one…
 
-**Implemented by:** [`ScrollViewState`](#scrollviewstate), [`TerminalState`](#terminalstate), [`VirtualListState`](#virtualliststate)
+**Implemented by:** [`ScrollViewState`](#scrollviewstate), [`TerminalState`](#terminalstate), [`TextFieldState`](#textfieldstate), [`VirtualListState`](#virtualliststate)
 
 | Method | Description |
 | --- | --- |
@@ -3311,6 +3325,7 @@ Scene building and GPU rendering with `vello_gpu` and `wgpu`: the paint walk, da
 | `fn draw_terminal_with(&mut self, scene: &mut Scene, resources: &mut Resources, state: &TerminalState, at: TextPlacement, show_caret: bool, node_id: NodeId, palette: &ResolvedPalette)` | `draw_terminal` with the palette resolved by the caller: the terminal's own colours and, where it has none, its window's scheme… |
 | `fn evict_stale_layouts(&mut self, tree: &Tree)` | Drops cached text layouts belonging to nodes that no longer exist in the tree. |
 | `fn field_caret_rect(&mut self, state: &TextFieldState, at: TextPlacement) -> Rect` | The caret's rectangle in the field's own coordinates (`at` placing the text in the node, scroll offsets already in it): the bar's, with… |
+| `fn field_content_extent(&mut self, state: &TextFieldState, viewport: (f32, f32)) -> Option<((f64, f64), u64)>` | How big the shaped text of input `state` is, `(width, height)` in pixels, for a content box `viewport` wide (a wrapped input's lines break at it)… |
 | `fn field_range_rects(&mut self, state: &TextFieldState, at: TextPlacement, start: usize, end: usize) -> Vec<Rect>` | The rectangles covering `start..end` (bytes of `state.content`), one per line it crosses, in the field's coordinates. |
 | `fn field_rows(&mut self, state: &TextFieldState, viewport: (f32, f32), query: RowQuery) -> Option<RowAnswer>` | Answers a `engine_core::RowQuery` about text input `state` shown in a content box of `viewport` (width, height), by the shaped rows (the same layout… |
 | `fn field_unit_at(&mut self, state: &TextFieldState, at: TextPlacement, point: Point) -> Option<(usize, usize, usize)>` | For a double or triple click at `point` (in the same space as `at`, which places the text in the node, scroll included): the byte offset in… |

@@ -106,6 +106,9 @@ impl NodeKind {
             // 0.6.12 (UXREQ-006): a terminal's history bar. The wheel and the keys stay the
             // terminal's own (they go to the session), so only the bar is shared.
             NodeKind::Terminal(state) => Some(&**state),
+            // 0.6.13: a multiline text input's own bar (`tree/field_bar.rs`); it shows nothing
+            // until `scrollbar_show` says so, and the keys stay the editing's.
+            NodeKind::TextField(state) => Some(&**state),
             _ => None,
         }
     }
@@ -115,8 +118,27 @@ impl NodeKind {
             NodeKind::ScrollView(state) => Some(state),
             NodeKind::VirtualList(state) => Some(state),
             NodeKind::Terminal(state) => Some(&mut **state),
+            NodeKind::TextField(state) => Some(&mut **state),
             _ => None,
         }
+    }
+
+    /// 0.6.13: whether the wheel over this scroller moves it (`Tree::dispatch`): a scroll view,
+    /// a virtual list, and a text input whose bar is on (`TextFieldState::bar_on`); not a
+    /// terminal, whose wheel is the session's history.
+    pub fn takes_wheel(&self) -> bool {
+        match self {
+            NodeKind::Terminal(_) => false,
+            NodeKind::TextField(state) => state.bar_on(),
+            _ => true,
+        }
+    }
+
+    /// 0.6.13: whether the arrow, Page and Home/End keys move this scroller when it holds the
+    /// focus (`Tree::scroll_view_for_key`): not a terminal's (the shell's) nor a text input's
+    /// (the caret's), whatever their bars show.
+    pub fn takes_scroll_keys(&self) -> bool {
+        !matches!(self, NodeKind::Terminal(_) | NodeKind::TextField(_))
     }
 
     /// The kind's name as `window.create` takes it (0.5.4, #135: one list, for
@@ -966,6 +988,16 @@ pub struct TextFieldState {
     /// 0.6.11 (P3): a line height as a multiple of the font size (as on a `text` node); `None`
     /// is the font's own.
     pub line_height: Option<f32>,
+    /// 0.6.13: the input's own scrollbar, the same state as a scroll view's. A multiline input
+    /// only, and off until `scrollbar_show` says otherwise (`TextFieldState::bar_on`).
+    pub bar: Box<crate::scrollbar::ScrollbarState>,
+    /// 0.6.13: how big the shaped text is, `(width, height)` in pixels, which the bar's thumb is
+    /// sized from: measured by the window's text renderer, as only it has the font, while the
+    /// bar is on (`Tree::set_text_field_extent`); `(0, 0)` until then.
+    pub content_extent: (f64, f64),
+    /// 0.6.13: what `content_extent` was last measured from, so a field that did not change is
+    /// not shaped again.
+    pub extent_stamp: u64,
 }
 
 /// #285: how a single-line text input shows a line longer than its box (it is one line, however
@@ -1018,17 +1050,25 @@ impl TextFieldState {
 
     /// #285: whether the scroll offsets follow the caret by the shaped layout (`follow_caret`),
     /// rather than the editor heuristic in `Tree::scroll_text_field_caret_into_view` (which
-    /// assumes a monospace font): a multiline input that has a `wrap`, and a single-line one
-    /// that scrolls or cuts with an ellipsis. Only while it has the focus, so an input shows
+    /// assumes a monospace font): a multiline input that has a `wrap` or its bar on
+    /// (`shaped_scroll`), and a single-line one that scrolls or cuts with an ellipsis. Only while it has the focus, so an input shows
     /// its start until it is used (as a browser's does).
     pub fn follows_caret(&self, focused: bool) -> bool {
         focused
-            && ((self.multiline && self.wrap.is_some())
+            && (self.shaped_scroll()
                 || (!self.multiline
                     && matches!(
                         self.overflow,
                         Some(FieldOverflow::Scroll | FieldOverflow::Ellipsis)
                     )))
+    }
+
+    /// #285, 0.6.13: whether a multiline input's scroll follows its caret by the shaped layout:
+    /// one that has a `wrap`, and one whose scrollbar is on (`bar_on`), whose thumb and range are
+    /// the shaped text's, which the monospace estimate of
+    /// `Tree::scroll_text_field_caret_into_view` would not match.
+    pub fn shaped_scroll(&self) -> bool {
+        self.multiline && (self.wrap.is_some() || self.bar_on())
     }
 
     /// #288: whether the caret keys move by the rows the shaped text shows (a multiline input
@@ -1182,6 +1222,9 @@ impl TextFieldState {
             vertical_align: None,
             letter_spacing: 0.0,
             line_height: None,
+            bar: Box::default(),
+            content_extent: (0.0, 0.0),
+            extent_stamp: 0,
         }
     }
 }
@@ -2303,6 +2346,32 @@ mod field_flow_tests {
         for focused in [false, true] {
             assert!(!single.follows_caret(focused) && !multi.follows_caret(focused));
         }
+    }
+
+    #[test]
+    fn a_multiline_input_follows_its_caret_by_the_shaped_text_with_a_wrap_or_its_bar_on() {
+        use crate::scrollbar_props::{Prop, Show, Value};
+        let bar_on = |state: &mut TextFieldState, show: Show| {
+            assert!(
+                state
+                    .bar
+                    .settings
+                    .set(Prop::Show, Some(Value::Choice(show.index())))
+            );
+        };
+        // Off (unset, or `never`): as before, no wrap means the monospace estimate.
+        let mut plain = field(true, None, None);
+        assert!(!plain.bar_on() && !plain.shaped_scroll());
+        bar_on(&mut plain, Show::Never);
+        assert!(!plain.bar_on() && !plain.follows_caret(true));
+        // On: the shaped text, wrapped or not, while focused.
+        bar_on(&mut plain, Show::Overflow);
+        assert!(plain.bar_on() && plain.shaped_scroll());
+        assert!(plain.follows_caret(true) && !plain.follows_caret(false));
+        // A single-line input keeps the setting and has no bar.
+        let mut single = field(false, None, None);
+        bar_on(&mut single, Show::Always);
+        assert!(!single.bar_on() && !single.shaped_scroll() && !single.follows_caret(true));
     }
 
     #[test]

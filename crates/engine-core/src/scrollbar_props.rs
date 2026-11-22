@@ -318,6 +318,20 @@ impl Prop {
         )
     }
 
+    /// Whether a multiline text input's own bar takes the property (0.6.13): the bar's measures,
+    /// colours, fades, arrows and lane, the page and its repeat, and the wheel's notch. Not the
+    /// gutter (one bar over the text, no space reserved; the padding is the input's own), nor
+    /// the key, smooth-scroll, snap, fling and edge ones (the input's keys are the caret's, and
+    /// its scroll is driven by the bar, the wheel and the caret, never eased or snapped).
+    pub fn applies_to_text_input(self) -> bool {
+        let bar = self.name().starts_with("scrollbar_")
+            && !matches!(self, Prop::Gutter | Prop::GutterReserve);
+        bar || matches!(
+            self,
+            Prop::WheelNotch | Prop::PageFraction | Prop::PageRepeatDelay | Prop::PageRepeat
+        )
+    }
+
     /// The choice names of the property, for a `Kind::Choice` one.
     pub fn choices(self) -> Option<&'static [&'static str]> {
         match self.kind() {
