@@ -508,7 +508,36 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   macOS and Windows the OS's default background cannot flash the wrong light or dark (UX spec AC-TH-7, AC-TH-8). It is
   given to the constructor only; `set(first_present=...)` raises `ValueError`. `ready()` is a no-op on a window that
   presents immediately and after the first call. `LayerWindow` and `PopupWindow` took `first_present` in 0.6.11 but only
-  `"immediate"` (anything else raised `ValueError`); 0.6.12 lifts that (see `## 0.6.12`). Verified on Wayland (sway) only;
+  `"immediate"` (anything else raised `ValueError`); 0.6.12 lifts that (see `## 0.6.12
+
+0.6.12 is mostly additive: new properties, each with the Tesserae UX specification's value as its default and `None`
+meaning that default. A few behaviours change; read **Changed defaults** first. **New properties and calls** are in the
+order they were added; **Internal (Rust)** lists API changes Python never sees.
+
+### Changed defaults
+
+- **Escape ends a drag (UXREQ-007; behaviour change).** While a gesture is held — a node holds the pointer capture, a
+  scrollbar thumb is dragged, or a dock drag runs — Escape is **consumed**: the capture holder (else the pressed node)
+  gets one `pointer_cancel`, no `pointer_up` and no `click` follow, and the key goes no further (no `key_down`, no byte to
+  a focused terminal, no text edit, no `dismiss_on_escape` overlay closing, no keyboard scroll). A thumb drag restores its
+  start offset. Without a gesture Escape is unchanged. An app that closed a popup with Escape mid-drag now sees the drag
+  end first and needs a second Escape. A node that holds the capture still gets no `key_down`.
+
+- **A path node's `shadows` follow the path, holes included (a fix).** Every node's shadow was its box, blurred, so a
+  `path` ring's hole filled with solid shadow. A path now casts the silhouette of what it paints (the fill under the
+  non-zero rule, plus the trimmed stroke), offset, grown by `spread` and blurred by the same `blur / 2` as a box.
+  No new property; a negative `spread` shrinks the silhouette. Other kinds are unchanged. An app that leaned on the
+  old box shadow under a path (a drop shadow of an icon's bounding box) now sees the icon's shape instead: put the
+  shadow on a `box` behind it for the old look.
+
+- **Other behaviour to know (each described in its bullet below).** A popup whose parent surface closes is now told `closed`
+  with reason `"dismissed"` first, and its GPU surface is dropped before the parent's (before, a held popup could keep a
+  swapchain on a destroyed surface). `multi_click_px` (default `4`, as before) is now also how far apart a title-bar
+  double click's two presses may be. A `virtual_list` takes the arrow, Home, End and Page keys and Space itself only with a
+  `selection_mode` (the default `none` changes nothing). The `Event.selection_source` field is new: `Event.source` is a
+  removed name (M100) and is not reused.
+
+### New properties and calls
 
 - **`stroke_cap`, `stroke_join`, `stroke_miter_limit`, `stroke_dash`, `stroke_dash_offset` (new, opt-in; `path` nodes, P9).**
   A path's stroke was always round-capped and round-joined and could not be dashed. Now `stroke_cap` (`"round"` default,
@@ -545,6 +574,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `ScrollAxis` it grabbed. The Python API has no such change.
 
 ## 0.6.12
+
 - **`selection_mode`, `selection`, `selection_anchor`, `select_all_key`, `select_on_focus`, `unselectable_keys` and the
   `selection_change` event on a `virtual_list` (new, opt-in; no default changes; UX note "Selection", AC-SLT-1 to 6 and 13).**
   The engine had no selection for lists: `selected` was an accessibility flag the toolkit set by hand and every framework
@@ -560,6 +590,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   page; with the default none of that happens. New `Event` fields `selection`, `ranges`, `anchor`, `selection_source`. Not built:
   container children as items, the `selected` and `multiselectable` accessibility flags set from the set, and the
   announcement of the count (the next change). See [Selecting rows of a virtual list](guide/nodes-and-layout.md#selecting-rows-of-a-virtual-list).
+
 - **`titlebar_double_click`, `resize_cursors`, `undecorated_shadow` (new `Window` properties, P11; no default changes).**
   `titlebar_double_click` is what a double-click on a `window_region="drag"` node does: `None` (default, as before: the
   user's setting on macOS, maximize elsewhere), `"maximize"`, `"minimize"`, `"none"`, or `"event"` (nothing happens;
@@ -571,6 +602,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `PopupWindow` refuse all three like `system_menu`. Skipped: separate corner size for the resize border (one
   `resize_border` serves edges and corners), double-click time/slop (the OS value, and P6's multi-click settings).
   See [Custom title bars](reference/window.md#window-controls-and-state).
+
 - **`gesture_long_press_ms`, `gesture_tap_ms`, `gesture_double_tap_ms`, `gesture_double_tap_px`, `gesture_swipe_speed`,
   `gesture_swipe_px`, `gesture_rotate_slop`, `multi_click_ms`, `multi_click_px`, `drag_start_px` (new, opt-in; window
   properties, P6).** The touch recogniser's long press (500 ms), tap (300 ms), double tap (300 ms and 30 px), swipe
@@ -582,6 +614,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   drags are not held back), because tre had no drag threshold at all and the Tesserae spec wants 4 dp.
   `multi_click_px` is also the title-bar double click's press distance (it was a separate fixed 4). Bad values raise
   `ValueError` naming the property. See [Gesture, click and drag thresholds](reference/window.md#gesture-click-and-drag-thresholds-0612).
+
 - **Terminal appearance: `font_family`, `line_height`, `caret_shape`, `caret_width`, `caret_blink`, `caret_unfocused`,
   `bold_weight`, `dim_opacity`, `underline_offset`, `underline_thickness`, `selection_foreground`, `selection_radius` on
   a `terminal` (new, opt-in; no default changes).** The audit and the UX note "Terminal" listed the font family, line
@@ -595,6 +628,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   other kind. Not done: the 256-colour cube and grey ramp (the xterm values, not a design choice; the 16 ANSI colours are
   `palette`). `TerminalState` (Rust) gained the matching fields and a `cell_size` helper; it no longer derives `Debug` and
   `PartialEq` and its `Clone` is by hand (its history bar has animated state).
+
 - **The terminal history scrollbar (UXREQ-006 second half; new, opt-in).** A `terminal` takes the `scrollbar_*`
   properties of a scroll view and `page_fraction`, `page_repeat_delay_ms`, `page_repeat_ms`, with the spec's measures,
   but **`scrollbar_show` defaults to `"never"`**: no existing terminal draws a bar until it sets `"overflow"`, `"always"`
@@ -606,6 +640,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `NodeKind::Terminal` is a `Scroller` (`ScrollDefaults::Terminal`; `TerminalState::{bar, history_len, history_back,
   line_px, scroll}`, `set_history`, `history_back_wanted`), `Tree::scrollbar_pressed`. See
   [Terminal](guide/text.md#terminal).
+
 - **`selection_fill` on a static `text`; `selection_foreground` and `selection_radius` on `text` and `text_input` (new,
   opt-in; no default changes).** The UX note "Text Selection" has the highlight as `primary` at 30 % with the selected text
   keeping its own colour and a square corner. A `text_input` took `selection_fill`; a `text` had no way to set its
@@ -616,26 +651,15 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `caret_width` (a `text_input`'s, 1.5 px by default) is unchanged. `TextOptions` gained `selection_fill`,
   `selection_foreground` and `selection_radius` and `TextFieldState` gained `selection_foreground` and `selection_radius`
   (Rust). See [Selection appearance](guide/text.md#selection-appearance-0612).
-- **Escape ends a drag (UXREQ-007; behaviour change).** While a gesture is held — a node holds the pointer capture, a
-  scrollbar thumb is dragged, or a dock drag runs — Escape is **consumed**: the capture holder (else the pressed node)
-  gets one `pointer_cancel`, no `pointer_up` and no `click` follow, and the key goes no further (no `key_down`, no byte to
-  a focused terminal, no text edit, no `dismiss_on_escape` overlay closing, no keyboard scroll). A thumb drag restores its
-  start offset. Without a gesture Escape is unchanged. An app that closed a popup with Escape mid-drag now sees the drag
-  end first and needs a second Escape. A node that holds the capture still gets no `key_down`.
+
 - **`dock_cancel` (new window event).** Escape during a dock drag leaves the panel in its zone, fires `dock_target` with
   `side=None` if a zone was highlighted (so the highlight goes within the frame), then `dock_cancel` (`event.panel`);
   `dock_drop` never fires. Add `window.on("dock_cancel", ...)` next to your `dock_drop` handler to clear drag state.
+
 - **`edge_scroll`, `edge_scroll_band`, `edge_scroll_speed` (new, opt-in; `scroll_view` and `virtual_list`).** While a
   gesture is held, a pointer within `edge_scroll_band` dp (24) of the view's edge scrolls it, from `edge_scroll_speed[0]`
   (8) dp per frame at 60 Hz at the inner edge of the band to `[1]` (32) at the edge. Default `edge_scroll=False`, so
   nothing changes until set.
-
-- **A path node's `shadows` follow the path, holes included (a fix).** Every node's shadow was its box, blurred, so a
-  `path` ring's hole filled with solid shadow. A path now casts the silhouette of what it paints (the fill under the
-  non-zero rule, plus the trimmed stroke), offset, grown by `spread` and blurred by the same `blur / 2` as a box.
-  No new property; a negative `spread` shrinks the silhouette. Other kinds are unchanged. An app that leaned on the
-  old box shadow under a path (a drop shadow of an icon's bounding box) now sees the icon's shape instead: put the
-  shadow on a `box` behind it for the old look.
 
 - **`hover_layer_ms`, `pressed_layer_ms`, `focus_layer_ms`, `hover_layer_easing`, `pressed_layer_easing`,
   `focus_layer_easing` (new, opt-in; per-state state-layer timings).** The UX spec's state fades differ by state
@@ -648,6 +672,7 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `StateLayer` (Rust) gained the matching `*_ms`/`*_easing` fields, `active` and `timing(LayerState)`;
   `StateLayer::target` returns `Option<(LayerState, Color)>` and `sync` takes it. See
   [State layers](reference/properties.md#state-layers-0611).
+
 - **`first_present` and `ready()` on `LayerWindow` and `PopupWindow`, and a `background=` constructor argument on both
   (new, opt-in; a popup of a closing parent is now told).** In 0.6.11 only a toplevel `Window` could hold its first present;
   a layer window or popup raised `ValueError` ("not supported on LayerWindow yet") for anything but `"immediate"`. They now
@@ -674,11 +699,23 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `viewport_margin`, `flip_threshold`), `Tree::layer_defaults`/`set_layer_defaults`/`update_layer` are new, and
   `engine_core::overlay::place` is the pure placement function. See
   [Layer placement policy](reference/properties.md#layer-placement-policy-0612).
+
 - **`PopupWindow(edge_margin=...)` (new, opt-in, constructor only).** The UX "Popup Window" note keeps the body 8 dp from
   the output edge; the compositor flipped and slid it to the edge. `edge_margin` (a whole number of pixels or `(top, right,
   bottom, left)`, default `None` = 0) grows the window geometry the compositor places by that much on each side, as far as
   the transparent room around `geometry` allows (`get("edge_margin_applied")`; a popup without `geometry` has none), and
   moves the anchor rectangle so the body attaches where it did. `position` and `configure`'s `x`, `y` stay the body's.
   `PopupConfig` (Rust) gained `edge_margin` and `edge_fit()`. See [Edge margin](reference/layer-window.md#edge-margin).
+
 - **`ime_offset` (`Window.set`/`get`; new, opt-in).** `(dx, dy)` layout pixels added to the caret box the input method puts its
   candidate window at; default `(0, 0)`, the caret box itself as before.
+
+### Internal (Rust)
+
+- **Rust API changes.** `StateLayer::target` returns `Option<(LayerState, Color)>` and `StateLayer::sync` takes it;
+  `OverlayMeta.pinned` became `no_flip` and `no_shift`, with the placement rule in `engine_core::overlay::place`;
+  `TerminalState` lost its `Debug` and `PartialEq` derives and has a hand-written `Clone`; `ImageState` gained `sampling`
+  and `PathState` `stroke_style`; `WindowOptions` gained `undecorated_shadow`; `PopupConfig` gained `edge_margin`;
+  `node_callbacks::layout` takes the completions registry; `Mode::require_immediate` is gone (one
+  `FirstPresent::configure` parses `first_present=` and `background=` for all three window kinds); `WindowEventType`
+  gained `TitlebarDoubleClick` and `DockCancel`, `EventType` gained `SelectionChange`.
