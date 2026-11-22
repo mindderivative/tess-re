@@ -99,6 +99,20 @@ def test_build_configuration_that_can_break_another_platform_gets_the_full_tier(
     assert plan([path, "crates/engine-py/src/app.rs"]).tier == "full"
 
 
+@pytest.mark.parametrize(
+    "path",
+    ["crates/engine-platform/src/lib.rs", "crates/engine-platform/src/titlebar.rs", "crates/engine-platform/src/appearance.rs"],
+)
+def test_the_cfg_heavy_platform_files_get_the_full_tier_so_windows_and_macos_compile_them(path):
+    got = plan([path, "docs/guide/text.md"])
+    assert got.tier == "full" and path in got.reason
+
+
+def test_other_platform_files_and_other_crates_stay_partial():
+    assert plan(["crates/engine-platform/src/layer.rs"]).tier == "partial"
+    assert plan(["crates/engine-core/src/lib.rs"]).tier == "partial"
+
+
 def test_the_label_and_a_manual_run_ask_for_the_full_tier():
     assert plan(["docs/guide/text.md"], labels=("full-ci",)).tier == "full"
     assert plan(["docs/guide/text.md"], labels=("bug",)).tier == "docs"
@@ -112,9 +126,14 @@ def test_not_knowing_what_changed_is_the_full_tier():
 
 
 def test_a_lower_crate_runs_every_python_test_because_it_reaches_python_indirectly():
-    for crate in ("engine-core", "engine-render", "engine-platform"):
-        result = plan([f"crates/{crate}/src/lib.rs"])
-        assert result.tier == "partial" and result.pytest_scope == "all", crate
+    # (engine-platform's own lib.rs is a cfg-heavy file that gets the full tier: its layer.rs stands for it here.)
+    for path in (
+        "crates/engine-core/src/lib.rs",
+        "crates/engine-render/src/lib.rs",
+        "crates/engine-platform/src/layer.rs",
+    ):
+        result = plan([path])
+        assert result.tier == "partial" and result.pytest_scope == "all", path
         assert result.build_ext and result.rust
 
 
