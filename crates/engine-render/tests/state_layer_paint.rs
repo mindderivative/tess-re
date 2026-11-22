@@ -135,7 +135,7 @@ struct Output {
 }
 
 impl Output {
-    fn new(device: &wgpu::Device) -> Self {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let surface = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("state layer test target"),
             size: wgpu::Extent3d {
@@ -153,7 +153,7 @@ impl Output {
             view_formats: &[],
         });
         let view = surface.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut renderer = WindowRenderer::new(device, FORMAT, SIZE, SIZE, true);
+        let mut renderer = WindowRenderer::new(device, queue, FORMAT, SIZE, SIZE, true);
         renderer.set_scale(1.0);
         Self {
             renderer,
@@ -206,7 +206,7 @@ fn each_step_of_a_fade_is_damage_and_a_partial_redraw_equals_a_full_draw() {
     tree.edit_state_layer(id, |l| l.hover = Some(HOVER));
     layout(&mut tree, root);
 
-    let mut output = Output::new(&device);
+    let mut output = Output::new(&device, &queue);
     output.frame(&device, &queue, &tree, root, true);
     let rest = output.pixels(&device, &queue);
 
@@ -223,7 +223,7 @@ fn each_step_of_a_fade_is_damage_and_a_partial_redraw_equals_a_full_draw() {
         assert_ne!(damage, Damage::None, "{step}: the shown colour changed");
         let partial = output.pixels(&device, &queue);
         assert_ne!(partial, rest, "{step}");
-        let mut fresh = Output::new(&device);
+        let mut fresh = Output::new(&device, &queue);
         fresh.frame(&device, &queue, &tree, root, false);
         assert_eq!(
             partial,

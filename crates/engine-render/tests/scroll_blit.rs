@@ -69,6 +69,7 @@ impl Window {
         let surface_view = surface.create_view(&wgpu::TextureViewDescriptor::default());
         let mut renderer = WindowRenderer::new(
             &gpu.device,
+            &gpu.queue,
             FORMAT,
             u32::from(width),
             u32::from(height),

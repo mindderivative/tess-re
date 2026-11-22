@@ -285,7 +285,7 @@ struct Output {
 }
 
 impl Output {
-    fn new(device: &wgpu::Device) -> Self {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let surface = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("selection paint test target"),
             size: wgpu::Extent3d {
@@ -303,7 +303,7 @@ impl Output {
             view_formats: &[],
         });
         let view = surface.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut renderer = WindowRenderer::new(device, FORMAT, SIZE, SIZE, true);
+        let mut renderer = WindowRenderer::new(device, queue, FORMAT, SIZE, SIZE, true);
         renderer.set_scale(1.0);
         Self {
             renderer,
@@ -371,7 +371,7 @@ fn changing_how_a_selection_paints_repaints_like_a_full_draw() {
     tree.set_layout_style(t, placed(0.0, 0.0, 100.0, 50.0));
     layout_to(&mut tree, root);
 
-    let mut output = Output::new(&device);
+    let mut output = Output::new(&device, &queue);
     output.frame(&device, &queue, &tree, root, true);
     let before = output.pixels(&device, &queue);
 
@@ -407,7 +407,7 @@ fn changing_how_a_selection_paints_repaints_like_a_full_draw() {
         assert_ne!(damage, Damage::None, "{name} is damage");
         let partial = output.pixels(&device, &queue);
         assert_ne!(partial, last, "{name} changes the pixels");
-        let mut fresh = Output::new(&device);
+        let mut fresh = Output::new(&device, &queue);
         fresh.frame(&device, &queue, &tree, root, false);
         assert_eq!(
             partial,

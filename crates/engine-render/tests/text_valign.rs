@@ -13,7 +13,7 @@ use engine_render::{FrameRenderer, GeometryCache, TextPlacement, TextRenderer, b
 use peniko::Color;
 use peniko::kurbo::Point;
 use taffy::prelude::{AvailableSpace, Size, Style, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 
@@ -40,6 +40,7 @@ async fn render(tree: &Tree, root: NodeId, width: u16, height: u16) -> (Vec<u8>,
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut frame_renderer = FrameRenderer::new(
         &device,
+        &queue,
         &RenderTargetConfig {
             format: texture.format(),
             width,
@@ -57,10 +58,9 @@ async fn render(tree: &Tree, root: NodeId, width: u16, height: u16) -> (Vec<u8>,
         &mut text_renderer,
         &mut geometry_cache,
     );
-    let render_size = RenderSize { width, height };
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+    frame_renderer.render(&scene, &mut encoder, &view);
     queue.submit([encoder.finish()]);
     let bytes_per_row = (u32::from(width) * 4).next_multiple_of(256);
     (

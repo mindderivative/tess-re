@@ -68,7 +68,8 @@ impl Scene {
             view_formats: &[],
         });
         let surface_view = surface.create_view(&wgpu::TextureViewDescriptor::default());
-        let renderer = WindowRenderer::new(&device, FORMAT, u32::from(W), u32::from(H), true);
+        let renderer =
+            WindowRenderer::new(&device, &queue, FORMAT, u32::from(W), u32::from(H), true);
         let mut tree = Tree::new();
         let root = tree.insert(
             NodeKind::Container,

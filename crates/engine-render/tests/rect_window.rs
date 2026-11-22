@@ -22,7 +22,7 @@ use engine_platform::{WindowConfig, WindowOptions, run_windowed};
 use engine_render::{FrameRenderer, GeometryCache, TextRenderer, build_tree_scene};
 use peniko::Color;
 use taffy::prelude::{AvailableSpace, FlexDirection, Size, Style, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 use winit::window::Window;
 
 /// MD3 seed-adjacent purple (#6750A4) -- the same starting color step
@@ -110,6 +110,7 @@ impl GpuState {
 
         let frame_renderer = FrameRenderer::new(
             &device,
+            &queue,
             &RenderTargetConfig {
                 format: config.format,
                 width,
@@ -340,22 +341,11 @@ impl GpuState {
             &mut self.text_renderer,
             &mut self.geometry_cache,
         );
-        let render_size = RenderSize {
-            width: self.width,
-            height: self.height,
-        };
 
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        self.frame_renderer.render(
-            &scene,
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &render_size,
-            &view,
-        );
+        self.frame_renderer.render(&scene, &mut encoder, &view);
         self.queue.submit([encoder.finish()]);
         self.queue.present(output);
     }

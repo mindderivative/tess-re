@@ -7,7 +7,7 @@ use engine_core::{NodeId, NodeKind, PaintProperties, Shadow, Shadows, Tree};
 use engine_render::{
     FrameRenderer, GeometryCache, PersistentTarget, TextRenderer, build_tree_scene,
 };
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 use support::*;
@@ -57,6 +57,7 @@ impl Gpu {
     fn render_into(&self, tree: &Tree, root: NodeId, target: &PersistentTarget) {
         let mut frame_renderer = FrameRenderer::new(
             &self.device,
+            &self.queue,
             &RenderTargetConfig {
                 format: FORMAT,
                 width: SIZE,
@@ -75,17 +76,7 @@ impl Gpu {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        frame_renderer.render(
-            &scene,
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &RenderSize {
-                width: SIZE,
-                height: SIZE,
-            },
-            target.view(),
-        );
+        frame_renderer.render(&scene, &mut encoder, target.view());
         self.queue.submit([encoder.finish()]);
     }
 

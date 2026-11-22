@@ -9,7 +9,7 @@ use engine_render::{FrameRenderer, GeometryCache, TextRenderer, build_tree_scene
 use peniko::Color;
 use peniko::kurbo::{Affine, Rect, Stroke};
 use taffy::prelude::{AvailableSpace, Position, Rect as TaffyRect, Size, Style, auto, length};
-use vello_gpu::{RenderSize, RenderTargetConfig, Scene};
+use vello_gpu::{RenderTargetConfig, Scene};
 
 const S: u16 = 64;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -20,6 +20,7 @@ const BG: Color = Color::from_rgba8(0, 0, 0, 255);
 fn render(device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene) -> Vec<u8> {
     let mut renderer = FrameRenderer::new(
         device,
+        queue,
         &RenderTargetConfig {
             format: FORMAT,
             width: S,
@@ -42,18 +43,7 @@ fn render(device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene) -> Vec<u8> 
     });
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = device.create_command_encoder(&Default::default());
-    renderer.render_into(
-        scene,
-        device,
-        queue,
-        &mut encoder,
-        &RenderSize {
-            width: S,
-            height: S,
-        },
-        &view,
-        None,
-    );
+    renderer.render_into(scene, &mut encoder, &view, None);
     queue.submit([encoder.finish()]);
     support::read_texture(device, queue, &target)
 }
@@ -105,6 +95,7 @@ fn compare(x: f32, y: f32, w: f32, h: f32, border: f64) {
     );
     let renderer = FrameRenderer::new(
         &device,
+        &queue,
         &RenderTargetConfig {
             format: FORMAT,
             width: S,

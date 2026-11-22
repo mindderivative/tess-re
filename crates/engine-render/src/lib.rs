@@ -44,7 +44,7 @@ use peniko::kurbo::{Affine, BezPath, Circle, Rect, RoundedRect, Shape, Stroke};
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
-use vello_gpu::{RenderSize, RenderTargetConfig, Renderer, Resources, Scene};
+use vello_gpu::{RenderOptions, RenderTarget, RenderTargetConfig, Renderer, Resources, Scene};
 
 pub use damage::{Damage, DamageTracker, Extents, MAX_RECTS, SCROLL_BLIT_MIN_NODES, Shift};
 pub use fonts::{
@@ -137,7 +137,7 @@ pub fn build_shadow_scene(
     );
     scene.set_transform(Affine::IDENTITY);
     scene.set_paint(color);
-    scene.fill_blurred_rounded_rect(&rect, corner_radius, std_dev, false);
+    scene.fill_blurred_rounded_rect(&rect, corner_radius, std_dev);
     scene
 }
 
@@ -963,7 +963,7 @@ fn paint_shader_texture(
     scene.set_paint(vello_common::paint::Image {
         image: vello_common::paint::ImageSource::external_texture(
             shader_pass::texture_id_for(id),
-            region,
+            vello_common::paint::TextureRegion::Rect(region),
             true,
         ),
         sampler: image_sampler(engine_core::ImageSampling::Linear),
@@ -1293,7 +1293,6 @@ fn draw_own(
                     &rect,
                     shadow_radius as f32,
                     blur_to_std_dev(shadow.blur as f32),
-                    false,
                 );
             } else {
                 scene.fill_path(&RoundedRect::from_rect(rect, shadow_radius).to_path(0.1));
@@ -1644,7 +1643,7 @@ fn draw_own(
                 scene.set_paint(vello_common::paint::Image {
                     image: vello_common::paint::ImageSource::external_texture(
                         image_cache::texture_id_for(id),
-                        source_region,
+                        vello_common::paint::TextureRegion::Rect(source_region),
                         true,
                     ),
                     sampler: image_sampler(state.sampling),
@@ -1987,12 +1986,12 @@ fn paint_svg_image(image: &engine_core::SvgImage, scene: &mut Scene) {
     }
     let source = vello_common::paint::ImageSource::external_texture(
         image_cache::svg_texture_id(image.bitmap.id),
-        vello_common::geometry::RectU16 {
+        vello_common::paint::TextureRegion::Rect(vello_common::geometry::RectU16 {
             x0: 0,
             y0: 0,
             x1: bw as u16,
             y1: bh as u16,
-        },
+        }),
         true,
     );
     scene.set_paint(vello_common::paint::Image {
@@ -2221,8 +2220,8 @@ pub struct SharedRenderer {
 impl SharedRenderer {
     /// A renderer for `config.format` on `device`. `config`'s size is only where it starts: it
     /// follows whatever size each frame asks for.
-    pub fn new(device: &wgpu::Device, config: &RenderTargetConfig) -> Self {
-        let (renderer, resources) = Renderer::new(device, config);
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, config: &RenderTargetConfig) -> Self {
+        let (renderer, resources) = Renderer::new(device, queue, config);
         Self {
             core: Rc::new(RefCell::new(VelloCore {
                 renderer,
@@ -2235,6 +2234,7 @@ impl SharedRenderer {
     /// `width` x `height` (clamped to what the renderer takes).
     pub fn for_format(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         format: wgpu::TextureFormat,
         width: u32,
         height: u32,
@@ -2242,6 +2242,7 @@ impl SharedRenderer {
         let side = |pixels: u32| u16::try_from(pixels).unwrap_or(u16::MAX);
         Self::new(
             device,
+            queue,
             &RenderTargetConfig {
                 format,
                 width: side(width),
@@ -2299,8 +2300,8 @@ pub struct FrameRenderer {
 }
 
 impl FrameRenderer {
-    pub fn new(device: &wgpu::Device, config: &RenderTargetConfig) -> Self {
-        Self::sharing(&SharedRenderer::new(device, config), config.format)
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, config: &RenderTargetConfig) -> Self {
+        Self::sharing(&SharedRenderer::new(device, queue, config), config.format)
     }
 
     /// A `FrameRenderer` that draws with `shared`'s renderer and resources (0.5.9, #235), for
@@ -2329,27 +2330,20 @@ impl FrameRenderer {
     pub fn render(
         &mut self,
         scene: &Scene,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        render_size: &RenderSize,
         target: &wgpu::TextureView,
     ) {
-        self.render_into(scene, device, queue, encoder, render_size, target, None);
+        self.render_into(scene, encoder, target, None);
     }
 
     /// 0.4.0 M5: `render`, clearing only `rects` (window pixels) and
     /// keeping the rest of `target` -- for a scene from
     /// `build_tree_scene_in` with the same rects. `None` clears it all, as
     /// `render` does.
-    #[allow(clippy::too_many_arguments)]
     pub fn render_into(
         &mut self,
         scene: &Scene,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        render_size: &RenderSize,
         target: &wgpu::TextureView,
         rects: Option<&[Rect]>,
     ) {
@@ -2375,19 +2369,20 @@ impl FrameRenderer {
                 color: self.backdrop,
             },
         };
+        let mut options = RenderOptions::default();
+        options.target_init = vello_gpu::TargetInit::Clear(clear);
         let core = &mut *self.core.borrow_mut();
         core.renderer
             .render(
                 scene,
                 &mut core.resources,
-                device,
-                queue,
                 encoder,
-                render_size,
-                target,
-                None,
+                RenderTarget {
+                    view: target,
+                    depth_view: None,
+                },
                 self.images.bindings(),
-                vello_gpu::TargetInit::Clear(clear),
+                options,
             )
             .expect("vello_gpu render failed");
     }
@@ -2395,29 +2390,26 @@ impl FrameRenderer {
     /// 0.4.1 M8: renders `scene` over `target`'s existing pixels
     /// (`TargetInit::SrcOver`), clearing nothing -- for drawing on top of a
     /// finished frame, as the redrawn-areas overlay does.
-    #[allow(clippy::too_many_arguments)]
     pub fn render_over(
         &mut self,
         scene: &Scene,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        render_size: &RenderSize,
         target: &wgpu::TextureView,
     ) {
+        let mut options = RenderOptions::default();
+        options.target_init = vello_gpu::TargetInit::SrcOver;
         let core = &mut *self.core.borrow_mut();
         core.renderer
             .render(
                 scene,
                 &mut core.resources,
-                device,
-                queue,
                 encoder,
-                render_size,
-                target,
-                None,
+                RenderTarget {
+                    view: target,
+                    depth_view: None,
+                },
                 self.images.bindings(),
-                vello_gpu::TargetInit::SrcOver,
+                options,
             )
             .expect("vello_gpu render failed");
     }
@@ -2562,17 +2554,17 @@ mod tests {
             let scene = build_rect_scene(width, height, INITIAL_COLOR, 1.0);
             let mut frame_renderer = FrameRenderer::new(
                 &device,
+                &queue,
                 &RenderTargetConfig {
                     format: texture.format(),
                     width,
                     height,
                 },
             );
-            let render_size = RenderSize { width, height };
 
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-            frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+            frame_renderer.render(&scene, &mut encoder, &view);
 
             let bytes_per_row = (u32::from(width) * 4).next_multiple_of(256);
             let readback = device.create_buffer(&wgpu::BufferDescriptor {

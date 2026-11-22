@@ -449,7 +449,7 @@ impl GpuState {
                 let vello = crate::gpu_share::renderer_for(shared, config.format, width, height);
                 WindowRenderer::sharing(&device, config.format, width, height, copy_target, &vello)
             }
-            None => WindowRenderer::new(&device, config.format, width, height, copy_target),
+            None => WindowRenderer::new(&device, &queue, config.format, width, height, copy_target),
         };
         let timer = engine_render::GpuTimer::new(&device, &queue);
 

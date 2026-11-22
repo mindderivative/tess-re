@@ -18,7 +18,7 @@
 
 use engine_render::{FrameRenderer, build_shadow_scene};
 use peniko::Color;
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 
@@ -59,16 +59,16 @@ fn blurred_rounded_rect_shows_a_real_gaussian_falloff_at_its_edge() {
 
         let mut frame_renderer = FrameRenderer::new(
             &device,
+            &queue,
             &RenderTargetConfig {
                 format: texture.format(),
                 width,
                 height,
             },
         );
-        let render_size = RenderSize { width, height };
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+        frame_renderer.render(&scene, &mut encoder, &view);
 
         queue.submit([encoder.finish()]);
         let bytes_per_row = (u32::from(width) * 4).next_multiple_of(256);

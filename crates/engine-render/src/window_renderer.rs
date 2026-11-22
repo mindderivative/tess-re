@@ -18,7 +18,7 @@
 use engine_core::{NodeId, Tree};
 use peniko::Color;
 use peniko::kurbo::{Affine, Rect, Stroke};
-use vello_gpu::{RenderSize, RenderTargetConfig, Scene};
+use vello_gpu::{RenderTargetConfig, Scene};
 
 use crate::{
     Damage, DamageTracker, FrameRenderer, GeometryCache, PersistentTarget, ShaderTextures,
@@ -69,6 +69,7 @@ impl WindowRenderer {
     /// frame in full.
     pub fn new(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         format: wgpu::TextureFormat,
         width: u32,
         height: u32,
@@ -76,6 +77,7 @@ impl WindowRenderer {
     ) -> Self {
         let shared = SharedRenderer::new(
             device,
+            queue,
             &RenderTargetConfig {
                 format,
                 width: extent(width),
@@ -354,15 +356,7 @@ impl WindowRenderer {
             .as_ref()
             .map_or(surface_view, PersistentTarget::view);
         if let Some(scene) = &scene {
-            self.frame_renderer.render_into(
-                scene,
-                device,
-                queue,
-                encoder,
-                &RenderSize { width, height },
-                view,
-                rects,
-            );
+            self.frame_renderer.render_into(scene, encoder, view, rects);
         }
         if let Some(target) = &self.target {
             target.copy_to(encoder, surface);
@@ -408,14 +402,8 @@ impl WindowRenderer {
         }
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        self.frame_renderer.render_over(
-            &scene,
-            device,
-            queue,
-            &mut encoder,
-            &RenderSize { width, height },
-            surface_view,
-        );
+        self.frame_renderer
+            .render_over(&scene, &mut encoder, surface_view);
         queue.submit([encoder.finish()]);
     }
 }

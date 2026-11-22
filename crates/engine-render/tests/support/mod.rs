@@ -12,7 +12,7 @@ use engine_render::{
 };
 use peniko::Color;
 use taffy::prelude::{AvailableSpace, Position, Rect as TaffyRect, Size, Style, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 pub const SIZE: u16 = 100;
 pub const BACKGROUND: Color = Color::from_rgba8(0x11, 0x11, 0x11, 0xFF);
@@ -141,6 +141,7 @@ pub async fn render(tree: &Tree, root: NodeId) -> (Vec<u8>, u32) {
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut frame_renderer = FrameRenderer::new(
         &device,
+        &queue,
         &RenderTargetConfig {
             format: texture.format(),
             width,
@@ -161,10 +162,9 @@ pub async fn render(tree: &Tree, root: NodeId) -> (Vec<u8>, u32) {
     // An image node needs its texture uploaded and bound before it renders;
     // a tree without one has nothing to upload.
     frame_renderer.sync_image_textures(tree, &device, &queue);
-    let render_size = RenderSize { width, height };
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+    frame_renderer.render(&scene, &mut encoder, &view);
     queue.submit([encoder.finish()]);
     let bytes_per_row = (u32::from(width) * 4).next_multiple_of(256);
     (read_texture(&device, &queue, &texture), bytes_per_row)

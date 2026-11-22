@@ -10,7 +10,7 @@ use engine_render::FrameRenderer;
 use peniko::kurbo::{Affine, BezPath, Rect, Shape};
 use peniko::{BlendMode, Color, Compose, Mix};
 use vello_common::filter_effects::{Filter, FilterFunction, FilterPrimitive};
-use vello_gpu::{RenderSize, RenderTargetConfig, Scene};
+use vello_gpu::{RenderTargetConfig, Scene};
 
 const S: u16 = 64;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -18,6 +18,7 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 fn render(device: &wgpu::Device, queue: &wgpu::Queue, paint: impl Fn(&mut Scene)) -> Vec<u8> {
     let mut renderer = FrameRenderer::new(
         device,
+        queue,
         &RenderTargetConfig {
             format: FORMAT,
             width: S,
@@ -43,18 +44,7 @@ fn render(device: &wgpu::Device, queue: &wgpu::Queue, paint: impl Fn(&mut Scene)
     scene.set_transform(Affine::IDENTITY);
     paint(&mut scene);
     let mut encoder = device.create_command_encoder(&Default::default());
-    renderer.render_into(
-        &scene,
-        device,
-        queue,
-        &mut encoder,
-        &RenderSize {
-            width: S,
-            height: S,
-        },
-        &view,
-        None,
-    );
+    renderer.render_into(&scene, &mut encoder, &view, None);
     queue.submit([encoder.finish()]);
     support::read_texture(device, queue, &target)
 }

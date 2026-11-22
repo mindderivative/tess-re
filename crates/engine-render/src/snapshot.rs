@@ -78,7 +78,7 @@ pub fn snapshot_with(
         view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut renderer = WindowRenderer::new(device, FORMAT, width, height, true);
+    let mut renderer = WindowRenderer::new(device, queue, FORMAT, width, height, true);
     renderer.set_scale(scale);
     renderer.set_time(time);
     renderer.set_glyph_cache(glyph_cache);

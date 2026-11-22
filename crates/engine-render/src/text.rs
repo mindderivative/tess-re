@@ -3081,7 +3081,7 @@ mod tests {
             })
             .await
             .expect("no wgpu adapter available in this environment");
-        let (device, _queue) = adapter
+        let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("text.rs layout-cache test device"),
                 required_features: wgpu::Features::empty(),
@@ -3091,6 +3091,7 @@ mod tests {
             .expect("failed to create wgpu device");
         FrameRenderer::new(
             &device,
+            &queue,
             &RenderTargetConfig {
                 format: wgpu::TextureFormat::Rgba8Unorm,
                 width: 100,

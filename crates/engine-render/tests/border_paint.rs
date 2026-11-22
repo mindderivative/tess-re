@@ -20,7 +20,7 @@ use engine_core::{NodeKind, PaintProperties, Tree};
 use engine_render::{FrameRenderer, GeometryCache, TextRenderer, build_tree_scene};
 use peniko::Color;
 use taffy::prelude::{Size, Style, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 
@@ -73,6 +73,7 @@ async fn render(border_width: f64) -> (Vec<u8>, u32) {
 
     let mut frame_renderer = FrameRenderer::new(
         &device,
+        &queue,
         &RenderTargetConfig {
             format: texture.format(),
             width: SIZE,
@@ -90,13 +91,9 @@ async fn render(border_width: f64) -> (Vec<u8>, u32) {
         &mut text_renderer,
         &mut geometry_cache,
     );
-    let render_size = RenderSize {
-        width: SIZE,
-        height: SIZE,
-    };
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+    frame_renderer.render(&scene, &mut encoder, &view);
 
     queue.submit([encoder.finish()]);
     let bytes_per_row = (u32::from(SIZE) * 4).next_multiple_of(256);

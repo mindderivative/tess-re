@@ -278,7 +278,7 @@ struct Output {
 }
 
 impl Output {
-    fn new(device: &wgpu::Device) -> Self {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let surface = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("outline test target"),
             size: wgpu::Extent3d {
@@ -296,7 +296,7 @@ impl Output {
             view_formats: &[],
         });
         let view = surface.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut renderer = WindowRenderer::new(device, FORMAT, SIZE, SIZE, true);
+        let mut renderer = WindowRenderer::new(device, queue, FORMAT, SIZE, SIZE, true);
         renderer.set_scale(1.0);
         Self {
             renderer,
@@ -363,7 +363,7 @@ fn the_focus_ring_follows_focus_visibility_and_partial_redraw_matches_a_full_dra
     let id = boxed(&mut tree, root, 8.0, Some(focus));
     layout(&mut tree, root);
 
-    let mut output = Output::new(&device);
+    let mut output = Output::new(&device, &queue);
     output.frame(&device, &queue, &tree, root, true);
     let unfocused = output.pixels(&device, &queue);
     assert_eq!(
@@ -389,7 +389,7 @@ fn the_focus_ring_follows_focus_visibility_and_partial_redraw_matches_a_full_dra
         rgba(WHITE),
         "keyboard focus shows the ring"
     );
-    let mut fresh = Output::new(&device);
+    let mut fresh = Output::new(&device, &queue);
     fresh.frame(&device, &queue, &tree, root, false);
     assert_eq!(shown, fresh.pixels(&device, &queue), "partial equals full");
 

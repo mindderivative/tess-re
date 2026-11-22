@@ -44,9 +44,7 @@ use std::task::{Context, Poll, Waker};
 
 use engine_core::{NodeId, NodeKind, Shader, ShaderMode, Tree, frame_block, node_id_as_u64};
 use peniko::kurbo::{Affine, Rect};
-use vello_gpu::{
-    ClearSettings, RenderSize, Renderer, Resources, TargetInit, TextureBindings, TextureId,
-};
+use vello_gpu::{RenderOptions, RenderTarget, Renderer, Resources, TextureBindings, TextureId};
 
 use crate::image_cache::{ImageInputs, ImageTextureCache, MAX_IMAGE_DIMENSION};
 use crate::{GeometryCache, TextRenderer, build_effect_content, walk};
@@ -517,17 +515,13 @@ impl ShaderPasses {
         let rendered = f.renderer.render(
             &scene,
             f.resources,
-            f.device,
-            f.queue,
             &mut encoder,
-            &RenderSize {
-                width: size.0 as u16,
-                height: size.1 as u16,
+            RenderTarget {
+                view: &view,
+                depth_view: None,
             },
-            &view,
-            None,
             f.bindings,
-            TargetInit::Clear(ClearSettings::default()),
+            RenderOptions::default(),
         );
         if let Err(error) = rendered {
             if self.refused.insert(id) {
