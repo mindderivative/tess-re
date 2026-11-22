@@ -324,12 +324,10 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 | Method | Description |
 | --- | --- |
-| `fn config(&self) -> GestureConfig` | Every threshold the recognizer uses. |
 | `fn deadline(&self) -> Option<Instant>` | When `poll` next has something to say, if a touch is waiting to become a long press. |
 | `fn is_active(&self) -> bool` | Whether any finger is down: the caller should keep polling while so. |
 | `fn new(config: GestureConfig) -> Self` |  |
 | `fn poll(&mut self, now: Instant) -> Vec<Gesture>` | The time passing: a touch held in place for the long-press time becomes a long press. |
-| `fn set_config(&mut self, config: GestureConfig)` | Replaces every threshold. |
 | `fn set_slop(&mut self, slop: f64)` | The distance, in layout pixels, a touch may wander and still be a tap or a long press. |
 | `fn slop(&self) -> f64` |  |
 | `fn touch(&mut self, id: u64, phase: TouchPhase, position: Point, now: Instant) -> Vec<Gesture>` | Feeds one touch at `now`; returns the gestures it completes or advances. |
@@ -1167,7 +1165,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 *struct.* A terminal's current cell grid, cursor, selection and fonts.
 
-**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Scroller`](#scroller)
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -1184,12 +1182,33 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `palette` | `TerminalPalette` | The colors the terminal paints with. |
 | `escape_chord` | `Option<KeyChord>` | The chord that leaves this terminal, forward in tab order, without being sent to the shell (WCAG 2.1.2). |
 | `escape_chord_reverse` | `Option<KeyChord>` | The chord that leaves it backward; `None` (the default) has none. |
+| `line_height` | `Option<f32>` | A multiple of `font_size` for the height of a cell; `None` (the default) is the font's own line height. |
+| `caret_shape` | `CaretShape` | How the cursor is drawn: a box over the cell (the default, as it was), a bar at its left edge, or a line under it. |
+| `caret_width` | `f32` | The bar's width, or the underline's thickness, in pixels. |
+| `caret_blink_ms` | `u32` | Milliseconds between the cursor going off and on; `0` (the default) keeps it steady, and so does reduced motion. |
+| `caret_on` | `bool` |  |
+| `caret_epoch` | `Option<Instant>` |  |
+| `caret_unfocused` | `UnfocusedCursor` | What a terminal without focus shows of its cursor. |
+| `bold_weight` | `f32` | The weight of a bold cell's glyphs (`700`, as it was). |
+| `dim_opacity` | `f32` | The opacity a dim cell's glyphs are drawn with (`0.6`, as it was). |
+| `underline_offset` | `Option<f32>` | Where an underline starts, in pixels from the top of its cell; `None` (the default) is `0.85` of the cell's height, as it was. |
+| `underline_thickness` | `Option<f32>` | An underline's thickness in pixels; `None` (the default) is `0.06` of the cell's height, at least a pixel, as it was. |
+| `selection_foreground` | `Option<Color>` | The colour of the glyphs inside the selection; `None` keeps each cell's own. |
+| `selection_radius` | `f32` | The corner radius of the selection's rectangles (one per row), in pixels. |
+| `bar` | `ScrollbarState` | The history scrollbar's settings and fades, the same as a scroll view's. |
+| `history_len` | `usize` | How many lines of history the session holds, and how many of them the view is scrolled back into (`0` is the live screen). |
+| `history_back` | `usize` |  |
+| `line_px` | `f32` | One line, in pixels: the unit the bar's offsets are in. |
+| `scroll` | `Animated<f64>` | The view's top, in pixels from the top of the history (`history_len * line_px` is the live screen): what the bar's thumb shows and a drag, a lane… |
 
 | Method | Description |
 | --- | --- |
 | `fn cell(&self, row: u16, col: u16) -> &TerminalCell` | Returns the cell at a row and column; panics when out of bounds. |
+| `fn cell_size(&self, natural: (f32, f32)) -> (f32, f32)` | The size of one cell: the font's measured `natural` size, its height replaced by `line_height` times the font size when that is set. |
+| `fn history_back_wanted(&self) -> usize` | How many lines back into the history the bar's offset asks the view to be: what a thumb drag, a lane click or an arrow set (`history_back` while no… |
 | `fn new(cols: u16, rows: u16, font_family: impl Into<String>, font_size: f32) -> Self` | Creates a blank grid of the given size and font. |
 | `fn resize_grid(&mut self, cols: u16, rows: u16)` | Resizes the grid, keeping cells that still fit and blanking the rest. |
+| `fn set_history(&mut self, len: usize, back: usize)` | The session holds `len` lines of history and the view is `back` lines into it. |
 
 ### TextFieldState { #textfieldstate }
 
@@ -1228,6 +1247,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `preedit_cursor` | `Option<(usize, usize)>` | The IME's cursor range inside the preedit text, in bytes. |
 | `last_inserted` | `Option<Range<usize>>` | The bytes the last edit inserted, for `caret_move`. |
 | `selection_fill` | `Option<Color>` | The selection highlight's color; `None` is the scheme's `primary` at 30% while `tint_scheme`, else `text_tint` at 30% alpha. |
+| `selection_foreground` | `Option<Color>` | The colour of the selected glyphs; `None` keeps each glyph's own colour. |
+| `selection_radius` | `f32` | The corner radius of the highlight, in pixels (one rectangle per line); `0` is square. |
 | `obscured` | `bool` | A password field — every character paints as a bullet, and its text never leaves through copy or cut. |
 | `wrap` | `Option<bool>` | `Some(true)` wraps a multiline input's lines at its width (by word); `Some(false)` keeps each line whole and scrolls sideways. |
 | `overflow` | `Option<FieldOverflow>` | How a single-line input shows a line longer than its box. |
@@ -1268,6 +1289,9 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `selectable` | `bool` | Whether a press and drag on the text selects it, and Copy takes the selection. |
 | `selection` | `Option<(usize, usize)>` | The selected bytes as `(anchor, focus)`, either order. |
 | `vertical_align` | `VerticalAlign` | Where the laid-out lines sit in the node's content box when the box is taller than they are. |
+| `selection_fill` | `Option<Color>` | The highlight behind selected text; `None` is the scheme's `primary` at 30% while the text has no `fill` of its own, else the text colour at 30%.… |
+| `selection_foreground` | `Option<Color>` | The colour of the selected glyphs; `None` keeps each glyph's own colour. |
+| `selection_radius` | `f32` | The corner radius of the highlight, in pixels (one rectangle per line); `0` is square. |
 
 | Method | Description |
 | --- | --- |
@@ -1420,7 +1444,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn max_scroll_axis(&self, view: NodeId, axis: ScrollAxis) -> Option<f64>` | `max_scroll` along `axis`. |
 | `fn move_focus(&mut self, root: NodeId, direction: FocusDirection) -> Option<(Option<NodeId>, Option<NodeId>)>` | Moves keyboard focus to the next or previous node in tab order, wrapping at the ends. |
 | `fn new() -> Self` | Creates an empty tree. |
-| `fn node_count(&self) -> usize` | How many nodes the tree holds. |
+| `fn node_count(&self) -> usize` |  |
 | `fn open_overlay(&mut self, root: NodeId, anchor: NodeId, content: NodeId, meta: OverlayMeta)` | Opens content as an overlay positioned just below its anchor node. |
 | `fn outline_of(&self, id: NodeId) -> Option<Outline>` | The outline `id` draws now, if any: its `focus_outline_*` while it has keyboard focus that is visible, else its `outline_*`. |
 | `fn overlay_meta(&self, id: NodeId) -> Option<&OverlayMeta>` | Returns the settings of an open overlay, if the node is one. |
@@ -1445,6 +1469,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn scroll_view_for_key(&self, from: NodeId, key: Key) -> Option<NodeId>` | Returns the scroll view that a key press scrolls, starting from a node. |
 | `fn scroll_virtual_list_by(&mut self, id: NodeId, delta_y: f64)` | Moves a virtual list's scroll offset by a pixel amount, clamped to its range. |
 | `fn scroll_virtual_list_to_index(&mut self, list: NodeId, index: usize, align: ScrollAlign) -> Option<bool>` | Scrolls virtual list `list` so row `index` shows as `align` says, from the offsets the list knows. |
+| `fn scrollbar_pressed(&self) -> bool` | How many nodes the tree holds. |
 | `fn select_across(&mut self, anchor: (NodeId, usize), focus: (NodeId, usize)) -> bool` | Selects from `anchor` to `focus`, each a text node and a byte offset (clamped to a character boundary). |
 | `fn select_all_static_text(&mut self) -> bool` | Ctrl+A in static text: selects all of the text node the selection started in. |
 | `fn select_all_text_field(&mut self, field: NodeId) -> bool` | Selects all the text in a text field. |
@@ -2333,6 +2358,11 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Spec` |  | The Tesserae UX spec: a `both` scroll view. |
 | `Legacy` |  | What a `vertical` or `horizontal` scroll view always had: a 4 px thumb with the colour's own alpha, a 6 px slop, no lane click, a page that is the… |
 | `List` |  | What a virtual list always had: the legacy bar, and a page of nine tenths of the viewport. |
+| `Terminal` |  | A terminal's history bar. |
+
+| Method | Description |
+| --- | --- |
+| `fn is_spec(self) -> bool` | Whether the measures are the Tesserae UX spec's (a `both` scroll view, a terminal). |
 
 ### ScrollDelta { #scrolldelta }
 
@@ -2408,6 +2438,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 | Method | Description |
 | --- | --- |
+| `fn applies_to_terminal(self) -> bool` | Whether a terminal's history bar takes the property (0.6.12, UXREQ-006): the bar's measures, colours, fades, arrows and lane, and the page and its… |
 | `fn choices(self) -> Option<&'static [&'static str]>` | The choice names of the property, for a `Kind::Choice` one. |
 | `fn from_name(name: &str) -> Option<Self>` | The property called `name`. |
 | `const fn kind(self) -> Kind` | How its value is checked. |
@@ -2547,6 +2578,17 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `Ended` |  |  |
 | `Cancelled` |  | The system took the touch away (a palm, a gesture of its own). |
 
+### UnfocusedCursor { #unfocusedcursor }
+
+*enum.* What a terminal that does not have focus draws of its cursor.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Hidden` |  | Nothing (the default, as it was). |
+| `Outline` |  | A one-pixel frame of the cursor's box: a block is hollow, a bar or an underline is drawn as when focused. |
+
 ### UniformKind { #uniformkind }
 
 *enum.* The type of a shader uniform.
@@ -2623,7 +2665,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 
 *trait.* A node that scrolls and carries a scrollbar: a scroll view or a virtual list, so the bar's geometry, hit-testing, hover, drag and fade are one…
 
-**Implemented by:** [`ScrollViewState`](#scrollviewstate), [`VirtualListState`](#virtualliststate)
+**Implemented by:** [`ScrollViewState`](#scrollviewstate), [`TerminalState`](#terminalstate), [`VirtualListState`](#virtualliststate)
 
 | Method | Description |
 | --- | --- |
@@ -3410,7 +3452,6 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `always_on_top` | `bool` | Keep the window above others (a hint on X11; ignored on Wayland). |
 | `resizable` | `bool` | Whether the user can resize the window. |
 | `skip_taskbar` | `bool` | Keep the window off the taskbar (Windows only). |
-| `undecorated_shadow` | `bool` | Keep the OS's shadow around an undecorated window (Windows only; a decorated window has it anyway, and elsewhere the compositor decides). |
 | `start_hidden` | `bool` | Leave the window hidden after it is made; the host shows it (`Window::set_visible(true)`) once its first frame is presented, so the OS never shows… |
 
 ### WindowRequest { #windowrequest }
