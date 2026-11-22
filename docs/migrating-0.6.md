@@ -750,3 +750,9 @@ order they were added; **Internal (Rust)** lists API changes Python never sees.
   `announce_ms` and the debounce state (`note_reported`, `take_announcement`, `set_announce`, `fits`) and a hand-written
   `Default`; `Tree` gained `container_selection`, `container_items`, `item_parent`, `holds_items`, `refresh_selection_host`
   (call it after changing a container's selection mode) and `list_secondary_press`.
+
+- **A fade's last step is drawn (a fix).** A fade that ended in a tick that visited every node (an animation had started somewhere
+  since the last tick) left the frame before it on screen until something else drew: a `hover_layer` with a short
+  `hover_layer_ms` (15 to 30 on a compositor with frames about 17 ms apart) stayed faintly there at rest. The tick after an
+  animating one now always asks for a frame. No property or default changes. Found by tess-shell on a layer surface under sway;
+  `tests/test_hover_layer_rest_live.py` pins it in the private sway and KWin lanes.

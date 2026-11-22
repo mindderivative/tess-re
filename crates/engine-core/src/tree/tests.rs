@@ -77,6 +77,17 @@ fn take_dirty_reports_true_after_each_real_mutation_category_and_false_between()
 
     let (any_active, _) = tree.tick_all(Instant::now() + Duration::from_millis(500));
     assert!(!any_active, "the animation must have completed by now");
+    // 0.6.13: the tick that ends an animation sets its final value, which the frame after the
+    // last mid-flight one must show: it marks the tree dirty (a hover layer was left faintly on
+    // screen when this tick was not drawn).
+    assert!(
+        tree.take_dirty(),
+        "the tick that ends an animation must mark the tree dirty"
+    );
+
+    // Then nothing is active: a tick changes nothing and must not mark the tree dirty.
+    let (any_active, _) = tree.tick_all(Instant::now() + Duration::from_millis(600));
+    assert!(!any_active);
     assert!(
         !tree.take_dirty(),
         "tick_all with nothing active must not mark the tree dirty"

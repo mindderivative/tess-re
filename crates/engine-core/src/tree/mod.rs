@@ -1125,6 +1125,9 @@ impl Tree {
         let mut completed = Vec::new();
         // 0.6.11 (P13): state-layer fades start here, before the animations started are counted.
         self.sync_state_layers(now);
+        // 0.6.13: a node that was animating takes its last step in this tick, which a pass over
+        // every node (below) makes without `get_mut`, so nothing else says the tree changed.
+        let was_animating = !self.animating.is_empty();
         let started = crate::animation::animations_started();
         // What was reached mutably since the last tick: an animation can only
         // have been started on one of these. Drained every tick so it cannot
@@ -1195,7 +1198,10 @@ impl Tree {
         // reason to redraw next frame -- `any_active` was already the
         // exact signal this needs, just never fed into a redraw
         // decision before now.
-        if any_active {
+        // 0.6.13: and so is the tick after the last one that said so: the end of an animation is
+        // what must be drawn then. Without this a fade whose last step came in a pass over every
+        // node left the frame before it (a hover layer still faintly there) on screen.
+        if any_active || was_animating {
             self.dirty = true;
         }
         (any_active, completed)
