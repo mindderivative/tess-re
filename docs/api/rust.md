@@ -3540,7 +3540,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `gravity` | `PopupEdge` | The direction the popup extends from that point. |
 | `adjustments` | `u32` | What the compositor may do to keep it on screen (`adjust` bits). |
 | `offset` | `(i32, i32)` | A fixed shift after placement, in logical pixels. |
-| `grab` | `bool` | Whether the popup grabs the keyboard and pointer, so an outside click or Escape ends it. |
+| `grab` | `bool` | Whether the popup grabs the keyboard and pointer, so an outside click ends it (Escape does not: the popup gets the key, on KWin and sway alike). |
 | `geometry` | `Option<Rect>` | The popup's body, `(x, y, width, height)` in the popup's own pixels, inside `size`. |
 | `edge_margin` | `(i32, i32, i32, i32)` | `(top, right, bottom, left)`, the distance in logical pixels the compositor keeps between the body and the edge of the output when it flips or… |
 | `input_region` | `Option<Vec<Rect>>` | Where the compositor delivers input, `(x, y, width, height)` rectangles in the popup's own logical pixels (margin included). |
@@ -3638,7 +3638,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `Compositor` |  | The compositor closed it. |
 | `OutputRemoved` |  | The output it was bound to went away. |
 | `App` |  | The app closed it. |
-| `Dismissed` |  | A popup the compositor ended: an outside click, Escape, or its parent going away. |
+| `Dismissed` |  | A popup the compositor ended: an outside click, or its parent going away (Escape does not end a grabbing popup: the popup hears the key and nobody… |
 
 ### KeyboardMode { #keyboardmode }
 

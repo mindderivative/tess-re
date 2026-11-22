@@ -310,7 +310,7 @@ pub struct PopupConfig {
     pub adjustments: u32,
     /// A fixed shift after placement, in logical pixels.
     pub offset: (i32, i32),
-    /// Whether the popup grabs the keyboard and pointer, so an outside click or Escape ends it.
+    /// Whether the popup grabs the keyboard and pointer, so an outside click ends it (Escape does not: the popup gets the key, on KWin and sway alike).
     pub grab: bool,
     /// #266: the popup's body, `(x, y, width, height)` in the popup's own pixels, inside `size`.
     /// The compositor places and constrains this rectangle and ignores the rest of the surface
