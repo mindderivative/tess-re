@@ -214,6 +214,10 @@ pub struct Tree {
     snap_pending: Vec<(NodeId, Option<Instant>)>,
     scroll_view_count: usize,
     virtual_list_count: usize,
+    terminal_count: usize,
+    /// Whether the last primary press was taken by a scrollbar (a thumb, a lane or an arrow):
+    /// what is under the bar then does not take the press.
+    scrollbar_pressed: bool,
     /// 0.5.4 (#150): how many `Image` and `Svg` nodes the tree holds, so a
     /// per-frame consumer of them can skip scanning a tree that has none.
     image_count: usize,
@@ -348,6 +352,8 @@ impl Tree {
             dirty: true,
             scroll_view_count: 0,
             virtual_list_count: 0,
+            terminal_count: 0,
+            scrollbar_pressed: false,
             image_count: 0,
             text_field_count: 0,
             svg_count: 0,
@@ -453,6 +459,7 @@ impl Tree {
         match &kind {
             NodeKind::ScrollView(_) => self.scroll_view_count += 1,
             NodeKind::VirtualList(_) => self.virtual_list_count += 1,
+            NodeKind::Terminal(_) => self.terminal_count += 1,
             NodeKind::Image(_) => self.image_count += 1,
             NodeKind::TextField(_) => self.text_field_count += 1,
             NodeKind::Svg(_) => self.svg_count += 1,
@@ -838,6 +845,7 @@ impl Tree {
         match &node.kind {
             NodeKind::ScrollView(_) => self.scroll_view_count -= 1,
             NodeKind::VirtualList(_) => self.virtual_list_count -= 1,
+            NodeKind::Terminal(_) => self.terminal_count -= 1,
             NodeKind::TextField(_) => self.text_field_count -= 1,
             NodeKind::Image(_) => {
                 self.image_count -= 1;
@@ -958,7 +966,13 @@ impl Tree {
             }
         }
         // 0.5.4 (#136): a virtual list's offset animates too (a fling), and
-        // so does its bar (0.6.11).
+        // so does its bar (0.6.11), and a terminal's history bar fades (0.6.12).
+        if let NodeKind::Terminal(state) = &mut node.kind {
+            let (defaults, offsets) = (state.defaults(), state.scroll_offsets());
+            if state.bar.tick(defaults, offsets, now, reduced, completed) {
+                active = true;
+            }
+        }
         if let NodeKind::VirtualList(state) = &mut node.kind {
             if state.scroll_offset.tick(now, completed) {
                 active = true;
@@ -1066,6 +1080,12 @@ impl Tree {
         if anims.is_empty() {
             node.layout_anims = None;
         }
+    }
+
+    /// 0.6.12: whether the last primary press landed on a scrollbar and was used up by it, so
+    /// whatever sits under the bar (a terminal's cell selection) is not to start from it.
+    pub fn scrollbar_pressed(&self) -> bool {
+        self.scrollbar_pressed
     }
 
     /// 0.5.4 (#116): how many nodes the tree holds.

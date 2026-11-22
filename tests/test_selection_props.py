@@ -70,13 +70,15 @@ def test_selection_props_reject_bad_values(props, message):
 
 
 @pytest.mark.parametrize("name", ["selection_fill", "selection_foreground", "selection_radius"])
-def test_selection_props_apply_only_to_text_and_text_input(name):
+def test_selection_props_apply_only_to_their_kinds(name):
     window = Window(width=200, height=100)
     box = window.create("box")
     value = 3 if name == "selection_radius" else GREEN
-    with pytest.raises(ValueError, match="applies only to a text or text_input node"):
+    # A terminal takes the foreground and the radius (its highlight colour is its palette).
+    kinds = "a text or text_input" if name == "selection_fill" else "a text, text_input or terminal"
+    with pytest.raises(ValueError, match=f"applies only to {kinds} node"):
         box.set(**{name: value})
-    with pytest.raises(ValueError, match="applies only to a text or text_input node"):
+    with pytest.raises(ValueError, match=f"applies only to {kinds} node"):
         box.get(name)
 
 

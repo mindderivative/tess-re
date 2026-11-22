@@ -31,6 +31,24 @@ fn number_words(min: f64, max: f64) -> String {
     }
 }
 
+/// Why `kind` does not take `prop`, if it does not: a scroll view and a virtual list take all
+/// of them, a terminal (0.6.12, UXREQ-006) the ones its history bar uses (and so the error for
+/// any other kind still names the two it always did).
+fn refuse(name: &str, prop: ScrollProp, kind: &NodeKind) -> Option<PyErr> {
+    match kind {
+        NodeKind::Terminal(_) if !prop.applies_to_terminal() => {
+            Some(PyValueError::new_err(format!(
+                "node property `{name}` does not apply to a terminal: its history bar is one bar \
+                 over the grid that reserves no gutter, and the session scrolls its history in lines"
+            )))
+        }
+        NodeKind::Terminal(_) | NodeKind::ScrollView(_) | NodeKind::VirtualList(_) => None,
+        _ => Some(PyValueError::new_err(format!(
+            "node property `{name}` applies only to a scroll_view or virtual_list node"
+        ))),
+    }
+}
+
 /// The value `value` is for `prop`, checked against its kind.
 fn parse_value(prop: ScrollProp, value: &Bound<'_, PyAny>) -> PyResult<PropValue> {
     let name = prop.name();
@@ -92,10 +110,8 @@ pub(crate) fn parse(
     kind: &NodeKind,
 ) -> Option<PyResult<KindChange>> {
     let prop = ScrollProp::from_name(name)?;
-    if kind.scroller().is_none() {
-        return Some(Err(PyValueError::new_err(format!(
-            "node property `{name}` applies only to a scroll_view or virtual_list node"
-        ))));
+    if let Some(refused) = refuse(name, prop, kind) {
+        return Some(Err(refused));
     }
     let parsed = if value.is_none() {
         Ok(None)
@@ -120,11 +136,10 @@ pub(crate) fn read(
     py: Python<'_>,
 ) -> Option<PyResult<Py<PyAny>>> {
     let prop = ScrollProp::from_name(name)?;
-    let Some(scroller) = node.kind.scroller() else {
-        return Some(Err(PyValueError::new_err(format!(
-            "node property `{name}` applies only to a scroll_view or virtual_list node"
-        ))));
-    };
+    if let Some(refused) = refuse(name, prop, &node.kind) {
+        return Some(Err(refused));
+    }
+    let scroller = node.kind.scroller()?;
     Some(to_py(
         scroller.bar().get(prop, scroller.defaults()),
         prop,

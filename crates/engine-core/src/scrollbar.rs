@@ -17,7 +17,7 @@ use crate::animation::{Animated, CompletionHandle, MotionCurve};
 use crate::easing::{self, Easing};
 use crate::node::{
     SCROLLBAR_GRAB_SLOP, SCROLLBAR_MARGIN, SCROLLBAR_MIN_LENGTH, SCROLLBAR_THICKNESS,
-    ScrollViewState, VirtualListState,
+    ScrollViewState, TerminalState, VirtualListState,
 };
 use crate::scrollbar_props::{
     Arrows, BarSide, Edge, LAYOUT_DIRECTION, LaneClick, Overrides, Prop, Show, Value,
@@ -132,6 +132,16 @@ pub enum Defaults {
     /// What a virtual list always had: the legacy bar, and a page of nine
     /// tenths of the viewport.
     List,
+    /// 0.6.12 (UXREQ-006): a terminal's history bar. The spec's measures, as a `both` view
+    /// has them, but off until `scrollbar_show` says otherwise (an opt-in).
+    Terminal,
+}
+
+impl Defaults {
+    /// Whether the measures are the Tesserae UX spec's (a `both` scroll view, a terminal).
+    pub fn is_spec(self) -> bool {
+        matches!(self, Defaults::Spec | Defaults::Terminal)
+    }
 }
 
 /// The measures a scrollbar and the scroll feel are built from, resolved: what
@@ -210,7 +220,7 @@ pub fn millis(ms: f64) -> Duration {
 impl ScrollbarMetrics {
     /// What `overrides` and the defaults `d` make of every measure.
     pub fn resolve(o: &Overrides, d: Defaults) -> Self {
-        let spec = d == Defaults::Spec;
+        let spec = d.is_spec();
         let n = |prop: Prop, default: f64| o.number(prop).unwrap_or(default);
         let thickness = n(
             Prop::Width,
@@ -268,7 +278,11 @@ impl ScrollbarMetrics {
                 edge(ScrollAxis::Vertical, Prop::SideV),
                 edge(ScrollAxis::Horizontal, Prop::SideH),
             ],
-            show: Show::from_index(o.choice(Prop::Show).unwrap_or(0)),
+            show: Show::from_index(o.choice(Prop::Show).unwrap_or(if d == Defaults::Terminal {
+                Show::Never.index()
+            } else {
+                Show::Overflow.index()
+            })),
             hide_delay_ms: n(Prop::HideDelay, HIDE_DELAY.as_secs_f64() * 1000.0),
             fade_in_ms: n(Prop::FadeIn, FADE.as_secs_f64() * 1000.0),
             fade_out_ms: n(Prop::FadeOut, FADE.as_secs_f64() * 1000.0),
@@ -920,6 +934,32 @@ impl Scroller for ScrollViewState {
 
     fn offset_anim(&mut self, axis: ScrollAxis) -> &mut Animated<f64> {
         self.animated(axis)
+    }
+}
+
+impl Scroller for TerminalState {
+    fn bar(&self) -> &ScrollbarState {
+        &self.bar
+    }
+
+    fn bar_mut(&mut self) -> &mut ScrollbarState {
+        &mut self.bar
+    }
+
+    fn defaults(&self) -> Defaults {
+        Defaults::Terminal
+    }
+
+    fn scroll_axes(&self) -> &'static [ScrollAxis] {
+        &[ScrollAxis::Vertical]
+    }
+
+    fn scroll_offsets(&self) -> (f64, f64) {
+        (0.0, self.scroll.current)
+    }
+
+    fn offset_anim(&mut self, _axis: ScrollAxis) -> &mut Animated<f64> {
+        &mut self.scroll
     }
 }
 

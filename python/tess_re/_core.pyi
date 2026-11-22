@@ -355,6 +355,17 @@ class Node:
         (the highlight's corner radius in pixels, from `0`, the default:
         square). `caret_width` (pixels, default `1.5`) is a `text_input`'s.
 
+        (0.6.12) A `terminal` takes `font_family` and `line_height` (a multiple of
+        `font_size`, `None`: the font's), `caret_shape` (`"block"` default),
+        `caret_width` (1.5), `caret_blink` (`None`: steady; steady under reduced
+        motion), `caret_unfocused` (`"hidden"` or `"outline"`), `bold_weight`
+        (700), `dim_opacity` (0.6), `underline_offset` and `underline_thickness`
+        (`None`: 0.85 and 0.06 of the cell), `selection_foreground` and
+        `selection_radius`; and the history scrollbar: the `scrollbar_*`
+        properties below (not `_gutter`, `_gutter_reserve`, `_corner`, `_side_h`)
+        and `page_fraction`, `page_repeat_delay_ms`, `page_repeat_ms`, with
+        `scrollbar_show` defaulting to `"never"` (opt-in; `"overflow"` shows it).
+
         (0.6.11) A scroll view and a virtual list take the scrollbar and scroll-feel
         properties -- `scrollbar_width`, `_hit_width`, `_margin`, `_min_length`,
         `_gutter`, `_corner`, `_radius`, `_opacity`, `_opacity_hover`, `_opacity_drag`,

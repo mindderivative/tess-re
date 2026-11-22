@@ -1564,7 +1564,8 @@ fn local_painted(text: &mut TextRenderer, id: NodeId, node: &Node, w: f64, h: f6
         }
         NodeKind::Terminal(state) => {
             // The whole cols x rows grid, unclipped, whatever the box.
-            let (cw, ch) = text.monospace_cell_size(&state.font_family, state.font_size);
+            let natural = text.monospace_cell_size(&state.font_family, state.font_size);
+            let (cw, ch) = state.cell_size(natural);
             local = local.union(Rect::new(
                 0.0,
                 0.0,
@@ -2352,7 +2353,47 @@ fn terminal_fingerprint(h: &mut impl Hasher, state: &TerminalState) {
         // Not painted.
         escape_chord: _,
         escape_chord_reverse: _,
+        // 0.6.12 (P8): how it is drawn. The blink's start is bookkeeping.
+        line_height,
+        caret_shape,
+        caret_width,
+        caret_blink_ms: _,
+        caret_on,
+        caret_epoch: _,
+        caret_unfocused,
+        bold_weight,
+        dim_opacity,
+        underline_offset,
+        underline_thickness,
+        selection_foreground,
+        selection_radius,
+        // 0.6.12 (UXREQ-006): the history bar: its settings and fades are hashed below, and
+        // where the view is in the history.
+        bar: _,
+        history_len,
+        history_back,
+        line_px,
+        scroll,
     } = state;
+    bar_fingerprint(h, state);
+    (history_len, history_back, line_px.to_bits()).hash(h);
+    num(h, scroll.current);
+    line_height.map(f32::to_bits).hash(h);
+    (
+        *caret_shape as u8,
+        caret_width.to_bits(),
+        caret_on,
+        *caret_unfocused as u8,
+    )
+        .hash(h);
+    (bold_weight.to_bits(), dim_opacity.to_bits()).hash(h);
+    underline_offset.map(f32::to_bits).hash(h);
+    underline_thickness.map(f32::to_bits).hash(h);
+    selection_foreground.is_some().hash(h);
+    if let Some(c) = selection_foreground {
+        color(h, *c);
+    }
+    selection_radius.to_bits().hash(h);
     cols.hash(h);
     rows.hash(h);
     for cell in cells {

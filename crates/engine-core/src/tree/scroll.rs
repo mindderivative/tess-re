@@ -403,6 +403,15 @@ impl Tree {
                 Some((size, (content.0 + inset.0, content.1 + inset.1)))
             }
             NodeKind::VirtualList(state) => Some((size, (size.0, state.total_extent()))),
+            // 0.6.12 (UXREQ-006): a terminal's content is the screen and the history above it,
+            // in the lines' own pixels; with no line size yet there is no history to show.
+            NodeKind::Terminal(state) => Some((
+                size,
+                (
+                    size.0,
+                    size.1 + state.history_len as f64 * f64::from(state.line_px),
+                ),
+            )),
             _ => None,
         }
     }
@@ -706,6 +715,7 @@ impl Tree {
     ) {
         if self.scroll_view_count == 0
             && self.virtual_list_count == 0
+            && self.terminal_count == 0
             && self.scrollbar_hover.is_none()
         {
             return;
@@ -1070,11 +1080,13 @@ impl Tree {
             _ => return None,
         };
         self.ancestors(from).find(|&id| {
-            self.nodes[id]
-                .kind
-                .scroller()
-                .and_then(|s| Self::key_axis(s, key, self.held.shift))
-                .is_some_and(|axis| self.can_scroll_axis(id, axis, toward))
+            // A terminal's keys are the shell's, whatever its history bar shows.
+            !matches!(self.nodes[id].kind, NodeKind::Terminal(_))
+                && self.nodes[id]
+                    .kind
+                    .scroller()
+                    .and_then(|s| Self::key_axis(s, key, self.held.shift))
+                    .is_some_and(|axis| self.can_scroll_axis(id, axis, toward))
         })
     }
 

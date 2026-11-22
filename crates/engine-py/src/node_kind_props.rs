@@ -13,10 +13,10 @@ use pyo3::types::PyDict;
 
 use crate::node::validate_rgba_frame_len;
 use crate::node_layout::lookup;
-use crate::node_props::{color_to_py, parse_color};
+use crate::node_props::{color_to_py, parse_color, parse_non_negative};
 
 /// Every kind-specific property this module handles, in error order.
-pub(crate) const KIND_PROPS: [&str; 49] = [
+pub(crate) const KIND_PROPS: [&str; 54] = [
     "text",
     "font_family",
     "font_weight",
@@ -52,6 +52,12 @@ pub(crate) const KIND_PROPS: [&str; 49] = [
     "rows",
     "escape_chord",
     "escape_chord_reverse",
+    // 0.6.12 (P8): how a terminal's cursor, bold, dim and underline are drawn.
+    "caret_unfocused",
+    "bold_weight",
+    "dim_opacity",
+    "underline_offset",
+    "underline_thickness",
     "item_count",
     "item_extent",
     "svg",
@@ -388,11 +394,14 @@ fn applies(name: &str) -> (&'static str, fn(&NodeKind) -> bool) {
         matches!(kind, NodeKind::VirtualList(_))
     }
     match name {
-        "text" | "font_family" | "font_weight" => ("a text or text_input", text_like),
-        "font_size" => ("a text, text_input, or terminal", sized_text),
+        "text" | "font_weight" => ("a text or text_input", text_like),
+        // 0.6.12 (P8): a terminal takes a font family and a line height too.
+        "font_size" | "font_family" | "line_height" => {
+            ("a text, text_input, or terminal", sized_text)
+        }
         "text_align" | "font_style" | "max_lines" | "spans" | "selectable" => ("a text", text),
         // 0.6.11 (P3): a text input takes these too.
-        "line_height" | "letter_spacing" | "vertical_align" => ("a text or text_input", text_like),
+        "letter_spacing" | "vertical_align" => ("a text or text_input", text_like),
         // #285: a text input takes `wrap` and `overflow` too.
         "wrap" | "overflow" => ("a text or text_input", text_like),
         "multiline" | "overwrite" | "tab_navigates" | "show_whitespace" | "syntax_spans"
@@ -507,11 +516,14 @@ fn parse_known(
             if family.is_empty() {
                 return Err(invalid(name, "a non-empty str"));
             }
-            change(move |node| match &mut node.kind {
+            let mut resize = change(move |node| match &mut node.kind {
                 NodeKind::Text(state) => state.font_family = family,
                 NodeKind::TextField(state) => state.font_family = family,
+                NodeKind::Terminal(state) => state.font_family = family,
                 _ => {}
-            })
+            })?;
+            resize.resizes_terminal = matches!(kind, NodeKind::Terminal(_));
+            Ok(resize)
         }
         "font_weight" => {
             let expected = "a number from 1 to 1000";
@@ -543,10 +555,64 @@ fn parse_known(
             } else {
                 Some(positive(value, name)?)
             };
-            change(move |node| match &mut node.kind {
+            let mut resize = change(move |node| match &mut node.kind {
                 NodeKind::Text(state) => state.line_height = ratio,
                 NodeKind::TextField(state) => state.line_height = ratio,
+                NodeKind::Terminal(state) => state.line_height = ratio,
                 _ => {}
+            })?;
+            resize.resizes_terminal = matches!(kind, NodeKind::Terminal(_));
+            Ok(resize)
+        }
+        "caret_unfocused" => {
+            let mode = keyword(&engine_core::UnfocusedCursor::ALL, value, name)?;
+            change(move |node| {
+                if let NodeKind::Terminal(state) = &mut node.kind {
+                    state.caret_unfocused = mode;
+                }
+            })
+        }
+        "bold_weight" => {
+            let expected = "a number from 1 to 1000";
+            not_bool(value, name, expected)?;
+            let weight: f32 = value.extract().map_err(|_| invalid(name, expected))?;
+            if !(1.0..=1000.0).contains(&weight) {
+                return Err(invalid(name, expected));
+            }
+            change(move |node| {
+                if let NodeKind::Terminal(state) = &mut node.kind {
+                    state.bold_weight = weight;
+                }
+            })
+        }
+        "dim_opacity" => {
+            let expected = "a number from 0 to 1";
+            not_bool(value, name, expected)?;
+            let opacity: f32 = value.extract().map_err(|_| invalid(name, expected))?;
+            if !(0.0..=1.0).contains(&opacity) {
+                return Err(invalid(name, expected));
+            }
+            change(move |node| {
+                if let NodeKind::Terminal(state) = &mut node.kind {
+                    state.dim_opacity = opacity;
+                }
+            })
+        }
+        "underline_offset" | "underline_thickness" => {
+            let pixels = if value.is_none() {
+                None
+            } else {
+                Some(parse_non_negative(value, name)? as f32)
+            };
+            let offset = name == "underline_offset";
+            change(move |node| {
+                if let NodeKind::Terminal(state) = &mut node.kind {
+                    if offset {
+                        state.underline_offset = pixels;
+                    } else {
+                        state.underline_thickness = pixels;
+                    }
+                }
             })
         }
         // 0.6.11 (P3): `"start"`, `"center"` or `"end"`; on a text input also `None`, which is
@@ -1274,6 +1340,18 @@ fn read_known(name: &str, kind: &NodeKind, py: Python<'_>) -> PyResult<Py<PyAny>
         ("font_size", NodeKind::Terminal(s)) => to_py(f64::from(s.font_size), py),
         ("line_height", NodeKind::Text(s)) => to_py(s.line_height.map(f64::from), py),
         ("line_height", NodeKind::TextField(s)) => to_py(s.line_height.map(f64::from), py),
+        ("line_height", NodeKind::Terminal(s)) => to_py(s.line_height.map(f64::from), py),
+        ("font_family", NodeKind::Terminal(s)) => to_py(&s.font_family, py),
+        ("caret_unfocused", NodeKind::Terminal(s)) => to_py(
+            name_of(&engine_core::UnfocusedCursor::ALL, &s.caret_unfocused),
+            py,
+        ),
+        ("bold_weight", NodeKind::Terminal(s)) => to_py(f64::from(s.bold_weight), py),
+        ("dim_opacity", NodeKind::Terminal(s)) => to_py(f64::from(s.dim_opacity), py),
+        ("underline_offset", NodeKind::Terminal(s)) => to_py(s.underline_offset.map(f64::from), py),
+        ("underline_thickness", NodeKind::Terminal(s)) => {
+            to_py(s.underline_thickness.map(f64::from), py)
+        }
         ("vertical_align", NodeKind::Text(s)) => to_py(s.options.vertical_align.name(), py),
         ("vertical_align", NodeKind::TextField(s)) => to_py(s.vertical_align.map(|a| a.name()), py),
         ("letter_spacing", NodeKind::TextField(s)) => to_py(f64::from(s.letter_spacing), py),

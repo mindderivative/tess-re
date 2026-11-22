@@ -847,6 +847,16 @@ impl Change {
                 NodeKind::Rect | NodeKind::Container | NodeKind::Path(_) | NodeKind::Text(_)
             )
         }
+        // 0.6.12 (P8): a terminal's cursor is a caret too.
+        fn input_or_terminal(kind: &NodeKind) -> bool {
+            matches!(kind, NodeKind::TextField(_) | NodeKind::Terminal(_))
+        }
+        fn selectable(kind: &NodeKind) -> bool {
+            matches!(
+                kind,
+                NodeKind::Text(_) | NodeKind::TextField(_) | NodeKind::Terminal(_)
+            )
+        }
         fn text_or_input(kind: &NodeKind) -> bool {
             matches!(kind, NodeKind::Text(_) | NodeKind::TextField(_))
         }
@@ -866,14 +876,20 @@ impl Change {
             Change::ReadOnly(_) => ("read_only", "text_input", text_input),
             Change::InputMode(_) => ("input_mode", "text_input", text_input),
             Change::CaretVisible(_) => ("caret_visible", "text_input", text_input),
-            Change::CaretWidth(_) => ("caret_width", "text_input", text_input),
-            Change::CaretShape(_) => ("caret_shape", "text_input", text_input),
-            Change::CaretBlink(_) => ("caret_blink", "text_input", text_input),
+            Change::CaretWidth(_) => ("caret_width", "text_input or terminal", input_or_terminal),
+            Change::CaretShape(_) => ("caret_shape", "text_input or terminal", input_or_terminal),
+            Change::CaretBlink(_) => ("caret_blink", "text_input or terminal", input_or_terminal),
             Change::SelectionFill(_) => ("selection_fill", "text or text_input", text_or_input),
-            Change::SelectionForeground(_) => {
-                ("selection_foreground", "text or text_input", text_or_input)
-            }
-            Change::SelectionRadius(_) => ("selection_radius", "text or text_input", text_or_input),
+            Change::SelectionForeground(_) => (
+                "selection_foreground",
+                "text, text_input or terminal",
+                selectable,
+            ),
+            Change::SelectionRadius(_) => (
+                "selection_radius",
+                "text, text_input or terminal",
+                selectable,
+            ),
             Change::Obscured(_) => ("obscured", "text_input", text_input),
             Change::Palette(_) => ("palette", "terminal", terminal),
             Change::FillGradient(_) => ("fill", "box, path or text", box_node),
@@ -2151,9 +2167,18 @@ impl Node {
                             state.selection_foreground,
                             state.selection_radius,
                         ),
+                        // 0.6.12 (P8): a terminal's highlight colour is `palette["selection"]`.
+                        NodeKind::Terminal(state) if name != "selection_fill" => {
+                            (None, state.selection_foreground, state.selection_radius)
+                        }
                         _ => {
+                            let kinds = if name == "selection_fill" {
+                                "a text or text_input"
+                            } else {
+                                "a text, text_input or terminal"
+                            };
                             return Err(PyValueError::new_err(format!(
-                                "node property `{name}` applies only to a text or text_input node"
+                                "node property `{name}` applies only to {kinds} node"
                             )));
                         }
                     };
@@ -2169,6 +2194,32 @@ impl Node {
                 "placeholder" | "placeholder_fill" | "caret_color" | "obscured" | "max_length"
                 | "read_only" | "input_mode" | "caret_visible" | "caret_width" | "caret_shape"
                 | "caret_blink" => {
+                    // 0.6.12 (P8): a terminal's cursor.
+                    if let NodeKind::Terminal(state) = &node.kind
+                        && matches!(name, "caret_width" | "caret_shape" | "caret_blink")
+                    {
+                        match name {
+                            "caret_width" => {
+                                return Ok(any(f64::from(state.caret_width)
+                                    .into_pyobject(py)?
+                                    .into_any()));
+                            }
+                            "caret_shape" => {
+                                return Ok(any(engine_core::CaretShape::ALL
+                                    .iter()
+                                    .find(|(_, s)| *s == state.caret_shape)
+                                    .map(|(n, _)| *n)
+                                    .into_pyobject(py)?
+                                    .into_any()));
+                            }
+                            _ => {
+                                return Ok(any((state.caret_blink_ms > 0)
+                                    .then_some(f64::from(state.caret_blink_ms))
+                                    .into_pyobject(py)?
+                                    .into_any()));
+                            }
+                        }
+                    }
                     let NodeKind::TextField(state) = &node.kind else {
                         return Err(PyValueError::new_err(format!(
                             "node property `{name}` applies only to a text_input node"
@@ -2815,23 +2866,29 @@ impl Node {
                         state.caret_visible = visible;
                     }
                 }
-                Change::CaretWidth(width) => {
-                    if let NodeKind::TextField(state) = &mut node.kind {
-                        state.caret_width = width;
-                    }
-                }
-                Change::CaretShape(shape) => {
-                    if let NodeKind::TextField(state) = &mut node.kind {
-                        state.caret_shape = shape;
-                    }
-                }
-                Change::CaretBlink(ms) => {
-                    if let NodeKind::TextField(state) = &mut node.kind {
+                Change::CaretWidth(width) => match &mut node.kind {
+                    NodeKind::TextField(state) => state.caret_width = width,
+                    NodeKind::Terminal(state) => state.caret_width = width,
+                    _ => {}
+                },
+                Change::CaretShape(shape) => match &mut node.kind {
+                    NodeKind::TextField(state) => state.caret_shape = shape,
+                    NodeKind::Terminal(state) => state.caret_shape = shape,
+                    _ => {}
+                },
+                Change::CaretBlink(ms) => match &mut node.kind {
+                    NodeKind::TextField(state) => {
                         state.caret_blink_ms = ms;
                         state.caret_on = true;
                         state.caret_epoch = None;
                     }
-                }
+                    NodeKind::Terminal(state) => {
+                        state.caret_blink_ms = ms;
+                        state.caret_on = true;
+                        state.caret_epoch = None;
+                    }
+                    _ => {}
+                },
                 Change::SelectionFill(color) => match &mut node.kind {
                     NodeKind::TextField(state) => state.selection_fill = color,
                     NodeKind::Text(state) => state.options.selection_fill = color,
@@ -2840,11 +2897,13 @@ impl Node {
                 Change::SelectionForeground(color) => match &mut node.kind {
                     NodeKind::TextField(state) => state.selection_foreground = color,
                     NodeKind::Text(state) => state.options.selection_foreground = color,
+                    NodeKind::Terminal(state) => state.selection_foreground = color,
                     _ => {}
                 },
                 Change::SelectionRadius(radius) => match &mut node.kind {
                     NodeKind::TextField(state) => state.selection_radius = radius,
                     NodeKind::Text(state) => state.options.selection_radius = radius,
+                    NodeKind::Terminal(state) => state.selection_radius = radius,
                     _ => {}
                 },
                 Change::Obscured(obscured) => {
@@ -2862,12 +2921,18 @@ impl Node {
         // M96: a terminal's box follows its grid and font.
         if resize_terminal && let NodeKind::Terminal(state) = &node.kind {
             let (cols, rows) = (f32::from(state.cols), f32::from(state.rows));
-            let (cell_width, cell_height) = crate::shaper::with(|shaper| {
+            let (cell_width, cell_height) = state.cell_size(crate::shaper::with(|shaper| {
                 shaper.monospace_cell_size(&state.font_family, state.font_size)
-            });
+            }));
             let size = &mut style.get_or_insert_with(|| node.layout_style.clone()).size;
             size.width = Dimension::length(cell_width * cols);
             size.height = Dimension::length(cell_height * rows);
+            // 0.6.12 (UXREQ-006): a line is the unit of the history bar's offsets; its bar
+            // moves to the new unit with the view where it was.
+            if let NodeKind::Terminal(state) = &mut node.kind {
+                state.line_px = cell_height;
+                state.set_history(state.history_len, state.history_back);
+            }
         }
         if let Some(style) = style {
             tree.set_layout_style(self.id, style);

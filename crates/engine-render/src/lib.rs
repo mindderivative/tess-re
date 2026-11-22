@@ -38,9 +38,7 @@ mod text;
 mod walk;
 mod window_renderer;
 
-use engine_core::{
-    ContentFit, DrawCommand, NodeId, NodeKind, ScrollAxis, ScrollDefaults, Scroller, Tree,
-};
+use engine_core::{ContentFit, DrawCommand, NodeId, NodeKind, ScrollAxis, Scroller, Tree};
 use peniko::Color;
 use peniko::kurbo::{Affine, BezPath, Circle, Rect, RoundedRect, Shape, Stroke};
 use std::cell::{RefCell, RefMut};
@@ -860,8 +858,10 @@ impl<'t> walk::Visitor<'t> for Painter<'_> {
     fn leave(&mut self, v: &walk::Visit<'t>) {
         let (layered, masked, clipped, drew) =
             self.open.pop().expect("every node left was entered");
-        if clipped {
-            self.scene.pop_layer();
+        if clipped || matches!(v.node.kind, NodeKind::Terminal(_)) {
+            if clipped {
+                self.scene.pop_layer();
+            }
             // M38 Phase 6 (§5, §7, §11.7): a real `ScrollView`'s own real
             // scrollbar thumb -- painted here, *after* every real child
             // (mirrors pyCopper's own real `paint_foreground`, which runs
@@ -2119,7 +2119,7 @@ fn paint_scrollbars(
     // The spec's thumb is the role colour (`on_surface_variant` of the window's scheme),
     // opaque, shown at its opacity; the legacy bar's default carries its own alpha.
     let role = tree.scheme_colors().scrollbar_thumb();
-    let default = if scroller.defaults() == ScrollDefaults::Spec {
+    let default = if scroller.defaults().is_spec() {
         role
     } else {
         role.multiply_alpha(ONE_AXIS_THUMB_ALPHA)
