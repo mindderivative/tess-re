@@ -345,6 +345,9 @@ pub struct WindowOptions {
     pub resizable: bool,
     /// 0.5.6 (#159): keep the window off the taskbar (Windows only).
     pub skip_taskbar: bool,
+    /// 0.6.12 (P11): keep the OS's shadow around an undecorated window (Windows only; a
+    /// decorated window has it anyway, and elsewhere the compositor decides).
+    pub undecorated_shadow: bool,
     /// 0.6.11 (P5): leave the window hidden after it is made; the host shows it
     /// (`Window::set_visible(true)`) once its first frame is presented, so the OS never shows
     /// its own background first (X11, macOS, Windows). A no-op on Wayland, where a surface is
@@ -367,6 +370,7 @@ impl Default for WindowOptions {
             always_on_top: false,
             resizable: true,
             skip_taskbar: false,
+            undecorated_shadow: true,
             start_hidden: false,
         }
     }
@@ -1098,7 +1102,7 @@ where
                 let attrs = {
                     use winit::platform::windows::WindowAttributesExtWindows;
                     attrs
-                        .with_undecorated_shadow(true)
+                        .with_undecorated_shadow(options.undecorated_shadow)
                         .with_skip_taskbar(options.skip_taskbar)
                 };
                 // 0.5.0 M4: macOS can't resize an undecorated window, so it

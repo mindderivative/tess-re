@@ -447,7 +447,7 @@ impl PyWindow {
 
 /// 0.5.0 M2: the window properties `set` takes, for its error messages.
 const SETTABLE: &str = "title, partial_redraw, show_damage, profile_nodes, glyph_cache, decorations, fullscreen, \
-    min_width, min_height, icon, resize_border, system_menu, gpu_watchdog, present_mode, \
+    min_width, min_height, icon, resize_border, system_menu, titlebar_double_click, resize_cursors, undecorated_shadow, gpu_watchdog, present_mode, \
     dpi_scaling, transparent, blur_behind, click_through, x, y, always_on_top, resizable, skip_taskbar, \
 touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors, background";
 
@@ -926,6 +926,9 @@ impl PyWindow {
         let (mut x, mut y) = (None, None);
         let (mut always_on_top, mut resizable, mut skip_taskbar) = (None, None, None);
         let mut system_menu = None;
+        let mut titlebar_double_click = None;
+        let mut resize_cursors = None;
+        let mut undecorated_shadow = None;
         let mut pause_when_occluded = None;
         let (mut touch_slop, mut touch_target_slop) = (None, None);
         let mut reduced_motion: Option<Option<bool>> = None;
@@ -1005,6 +1008,16 @@ impl PyWindow {
                         system_menu = Some(value.extract::<bool>().map_err(|_| {
                             PyValueError::new_err("window property `system_menu` must be a bool")
                         })?);
+                    }
+                    "titlebar_double_click" => {
+                        titlebar_double_click =
+                            Some(crate::window_hooks::parse_double_click(&value)?);
+                    }
+                    "resize_cursors" => {
+                        resize_cursors = Some(crate::window_hooks::ResizeCursors::parse(&value)?);
+                    }
+                    "undecorated_shadow" => {
+                        undecorated_shadow = Some(crate::window_hooks::parse_bool(&name, &value)?);
                     }
                     "pause_when_occluded" => {
                         pause_when_occluded = Some(value.extract::<bool>().map_err(|_| {
@@ -1236,6 +1249,20 @@ impl PyWindow {
         if let Some(on) = system_menu {
             self.handles.system_menu.set(on);
         }
+        if let Some(action) = titlebar_double_click {
+            self.handles.titlebar_double_click.set(action);
+        }
+        if let Some(cursors) = resize_cursors {
+            self.handles.resize_cursors.set(cursors);
+        }
+        if let Some(on) = undecorated_shadow {
+            self.handles.undecorated_shadow.set(on);
+            #[cfg(target_os = "windows")]
+            if let Some(window) = self.handles.os_window.borrow().as_ref() {
+                use winit::platform::windows::WindowExtWindows;
+                window.set_undecorated_shadow(on);
+            }
+        }
         if let Some(on) = pause_when_occluded {
             self.handles.pause_when_occluded.set(on);
         }
@@ -1385,6 +1412,29 @@ impl PyWindow {
             "system_menu" => self
                 .handles
                 .system_menu
+                .get()
+                .into_pyobject(py)?
+                .to_owned()
+                .into_any()
+                .unbind(),
+            "titlebar_double_click" => {
+                match crate::window_hooks::double_click_name(
+                    self.handles.titlebar_double_click.get(),
+                ) {
+                    Some(name) => name.into_pyobject(py)?.into_any().unbind(),
+                    None => py.None(),
+                }
+            }
+            "resize_cursors" => self
+                .handles
+                .resize_cursors
+                .get()
+                .into_py_dict(py)?
+                .into_any()
+                .unbind(),
+            "undecorated_shadow" => self
+                .handles
+                .undecorated_shadow
                 .get()
                 .into_pyobject(py)?
                 .to_owned()
@@ -1666,7 +1716,7 @@ impl PyWindow {
                     "unknown window property {name:?} -- valid: width, height, title, \
                      scale_factor, dark, reduced_motion, high_contrast, partial_redraw, partial_redraw_active, show_damage, profile_nodes, glyph_cache, \
                      decorations, maximized, minimized, active, occluded, fullscreen, min_width, \
-                     min_height, platform, resize_border, system_menu, titlebar_inset, \
+                     min_height, platform, resize_border, system_menu, titlebar_double_click, resize_cursors, undecorated_shadow, titlebar_inset, \
                      native_controls, gpu_watchdog, present_mode, dpi_scaling, transparent, \
                      transparent_active, blur_behind, click_through, x, y, always_on_top, resizable, \
                      skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, scheme, scheme_resolved, scheme_colors, first_present, first_presented, background"

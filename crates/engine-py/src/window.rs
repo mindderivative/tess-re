@@ -203,6 +203,13 @@ pub(crate) struct WindowHandles {
     /// on Windows) opens the OS's window menu. Off by default: a framework
     /// opts in, on any platform, unless it shows its own.
     pub(crate) system_menu: Rc<Cell<bool>>,
+    /// 0.6.12 (P11): what a double-click on a drag region does; `None` is the default (the OS's
+    /// setting on macOS, maximize elsewhere).
+    pub(crate) titlebar_double_click: Rc<Cell<Option<crate::window_hooks::DoubleClick>>>,
+    /// 0.6.12 (P11): the cursor on each resize-border zone.
+    pub(crate) resize_cursors: Rc<Cell<crate::window_hooks::ResizeCursors>>,
+    /// 0.6.12 (P11): whether an undecorated window keeps the OS's shadow (Windows only).
+    pub(crate) undecorated_shadow: Rc<Cell<bool>>,
     /// 0.5.10 (#246): whether the OS reported the window completely hidden.
     pub(crate) occluded: Rc<Cell<bool>>,
     /// 0.5.10 (#246): whether a hidden window draws nothing (the default).
@@ -415,6 +422,9 @@ impl PyWindow {
                 resize_border: Rc::new(Cell::new(0.0)),
                 last_drag_press: Rc::new(Cell::new(None)),
                 system_menu: Rc::new(Cell::new(false)),
+                titlebar_double_click: Rc::new(Cell::new(None)),
+                resize_cursors: Rc::new(Cell::new(Default::default())),
+                undecorated_shadow: Rc::new(Cell::new(true)),
                 occluded: Rc::new(Cell::new(false)),
                 pause_when_occluded: Rc::new(Cell::new(true)),
                 waker: Rc::new(RefCell::new(None)),

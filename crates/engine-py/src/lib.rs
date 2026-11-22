@@ -54,6 +54,7 @@ mod window;
 mod window_build;
 mod window_docking;
 mod window_events;
+mod window_hooks;
 mod window_input;
 mod window_layers;
 mod window_snapshot;

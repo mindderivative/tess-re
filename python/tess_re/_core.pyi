@@ -660,6 +660,9 @@ class Window:
         icon: tuple[bytes, int, int] | None = ...,
         resize_border: float = ...,
         system_menu: bool = ...,
+        titlebar_double_click: Literal["maximize", "minimize", "none", "event"] | None = ...,
+        resize_cursors: dict[str, str] | None = ...,
+        undecorated_shadow: bool = ...,
         gpu_watchdog: float | None = ...,
         present_mode: str = ...,
         dpi_scaling: bool = ...,
@@ -717,7 +720,17 @@ class Window:
         on a `window_region="drag"` node (and, on Windows, Alt+Space on an
         undecorated window) opens the OS's window menu -- off by default,
         an opt-in on every platform for a framework that doesn't show its
-        own. `gpu_watchdog`: (0.5.1) seconds, greater than 0, after which a
+        own. (0.6.12) `titlebar_double_click`: what a double-click on a
+        `window_region="drag"` node does -- `None` (the default: the user's
+        setting on macOS, maximize elsewhere), `"maximize"`, `"minimize"`,
+        `"none"`, or `"event"` (nothing; the window fires `titlebar_double_click`
+        with `x`, `y`). `resize_cursors`: a dict of `north`, `south`, `east`,
+        `west`, `north_west`, `north_east`, `south_west`, `south_east` to a cursor
+        name for the `resize_border` zones (left-out ones keep the stock
+        `ns_resize`/`ew_resize`/`nwse_resize`/`nesw_resize`), or `None` for the
+        stock map. `undecorated_shadow`: a `bool`, default `True`: whether an
+        undecorated window keeps the OS's shadow (Windows only; stored and ignored
+        elsewhere). `gpu_watchdog`: (0.5.1) seconds, greater than 0, after which a
         submitted frame that hasn't completed fires `gpu_stalled` -- once, and
         it only reports, since stuck GPU work can't be cancelled; `None`, the
         default, is off. `present_mode`: (0.5.4) `"vsync"` (the default) paces
@@ -808,11 +821,18 @@ class Window:
             "pause_when_occluded",
             "fullscreen",
             "system_menu",
+            "undecorated_shadow",
             "native_controls",
         ],
     ) -> bool: ...
     @overload
     def get(self, name: Literal["titlebar_inset"]) -> tuple[float, float]: ...
+    @overload
+    def get(
+        self, name: Literal["titlebar_double_click"]
+    ) -> Literal["maximize", "minimize", "none", "event"] | None: ...
+    @overload
+    def get(self, name: Literal["resize_cursors"]) -> dict[str, str]: ...
     @overload
     def get(self, name: Literal["gpu_watchdog"]) -> float | None: ...
     @overload

@@ -164,6 +164,11 @@ released.
 **Double-click** on the drag region toggles maximize (on macOS, what the
 user chose; see above). The two presses must fall within the system's
 double-click time (Windows, macOS; 500 ms elsewhere) and 4 px of each other.
+`set(titlebar_double_click=...)` (0.6.12) picks the action: `"maximize"`,
+`"minimize"`, `"none"`, or `"event"`, which does nothing itself and fires the
+window's `titlebar_double_click` event (`x`, `y`) for the app to act on (a
+framework that rolls the window up, say). `None`, the default, is as before:
+the user's setting on macOS, maximize elsewhere.
 
 **The window menu** is opt-in: `window.set(system_menu=True)`, on any
 platform. Then a secondary press on the drag region opens the OS's window
@@ -180,11 +185,21 @@ where two edges meet. Over the border the pointer shows the matching resize
 cursor. A press there never reaches a node, and nor does its release. The
 border is off for a decorated window (the OS has one), on macOS (the OS
 resizes it), while maximized or fullscreen, and at `0`, the default.
+`set(resize_cursors={...})` (0.6.12) changes the cursor of any of the eight
+zones: keys `north`, `south`, `east`, `west`, `north_west`, `north_east`,
+`south_west`, `south_east`, values a [cursor name](properties.md) (the same
+names as a node's `cursor`; a `CursorImage` is not taken). Directions left out
+keep the stock cursor (`ns_resize`, `ew_resize`, `nwse_resize` on the
+north-west/south-east diagonal, `nesw_resize` on the other); a dict replaces
+the previous one and `None` restores the stock map. `get` returns all eight.
 
 | Property | Set | Get |
 | --- | --- | --- |
 | `resize_border` | Border width in logical pixels, a number `>= 0` | The setting |
 | `system_menu` | Whether a secondary press on the drag region (and Alt+Space on Windows) opens the OS's window menu; `False` by default | The setting |
+| `titlebar_double_click` | `None` (default: the OS's setting on macOS, maximize elsewhere), `"maximize"`, `"minimize"`, `"none"` or `"event"`; anything else raises `ValueError` (0.6.12) | The setting |
+| `resize_cursors` | Dict of the eight directions to a cursor name, or `None` for the stock map (0.6.12) | All eight, as a dict |
+| `undecorated_shadow` | Whether an undecorated window keeps the OS's shadow, a `bool`, default `True`. Windows only: applied to the live window and at creation; macOS and Linux accept and store it (there tess_re draws no shadow, the OS or compositor does) (0.6.12) | The setting |
 
 In fullscreen the drag region and the border do nothing: their presses are
 ordinary ones, delivered to the nodes as usual. The move, resize, and menu are the OS's and need a real

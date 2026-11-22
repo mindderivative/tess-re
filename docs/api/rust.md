@@ -3408,6 +3408,7 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `always_on_top` | `bool` | Keep the window above others (a hint on X11; ignored on Wayland). |
 | `resizable` | `bool` | Whether the user can resize the window. |
 | `skip_taskbar` | `bool` | Keep the window off the taskbar (Windows only). |
+| `undecorated_shadow` | `bool` | Keep the OS's shadow around an undecorated window (Windows only; a decorated window has it anyway, and elsewhere the compositor decides). |
 | `start_hidden` | `bool` | Leave the window hidden after it is made; the host shows it (`Window::set_visible(true)`) once its first frame is presented, so the OS never shows… |
 
 ### WindowRequest { #windowrequest }

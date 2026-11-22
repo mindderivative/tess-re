@@ -131,6 +131,7 @@ window.on("close_requested", lambda e: e.cancel())  # keep the window open
 | `file_hover_cancel` | The file drag left the window or was abandoned (0.5.4) | — |
 | `file_drop` | Files were dropped on the window (0.5.4); `paths` | — |
 | `dock_drop` | A docking drag ended with the primary button's release; the panel has moved to the zone there, if any | `panel`, `side` |
+| `titlebar_double_click` | A double-click on a `window_region="drag"` node, only with `window.set(titlebar_double_click="event")` (0.6.12) | `x`, `y` |
 | `maximized` | The window was maximized or restored (0.5.0) | `maximized` |
 | `active` | The window gained or lost the OS's focus (0.5.0) | `active` |
 | `occluded` | The window became completely hidden, or showed again (0.5.10; X11 and macOS only) | `occluded` |
@@ -160,7 +161,8 @@ instead of only what changed ([Window](window.md)). `window.get(name)` reads
 `width`, `height`, `title`, `scale_factor`, `dark`, `reduced_motion`, `high_contrast`, `partial_redraw`,
 `partial_redraw_active`, or `show_damage`, and (0.5.0) `decorations`,
 `fullscreen`, `min_width`, `min_height`, `maximized`, `minimized`, `active`,
-`platform`, `resize_border`, `system_menu`, `titlebar_inset`,
+`platform`, `resize_border`, `system_menu`, (0.6.12) `titlebar_double_click`, `resize_cursors`,
+`undecorated_shadow`, `titlebar_inset`,
 `native_controls`, and (0.5.1) `gpu_watchdog` — see
 [Window controls and state](window.md#window-controls-and-state),
 [macOS: the overlay title bar](window.md#macos-the-overlay-title-bar), and
