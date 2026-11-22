@@ -909,14 +909,22 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `focus` | `Option<Color>` | Drawn while the node has keyboard focus (see `focus_any_modality`). |
 | `focus_any_modality` | `bool` | Also draw `focus` when focus came from a pointer press (a text input). |
 | `ms` | `f64` | How long a change of layer takes. |
-| `easing` | `Easing` | The curve of that change. |
+| `easing` | `Easing` | The curve of that change (the shared one, as with `ms`). |
+| `hover_ms` | `Option<f64>` | `hover_layer_ms`: `None` falls back to `ms`. |
+| `pressed_ms` | `Option<f64>` | `pressed_layer_ms`: `None` falls back to `ms`. |
+| `focus_ms` | `Option<f64>` | `focus_layer_ms`: `None` falls back to `ms`. |
+| `hover_easing` | `Option<Easing>` | `hover_layer_easing`: `None` falls back to `easing`. |
+| `pressed_easing` | `Option<Easing>` | `pressed_layer_easing`: `None` falls back to `easing`. |
+| `focus_easing` | `Option<Easing>` | `focus_layer_easing`: `None` falls back to `easing`. |
+| `active` | `Option<LayerState>` | The state whose colour `shown` is fading to, or from when it is fading out: the state last entered. |
 | `shown` | `Animated<Color>` | What is drawn now: the colour of the layer in force, fading in or out. |
 
 | Method | Description |
 | --- | --- |
-| `fn sync(&mut self, target: Option<Color>, now: Instant, reduced: bool) -> bool` | Starts the fade to `target` (`None`: nothing). |
-| `fn target(&self, holds: StateHolds) -> Option<Color>` | The layer that applies when `holds`, by the precedence pressed, focus, hover: the first whose state holds and that has a colour. |
+| `fn sync(&mut self, target: Option<(LayerState, Color)>, now: Instant, reduced: bool) -> bool` | Starts the fade to `target` (`None`: nothing). |
+| `fn target(&self, holds: StateHolds) -> Option<(LayerState, Color)>` | The layer that applies when `holds`, by the precedence pressed, focus, hover: the first whose state holds and that has a colour. |
 | `fn tick(&mut self, now: Instant, completed: &mut Vec<CompletionHandle>) -> bool` | Advances the fade; whether it is still running. |
+| `fn timing(&self, state: LayerState) -> (f64, Easing)` | The duration (ms) and easing of `state`'s fades: its own override, else the shared pair. |
 | `fn visible(&self) -> Option<Color>` | The colour to draw now, if any. |
 
 ### SvgBitmap { #svgbitmap }
@@ -1985,6 +1993,18 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- |
 | `fn from_index(index: u8) -> Self` |  |
 | `fn index(self) -> u8` |  |
+
+### LayerState { #layerstate }
+
+*enum.* One of the three layers.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Hover` |  |  |
+| `Pressed` |  |  |
+| `Focus` |  |  |
 
 ### LayoutAnimError { #layoutanimerror }
 

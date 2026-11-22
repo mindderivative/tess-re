@@ -26,7 +26,7 @@ use crate::node_layout::{LAYOUT_PROPS, StyleEdit, parse_layout, read_layout};
 
 /// Every property `set` accepts besides the layout ones
 /// (`node_layout::LAYOUT_PROPS`), in the order its error lists them.
-const SETTABLE: [&str; 84] = [
+const SETTABLE: [&str; 90] = [
     // 0.5.7 (#179): placed against another node.
     "anchor",
     "placement",
@@ -113,6 +113,12 @@ const SETTABLE: [&str; 84] = [
     "focus_layer_any_modality",
     "state_layer_ms",
     "state_layer_easing",
+    "hover_layer_ms",
+    "pressed_layer_ms",
+    "focus_layer_ms",
+    "hover_layer_easing",
+    "pressed_layer_easing",
+    "focus_layer_easing",
 ];
 
 /// The M93 role vocabulary.

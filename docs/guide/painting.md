@@ -270,7 +270,8 @@ button.set(hover_layer=(*ON_SURFACE, 20),    # 8 %
 
 The overlay is drawn over the node's fill and border and under its children, inside its rounded corners; one layer shows
 at a time (pressed, then focus, then hover) and changes fade over `state_layer_ms` (default 100) on `state_layer_easing`
-(default `"standard"`), instantly under reduced motion. A disabled node draws none. All the rules and defaults are in
+(default `"standard"`), instantly under reduced motion; `hover_layer_ms`, `pressed_layer_ms`, `focus_layer_ms` (and `*_easing`)
+override them per state (0.6.12: hover 15 ms, press 105 ms, as the UX spec says). A disabled node draws none. All the rules and defaults are in
 [State layers](../reference/properties.md#state-layers-0611).
 **The window's own background and the first frame (0.6.11).** Pixels no node paints are cleared to the window's
 `background`, by default the scheme's `surface` role, so a dark window is never white or black behind the app's own

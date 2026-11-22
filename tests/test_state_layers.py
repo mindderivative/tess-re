@@ -89,6 +89,14 @@ def test_they_set_get_and_clear_and_work_in_create():
     ("state_layer_ms", 3_600_001),
     ("state_layer_easing", "wobble"),
     ("state_layer_easing", (2, 0, 0, 1)),
+    ("hover_layer_ms", -1),
+    ("pressed_layer_ms", True),
+    ("focus_layer_ms", "fast"),
+    ("hover_layer_ms", 3_600_001),
+    ("hover_layer_ms", float("nan")),
+    ("hover_layer_easing", "wobble"),
+    ("pressed_layer_easing", (2, 0, 0, 1)),
+    ("focus_layer_easing", 5),
 ])
 def test_bad_values_raise_without_changing_anything(name, value):
     _, box = scene(hover_layer=HOVER)
@@ -96,6 +104,62 @@ def test_bad_values_raise_without_changing_anything(name, value):
         box.set(**{name: value}, opacity=0.5)
     assert box.get("hover_layer") == HOVER
     assert box.get("opacity") == 1.0
+
+
+def test_per_state_timings_default_to_none_and_read_back():
+    _, box = scene()
+    for state in ("hover", "pressed", "focus"):
+        assert box.get(f"{state}_layer_ms") is None
+        assert box.get(f"{state}_layer_easing") is None
+    box.set(hover_layer_ms=15, pressed_layer_ms=105.5, focus_layer_ms=0,
+            hover_layer_easing="linear", pressed_layer_easing=(0.3, 0, 0.7, 1),
+            focus_layer_easing="standard")
+    assert box.get("hover_layer_ms") == 15.0
+    assert box.get("pressed_layer_ms") == 105.5
+    assert box.get("focus_layer_ms") == 0.0
+    assert box.get("hover_layer_easing") == "linear"
+    assert box.get("pressed_layer_easing") == (0.3, 0.0, 0.7, 1.0)
+    assert box.get("focus_layer_easing") == "standard"
+    # The shared pair is untouched, and None falls back to it again.
+    assert box.get("state_layer_ms") == 100.0
+    box.set(hover_layer_ms=None, hover_layer_easing=None)
+    assert box.get("hover_layer_ms") is None
+    assert box.get("hover_layer_easing") is None
+
+
+def test_hover_layer_ms_replaces_state_layer_ms_for_hover_only():
+    window, box = scene(hover_layer=HOVER, state_layer_ms=400, hover_layer_ms=20,
+                        state_layer_easing="linear")
+    window.simulate("pointer_move", node=box)
+    window.advance(0)
+    window.advance(30)
+    assert grey(window, box) == over(200, HOVER), "hover fades over its own 20 ms, not 400"
+    window.simulate("pointer_leave")
+    window.advance(0)
+    window.advance(30)
+    assert grey(window, box) == FILL[0], "leaving hover fades out with hover's timing"
+
+
+def test_pressed_layer_ms_decides_the_change_from_hover_to_pressed():
+    window, box = scene(hover_layer=HOVER, pressed_layer=PRESSED, hover_layer_ms=10,
+                        pressed_layer_ms=400, state_layer_easing="linear")
+    window.simulate("pointer_move", node=box)
+    settle(window, 100)
+    assert grey(window, box) == over(200, HOVER)
+    window.simulate("pointer_down", node=box)
+    window.advance(0)
+    window.advance(200)
+    assert over(200, PRESSED) < grey(window, box) < over(200, HOVER)
+    window.advance(300)
+    assert grey(window, box) == over(200, PRESSED)
+
+
+def test_reduced_motion_ignores_the_per_state_timings():
+    window, box = scene(hover_layer=HOVER, hover_layer_ms=400)
+    window.set(reduced_motion=True)
+    window.simulate("pointer_move", node=box)
+    window.advance(0)
+    assert grey(window, box) == over(200, HOVER)
 
 
 # --- hover -----------------------------------------------------------------------

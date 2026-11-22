@@ -322,7 +322,13 @@ class Node:
         (default `False`). One layer at a time: pressed, focus, hover. The
         fade is `state_layer_ms` (default `100`) on `state_layer_easing`
         (default `"standard"`; a preset or a bezier), instant under reduced
-        motion; a disabled node draws none.
+        motion; a disabled node draws none. (0.6.12) `hover_layer_ms`,
+        `pressed_layer_ms`, `focus_layer_ms` (a number of milliseconds or
+        `None`, the default: use `state_layer_ms`) and `hover_layer_easing`,
+        `pressed_layer_easing`, `focus_layer_easing` (preset, bezier or
+        `None`: use `state_layer_easing`) set one state's fade. The state
+        being entered decides a fade in (hover to pressed uses pressed's);
+        the state being left decides a fade out to nothing.
 
         (0.6.11) `hit_testable` is `True`, `False` or `None` (the default:
         every kind takes pointer events, a plain `text` label included;

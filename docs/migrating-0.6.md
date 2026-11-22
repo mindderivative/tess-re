@@ -535,3 +535,15 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   No new property; a negative `spread` shrinks the silhouette. Other kinds are unchanged. An app that leaned on the
   old box shadow under a path (a drop shadow of an icon's bounding box) now sees the icon's shape instead: put the
   shadow on a `box` behind it for the old look.
+
+- **`hover_layer_ms`, `pressed_layer_ms`, `focus_layer_ms`, `hover_layer_easing`, `pressed_layer_easing`,
+  `focus_layer_easing` (new, opt-in; per-state state-layer timings).** The UX spec's state fades differ by state
+  (State Layers: hover 15 ms linear, press fade-in 105 ms; Motion `short3` 150 ms for a control state colour), but
+  `state_layer_ms` (100) and `state_layer_easing` were shared. Each per-state property is a number of milliseconds
+  (0 to an hour; `0` is at once) or an easing (preset name or bezier), default `None` = the shared value, so nothing
+  changes unless you set one. The state being entered decides a fade in (and a change from one layer to another:
+  hover to pressed uses `pressed_layer_ms`); the state being left decides a fade out to nothing (leaving hover uses
+  `hover_layer_ms`). Reduced motion stays instant. Bad values raise `ValueError` as for `state_layer_ms`.
+  `StateLayer` (Rust) gained the matching `*_ms`/`*_easing` fields, `active` and `timing(LayerState)`;
+  `StateLayer::target` returns `Option<(LayerState, Color)>` and `sync` takes it. See
+  [State layers](reference/properties.md#state-layers-0611).
