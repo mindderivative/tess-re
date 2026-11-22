@@ -1,18 +1,21 @@
 """0.5.10 (#246): a window the compositor is not showing must not stall the others.
 
-On a headless sway (`tools/sway_live.sh -- python -m pytest tests/test_hidden_window_live.py`).
+On a headless sway (`tools/sway_live.sh -- python -m pytest tests/test_hidden_window_live.py`) or a headless KWin
+(`tools/kwin_live.sh`, the `[kwin]` variants: a window is hidden by minimizing it, covered by fullscreening another).
 Before the fix a window moved off screen left a vsync present blocked, with the
 Python GIL held, so the whole app froze: every other window and every Python thread.
 """
 
 import os
-import shutil
 import subprocess
 import sys
 import textwrap
 import time
 
+import live_compositor
 import pytest
+
+pytestmark = pytest.mark.usefixtures("compositor")
 
 CHILD = textwrap.dedent(
     """
@@ -45,23 +48,9 @@ CHILD = textwrap.dedent(
 )
 
 
-def _sway():
-    if not (shutil.which("swaymsg") and os.environ.get("SWAYSOCK")):
-        pytest.skip("needs a headless sway (SWAYSOCK; tools/sway_live.sh)")
-    if (
-        subprocess.run(
-            ["swaymsg", "-t", "get_outputs"], check=False, capture_output=True
-        ).returncode
-        != 0
-    ):
-        pytest.skip("SWAYSOCK does not reach a running sway")
-
-
 def _grab():
-    """The top 200 x 30 pixels of the screen, where the bar is, as PNG bytes."""
-    return subprocess.run(
-        ["grim", "-g", "0,0 200x30", "-"], capture_output=True, check=False
-    ).stdout
+    """The top 200 x 30 pixels of the screen, where the bar is."""
+    return live_compositor.region(0, 0, 200, 30)
 
 
 def _beats(proc, seconds):
@@ -81,7 +70,6 @@ def _beats(proc, seconds):
 
 
 def test_a_hidden_window_does_not_freeze_the_other_window_or_python_threads():
-    _sway()
     proc = subprocess.Popen(
         [sys.executable, "-c", CHILD],
         stdout=subprocess.PIPE,
@@ -92,15 +80,11 @@ def test_a_hidden_window_does_not_freeze_the_other_window_or_python_threads():
         assert _beats(proc, 3.0) > 15, (
             "the child must be running with both windows open"
         )
-        subprocess.run(
-            ["swaymsg", '[title="hide-me"] move scratchpad'], capture_output=True
-        )
+        live_compositor.window_action("hide-me", "hide")
         time.sleep(1.0)
         # 2 s at one beat per 0.1 s is 20; a frozen app prints none.
         assert _beats(proc, 2.0) >= 12
-        subprocess.run(
-            ["swaymsg", '[title="hide-me"] scratchpad show'], capture_output=True
-        )
+        live_compositor.window_action("hide-me", "show")
         assert _beats(proc, 2.0) >= 12, "and it goes on after the window comes back"
     finally:
         proc.kill()
@@ -138,7 +122,6 @@ LAYER_CHILD = textwrap.dedent(
 
 
 def test_a_layer_surface_under_a_fullscreen_window_does_not_freeze_the_app():
-    _sway()
     proc = subprocess.Popen(
         [sys.executable, "-c", LAYER_CHILD],
         stdout=subprocess.PIPE,
@@ -149,24 +132,15 @@ def test_a_layer_surface_under_a_fullscreen_window_does_not_freeze_the_app():
         assert _beats(proc, 3.0) > 15, (
             "the child must be running with both windows open"
         )
-        subprocess.run(
-            ["swaymsg", '[title="cover"] fullscreen enable'],
-            capture_output=True,
-            check=False,
-        )
+        live_compositor.window_action("cover", "fullscreen")
         time.sleep(1.0)
         assert _beats(proc, 2.0) >= 12
-        subprocess.run(
-            ["swaymsg", '[title="cover"] fullscreen disable'],
-            capture_output=True,
-            check=False,
-        )
+        live_compositor.window_action("cover", "unfullscreen")
         time.sleep(1.0)
         assert _beats(proc, 2.0) >= 12
-        if shutil.which("grim"):
-            first = _grab()
-            time.sleep(0.4)
-            assert first != _grab(), "the bar draws again once it is uncovered"
+        first = _grab()
+        time.sleep(0.4)
+        assert first != _grab(), "the bar draws again once it is uncovered"
     finally:
         proc.kill()
         proc.wait()
@@ -232,7 +206,6 @@ def _lines(proc, seconds):
 
 
 def test_call_soon_and_timers_run_while_the_only_surface_is_covered():
-    _sway()
     proc = subprocess.Popen(
         [sys.executable, "-c", ONLY_BAR_CHILD],
         stdout=subprocess.PIPE,
@@ -249,9 +222,7 @@ def test_call_soon_and_timers_run_while_the_only_surface_is_covered():
             stderr=subprocess.DEVNULL,
         )
         time.sleep(1.5)
-        subprocess.run(
-            ["swaymsg", '[title="cover-only"] fullscreen enable'], capture_output=True
-        )
+        live_compositor.window_action("cover-only", "fullscreen")
         time.sleep(1.0)
         _lines(proc, 0.0)  # drop what arrived before the cover took effect
         covered = _lines(proc, 3.0)

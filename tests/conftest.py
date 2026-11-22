@@ -8,7 +8,7 @@ skips with "no display reachable": the live tests, and the clipboard tests, whic
 clipboard service is reachable.
 
 Allowed, any one of:
- - `TESS_RE_PRIVATE_COMPOSITOR=1`, which `tools/sway_live.sh` sets (the session is a private sway);
+ - `TESS_RE_PRIVATE_COMPOSITOR=1`, which `tools/sway_live.sh` and `tools/kwin_live.sh` set (the session is a private sway or KWin);
  - `TESS_RE_ALLOW_REAL_SESSION=1`, which the maintainer sets for a hand run on the desktop
    (docs/contributing.md, "Tests that need hardware or KWin").
 CI runners have no display, so the guard changes nothing there.

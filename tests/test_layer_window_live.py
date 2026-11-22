@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 
+import live_compositor
 import pytest
 
 import tess_re
@@ -535,16 +536,19 @@ def _sway_has(name):
 
 
 def _input_pointer(name):
-    """A virtual pointer for the session under test: a wlroots virtual pointer on a headless
-    sway, or `/dev/uinput` on KWin (with `TESS_RE_LIVE_INPUT=1`; it moves the real pointer)."""
+    """A virtual pointer for the session under test: KWin's own fake input in a private KWin
+    (`tools/kwin_live.sh`), a wlroots virtual pointer on a headless sway, or `/dev/uinput` on the real
+    KWin (with `TESS_RE_LIVE_INPUT=1`; it moves the real pointer)."""
     sys.path.insert(0, os.path.dirname(__file__))
     layout = outputs().values()
     width = max(ox + ow for (ox, _, ow, _) in layout)
     height = max(oy + oh for (_, oy, _, oh) in layout)
+    if live_compositor.active() == "kwin":
+        return live_compositor.LayoutPointer()  # the private KWin's own fake input
     if _sway_has(name):
         import wlr_pointer
-        if not wlr_pointer.available():
-            pytest.skip("needs pywayland (pip install pywayland) for a virtual pointer")
+        if not wlr_pointer.available():  # no pywayland: the sandbox's own virtual pointer (the same protocol)
+            return live_compositor.LayoutPointer()
         return wlr_pointer.Pointer(os.environ)
     if LIVE_INPUT:
         import uinput_device

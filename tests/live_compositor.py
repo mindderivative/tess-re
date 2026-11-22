@@ -236,41 +236,30 @@ def _kwin_screenshot() -> Shot:
     return Shot(width, height, bytes(rgb))
 
 
-_SCRIPT = """
-var out = workspace.windowList().map(function (w) {
-    var c = w.clientGeometry, f = w.frameGeometry;
-    return {caption: String(w.caption), cls: String(w.resourceClass), layer: Number(w.layer), active: !!w.active,
-            client: {x: c.x, y: c.y, width: c.width, height: c.height},
-            frame: {x: f.x, y: f.y, width: f.width, height: f.height}};
-});
-print("TRE_WINDOWS TOKEN " + JSON.stringify(out));
-"""
-
-
-def kwin_windows(timeout: float = 10.0) -> list[dict]:
-    """Every window of the private KWin (`caption`, `cls`, `layer`, `active`, `client`, `frame`
-    rectangles), read by loading a one-shot KWin script that prints the list into KWin's log."""
+def kwin_script(source: str, timeout: float = 10.0):
+    """Runs a one-shot KWin script and returns what it passed to `emit(value)` (JSON-able). The script
+    is loaded through KWin's `org.kde.kwin.Scripting` on the private bus; `print` goes to KWin's log
+    (`QT_LOGGING_RULES` in the sandbox), where the marker line is read back."""
     from jeepney import DBusAddress, new_method_call
 
     log = os.environ["TESS_RE_KWIN_LOG"]
     token = uuid.uuid4().hex
+    marker = f"TRE_OUT {token} "
     folder = os.environ.get("XDG_CACHE_HOME") or os.path.dirname(log)
-    path = os.path.join(folder, f"tre-windows-{token}.js")
+    path = os.path.join(folder, f"tre-script-{token}.js")
     with open(path, "w") as handle:
-        handle.write(_SCRIPT.replace("TOKEN", token))
+        handle.write(f'function emit(v) {{ print("{marker}" + JSON.stringify(v)); }}\n' + source)
     scripting = DBusAddress("/Scripting", bus_name="org.kde.KWin", interface="org.kde.kwin.Scripting")
     with contextlib.closing(_kwin_connection()) as connection:
         loaded = connection.send_and_get_reply(
             new_method_call(scripting, "loadScript", "ss", (path, f"tre-{token}")), timeout=10
         )
-        number = loaded.body[0]
         runner = DBusAddress(
-            f"/Scripting/Script{number}", bus_name="org.kde.KWin", interface="org.kde.kwin.Script"
+            f"/Scripting/Script{loaded.body[0]}", bus_name="org.kde.KWin", interface="org.kde.kwin.Script"
         )
         connection.send_and_get_reply(new_method_call(runner, "run"), timeout=10)
         try:
             deadline = time.monotonic() + timeout
-            marker = f"TRE_WINDOWS {token} "
             while time.monotonic() < deadline:
                 with open(log, errors="ignore") as text:
                     for line in text:
@@ -278,9 +267,69 @@ def kwin_windows(timeout: float = 10.0) -> list[dict]:
                             return json.loads(line.split(marker, 1)[1])
                 time.sleep(0.05)
         finally:
-            connection.send_and_get_reply(new_method_call(scripting, "unloadScript", "s", (f"tre-{token}",)), timeout=10)
+            connection.send_and_get_reply(
+                new_method_call(scripting, "unloadScript", "s", (f"tre-{token}",)), timeout=10
+            )
             os.unlink(path)
-    raise RuntimeError("the KWin script printed no window list")
+    raise RuntimeError("the KWin script emitted nothing")
+
+
+_WINDOWS = """
+emit(workspace.windowList().map(function (w) {
+    var c = w.clientGeometry, f = w.frameGeometry;
+    return {caption: String(w.caption), cls: String(w.resourceClass), layer: Number(w.layer), active: !!w.active,
+            fullscreen: !!w.fullScreen, minimized: !!w.minimized,
+            client: {x: c.x, y: c.y, width: c.width, height: c.height},
+            frame: {x: f.x, y: f.y, width: f.width, height: f.height}};
+}));
+"""
+
+
+def kwin_windows(timeout: float = 10.0) -> list[dict]:
+    """Every window of the private KWin (`caption`, `cls`, `layer`, `active`, `fullscreen`, `minimized`,
+    `client` and `frame` rectangles)."""
+    return kwin_script(_WINDOWS, timeout)
+
+
+# sway's command for each action, and the property a KWin script sets
+_ACTIONS = {
+    "fullscreen": ("fullscreen enable", "w.fullScreen = true"),
+    "unfullscreen": ("fullscreen disable", "w.fullScreen = false"),
+    "hide": ("move scratchpad", "w.minimized = true"),
+    "show": ("scratchpad show", "w.minimized = false"),
+}
+
+
+def window_action(title: str, action: str) -> None:
+    """Fullscreens, unfullscreens, hides (sway: scratchpad; KWin: minimizes) or shows the window `title`."""
+    sway_command, kwin_statement = _ACTIONS[action]
+    if active() == "sway":
+        out = subprocess.run(
+            ["swaymsg", f'[title="{title}"] {sway_command}'], capture_output=True, text=True, check=False
+        )
+        if out.returncode != 0 or '"success": true' not in out.stdout:
+            raise RuntimeError(f"swaymsg {sway_command}: rc {out.returncode} {out.stdout} {out.stderr}")
+        return
+    done = kwin_script(
+        f"var n = 0; workspace.windowList().forEach(function (w) {{ if (String(w.caption) == {json.dumps(title)}) "
+        f"{{ {kwin_statement}; n++; }} }}); emit(n);"
+    )
+    if done != 1:
+        raise RuntimeError(f"KWin found {done} windows titled {title!r}")
+
+
+def is_fullscreen(title: str) -> bool:
+    if active() == "sway":
+        tree = subprocess.run(["swaymsg", "-t", "get_tree"], capture_output=True, text=True, check=False).stdout
+        node = next((n for n in _walk(json.loads(tree)) if n.get("name") == title), None)
+        return bool(node and node.get("fullscreen_mode"))
+    return any(w["caption"] == title and w["fullscreen"] for w in kwin_windows())
+
+
+def region(x: int, y: int, width: int, height: int) -> bytes:
+    """The pixels of a rectangle of the output, as comparable bytes."""
+    shot = screenshot()
+    return b"".join(shot.rgb[((y + r) * shot.width + x) * 3 : ((y + r) * shot.width + x + width) * 3] for r in range(height))
 
 
 class _Wayland:
@@ -394,11 +443,48 @@ class KWinInput(_Wayland):
         self.request(self.device, self.BUTTON, struct.pack("<II", BTN_LEFT, 1))
         self.request(self.device, self.BUTTON, struct.pack("<II", BTN_LEFT, 0))
 
+    def press(self) -> None:
+        self.request(self.device, self.BUTTON, struct.pack("<II", BTN_LEFT, 1))
+
+    def release(self) -> None:
+        self.request(self.device, self.BUTTON, struct.pack("<II", BTN_LEFT, 0))
+
     def key(self, name: str) -> None:
         """A key press and release, by name (`KEYS`)."""
         code = KEYS[name]
         self.request(self.device, self.KEY, struct.pack("<II", code, 1))
         self.request(self.device, self.KEY, struct.pack("<II", code, 0))
+
+
+class LayoutPointer:
+    """`tests/wlr_pointer.Pointer`'s interface (`move(x, y, layout_width, layout_height)`, `press`, `release`,
+    `click`, `escape`, `close`) over the private compositor's own input (`input_device()`), for the
+    pointer-driven tests of `test_layer_window_live.py` that were written against a headless sway."""
+
+    def __init__(self) -> None:
+        self.device = input_device()
+
+    def move(self, x, y, layout_width=None, layout_height=None):
+        self.device.move(x, y)  # layout pixels; the extent is the output's, known to the device
+        time.sleep(0.1)
+
+    def press(self):
+        self.device.press()
+        time.sleep(0.1)
+
+    def release(self):
+        self.device.release()
+        time.sleep(0.1)
+
+    def click(self):
+        self.device.click()
+        time.sleep(0.1)
+
+    def escape(self):
+        self.device.key("Escape")
+
+    def close(self):
+        self.device.close()
 
 
 class SwayInput(_Wayland):
@@ -456,6 +542,14 @@ class SwayInput(_Wayland):
         for state in (1, 0):
             self.request(self.pointer, self.BUTTON, struct.pack("<III", self._time(), BTN_LEFT, state))
             self.request(self.pointer, self.FRAME)
+
+    def press(self) -> None:
+        self.request(self.pointer, self.BUTTON, struct.pack("<III", self._time(), BTN_LEFT, 1))
+        self.request(self.pointer, self.FRAME)
+
+    def release(self) -> None:
+        self.request(self.pointer, self.BUTTON, struct.pack("<III", self._time(), BTN_LEFT, 0))
+        self.request(self.pointer, self.FRAME)
 
     def key(self, name: str) -> None:
         """A key press and release, by name (`KEYS`)."""

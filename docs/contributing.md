@@ -169,7 +169,7 @@ claims to, not just that the code compiles.
 ## Live tests that touch the desktop
 
 **Safety first.** `tests/conftest.py` keeps a test run away from your real session: on Linux, unless
-`TESS_RE_PRIVATE_COMPOSITOR=1` (`tools/sway_live.sh` sets it) or `TESS_RE_ALLOW_REAL_SESSION=1` is in the
+`TESS_RE_PRIVATE_COMPOSITOR=1` (`tools/sway_live.sh` and `tools/kwin_live.sh` set it) or `TESS_RE_ALLOW_REAL_SESSION=1` is in the
 environment, it removes `DISPLAY` and `WAYLAND_DISPLAY` for the whole run, so every test that opens a window or
 uses the clipboard skips ("no display reachable") instead of acting on the desktop. **The maintainer sets
 `TESS_RE_ALLOW_REAL_SESSION=1` for a by-hand run on the desktop** (the commands under "Tests that need hardware or
@@ -184,6 +184,101 @@ putting it back; with no clipboard manager that text is lost when the test ends)
 `tools/sway_live.sh` the compositor is private, so `TESS_RE_PRIVATE_COMPOSITOR=1` is set and the clipboard
 test runs without being asked.
 
+## Live tests in a private KWin
+
+The desktop runs KWin; CI and `tools/sway_live.sh` run a tiling wlroots compositor, and the two differ
+(where a new window goes, who gets the keyboard when a popup grabs it, how a held popup's grab behaves).
+**`tools/kwin_live.sh -- CMD`** runs CMD inside a private, headless `kwin_wayland --virtual`, the same way
+`sway_live.sh` does for sway. It is **local only**: CI has no KWin. It starts
+
+* a private session bus (`dbus-run-session` with a config of its own: no service activation, no system bus)
+  in a fresh `XDG_RUNTIME_DIR` (mode 700 under the temporary folder), with private `HOME` and `XDG_*`
+  folders, so KWin reads and writes none of the desktop's settings;
+* `kwin_wayland --virtual --socket pkwin --no-lockscreen --width 1280 --height 720` in that bus.
+
+CMD gets `WAYLAND_DISPLAY=pkwin`, the private `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`,
+`TESS_RE_PRIVATE_COMPOSITOR=1`, `TESS_RE_COMPOSITOR=kwin`, `TESS_RE_KWIN_LOG` (KWin's log, where a KWin
+script prints) and no `DISPLAY`. The sandbox (`tests/kwin_sandbox.py`, standard library only, also usable as
+`with private_kwin() as kwin:`) **refuses to run** when the bus or the runtime directory it would hand out
+is the real one or lies outside the temporary folder; at the end it stops KWin and the bus by their process
+groups and kills whatever still carries the private runtime directory in its environment (never by process
+name), then removes the folder. It never uses `/dev/uinput`: pointer and keys go in through KWin's own
+`org_kde_kwin_fake_input`, which any client of a `--virtual` KWin may use.
+
+```bash
+# once: a venv with the extension (the wheel is built once per commit) and the one extra library
+uv venv ~/.cache/tre-kwin-venv --python /usr/bin/python3.14
+uv pip install --python ~/.cache/tre-kwin-venv/bin/python pytest jeepney "$(~/.orca/bots/orchestrator/bin/tre-wheel)"
+# then, from the repository (PATH puts the venv's python first)
+tools/kwin_live.sh -- tools/with_adapter.sh lvp -- python -m pytest -m live_kwin tests/test_popup_geometry_live.py -q -rs
+tools/kwin_live.sh -- tools/with_adapter.sh lvp -- python -m pytest tests/test_first_present_live.py -q -rs   # the [kwin] variants
+```
+
+`jeepney` (pure Python) is for D-Bus with file descriptors: KWin's screenshot interface
+(`org.kde.KWin.ScreenShot2`, which the private KWin allows any client) and the KWin script that lists
+windows. Without it the KWin variants skip with that reason.
+
+**Writing a test for both lanes.** Ask for the `compositor` fixture (`pytestmark =
+pytest.mark.usefixtures("compositor")`): the test runs once, as `[sway]` in `sway_live.sh` and as `[kwin]` in
+`kwin_live.sh`, and the other variant skips with its reason (the `[kwin]` variant carries the `live_kwin`
+marker, which skips everywhere that is not the KWin lane, CI included; use the marker alone for a test that
+only makes sense on KWin). Ask the compositor through `tests/live_compositor.py` and not through `swaymsg` or
+`grim`: `screenshot()`, `pixel(x, y)`, `output_rect()`, `toplevel(title)` (the mapped window, or None while it
+is held) and `input_device()` (pointer `move`/`click`/`press`/`release` and `key("Escape")`), each answered by
+sway's tools in one lane and by KWin's D-Bus, a script in its log and its fake input in the other. Where the
+two compositors really differ, write both answers into the test (a dict keyed by `compositor`, with the reason
+in a comment), so a change on either side shows. The protocol-log helpers of `test_first_present_live.py` read
+both libwayland timestamp formats.
+
+**The pull-request rule:** the body of every PR states the live-compositor result in one line, `sway: x
+passed, KWin(virtual): y passed`, or `... / not applicable` with the reason (no live test touches the
+change). Run the live tests the change touches in both lanes before opening it.
+
+### What the KWin lane covers
+
+`[kwin]` variants of: `test_first_present_live.py` (window: hold, `ready()`, deadline two-sided bound,
+background colour), `test_first_present_layers_live.py` (layer surface and popup: hold, `ready()`,
+deadline, configure ack while held, settings made while held, parent closed while held),
+`test_popup_geometry_live.py` and (with PR #346) `test_popup_edge_margin_live.py` (placement by the body,
+flip by the body, edge margin), `test_popup_grab_live.py` (grab, click away, keyboard, Escape, a held
+popup), `test_hidden_window_live.py`, `test_resize_present_cap_live.py` and `test_timer_animation_live.py`
+(a window hidden by minimizing, a window covered by a fullscreen one, a size change; through
+`live_compositor.window_action`), `test_compositor_differences_live.py`; and the pointer-driven tests of
+`test_layer_window_live.py` (through `live_compositor.LayoutPointer`; it also gives a sway without
+`pywayland` a virtual pointer, so they run there too). `test_kwin_lane_live.py` checks the sandbox itself from
+inside. `test_window_controls.py` and `test_window_titlebar.py`, which are listed below as hand-run on a
+floating compositor, pass in this lane unchanged.
+
+### What differs in KWin
+
+Each row is pinned by a test, so it stays true.
+
+| What | KWin (virtual) | sway (headless) | Test |
+|---|---|---|---|
+| A new toplevel | keeps the size it asked for (200x200), centred, with a title bar of its own | tiled over the whole output, size ignored | `test_compositor_differences_live.py` |
+| Keyboard while a popup holds a grab (the bar below asked for `keyboard="none"` or `"on_demand"`) | goes to the popup: the focused node gets `key_down`, Escape included | stays with the bar (or nobody): the popup never hears the key | `test_popup_grab_live.py` |
+| Escape with a grabbing popup | the compositor does not end the popup; the key is the popup's | same: nobody ends it | `test_popup_grab_live.py`. The `PopupWindow` docs say Escape dismisses: it does not on either compositor, an app must close the popup itself |
+| Click away while a popup is **held** (`first_present`) | ignored: the grab is inert until the popup is mapped; `ready()` shows it | dismisses the unmapped popup (`closed`, reason `dismissed`); it is never shown | `test_popup_grab_live.py`. The grab has to be requested with the role (a grab cannot be asked for after the first commit), so tre cannot defer it |
+| Same everywhere (no difference found) | first present hold/`ready()`/deadline, layer surface and popup mapping, popup placement by the body and flip by the body, edge margin | same | the `[kwin]`/`[sway]` pairs |
+
+### What could not be ported, and why
+
+* **IME (`ime_offset`, the input-method tests of `test_layer_window_live.py`):** they drive a fake
+  `zwp_input_method_v2` client (`tests/wlr_input_method.py`); KWin does not offer `zwp_input_method_manager_v2`
+  (checked in `test_kwin_lane_live.py`).
+* **Output hot-plug (7 tests in `test_layer_window_live.py`):** they add and remove outputs with `swaymsg create_output`;
+  a `--virtual` KWin takes `--output-count` at start and has no command to add or remove one while it runs.
+* **`test_a_transparent_bar_shows_the_desktop_behind_it`:** written against `grim -o` and sway tiling a window
+  behind the bar.
+* **The a11y tests, `test_layer_focus_live.py`, `test_clipboard_layer_live.py`, `test_connection_lost_live.py`:** need
+  `at-spi`/`dbus-fast`, a sway-only layout (two exclusive layers), a data-control clipboard tool, and two sways of
+  their own; not run in the lane.
+* **#248 (the 10,000 commits a second after a fullscreen change on RADV):** `test_resize_present_cap_live.py` passes in
+  the lane on lavapipe and on RADV, so it does not reproduce there: the burst needs the real KWin (DRM output,
+  dmabuf feedback) and stays a by-hand check.
+* **Real hardware:** a virtual KWin draws on the CPU and has one output; DP-1/HDMI-A-1 placement, real GPU
+  pacing and the `TESS_RE_LIVE_INPUT=1` tests stay by hand (see below).
+
 ## Tests that need hardware or KWin
 
 CI and a private headless sway cannot run every live test. The `live-sway` CI job runs the suite
@@ -195,7 +290,7 @@ monitor (HDMI-A-1). Each command opens windows.
 
 | Group | Tests | Why it cannot run in CI | Command |
 |---|---|---|---|
-| Floating compositor (KWin) | `test_window_controls.py::test_a_live_maximize_and_restore_fire_maximized`, `test_window_titlebar.py::test_live_decorations_and_inset` (2) | sway tiles the window and ignores its size, decorations and maximize | `TESS_RE_ALLOW_REAL_SESSION=1 .venv/bin/python -m pytest tests/test_window_controls.py tests/test_window_titlebar.py -q -rs` |
+| Floating compositor (KWin) | `test_window_controls.py::test_a_live_maximize_and_restore_fire_maximized`, `test_window_titlebar.py::test_live_decorations_and_inset` (2) | sway tiles the window and ignores its size, decorations and maximize. They also pass in a private KWin (`tools/kwin_live.sh`, above); run them on the desktop for the real one | `TESS_RE_ALLOW_REAL_SESSION=1 .venv/bin/python -m pytest tests/test_window_controls.py tests/test_window_titlebar.py -q -rs` |
 | Real GPU, video memory | `test_gpu_memory_live.py` (3), `test_gpu_shared_live.py` (3) | `drm-total-vram` is a real driver's per-process figure; lavapipe has none | `TESS_RE_ALLOW_REAL_SESSION=1 env -u VK_ICD_FILENAMES .venv/bin/python -m pytest tests/test_gpu_memory_live.py tests/test_gpu_shared_live.py -q -rs` |
 | Real GPU, pacing | `test_present_mode.py::test_an_animating_window_is_paced_by_default` (1) | lavapipe draws on the CPU, so CPU time says nothing about pacing | `TESS_RE_ALLOW_REAL_SESSION=1 env -u VK_ICD_FILENAMES .venv/bin/python -m pytest tests/test_present_mode.py -q -rs` |
 | Synthetic input | `test_layer_window_live.py` (3 marked `live_input`) | `/dev/uinput` makes a system-wide device the **real** compositor reads: it moves the real pointer, clicks and types on your session. A private sway does not read it, so they must never run unattended or in CI | `TESS_RE_ALLOW_REAL_SESSION=1 TESS_RE_LIVE_INPUT=1 .venv/bin/python -m pytest tests/test_layer_window_live.py -q -rs -k "real_pointer or keyboard_none or negative_margin"` (watch the screen; keep other windows closed) |
@@ -229,6 +324,7 @@ they write, and the ones that change something (`pr_chain.py`, `board.py move`/`
 | `tools/tests_for.py` | The clippy, cargo and pytest commands that cover the files you changed (by name match; it runs nothing). |
 | `tools/with_adapter.sh` | Runs a command on one GPU adapter: `radv`, `lvp` (llvmpipe) or `fallback`. |
 | `tools/sway_live.sh` | Runs a command inside a private headless sway, for the live `LayerWindow` tests, and shuts it down. |
+| `tools/kwin_live.sh` | The same for a private headless KWin (own bus and runtime directory; local only): [Live tests in a private KWin](#live-tests-in-a-private-kwin). |
 | `tools/pr_chain.py` | Status, push, open, retarget (with the close and reopen that start CI), wait, merge and cleanup for a stack of branches. |
 | `tools/board.py` | The project board: `status`, `move` (Done needs `--approved`) and `create` (an issue into Backlog or Ready). |
 | `tools/check_version.py` | Every place the version lives agrees; `--expect V --pypi` before a release. |

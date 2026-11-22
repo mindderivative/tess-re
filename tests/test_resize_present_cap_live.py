@@ -1,23 +1,25 @@
 """0.6.10 (#248): a resizing window presents at most ~250 times a second.
 
-On a headless sway (`tools/sway_live.sh -- python -m pytest tests/test_resize_present_cap_live.py`).
+On a headless sway (`tools/sway_live.sh -- python -m pytest tests/test_resize_present_cap_live.py`) or a headless
+KWin (`tools/kwin_live.sh`, the `[kwin]` variant).
 A resize presents without a vsync barrier (#155), which never waits: on KWin with RADV an animating
 window committed ~10,000 times a second for the 400 ms after each fullscreen change. The burst
 needs a fast adapter (`tools/with_adapter.sh radv`); on lavapipe the present itself is slow, so this
 test passes there with or without the cap. It counts `wl_surface.commit` in the protocol log.
 """
 
-import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 import textwrap
 import time
 
+import live_compositor
 import pytest
+
+pytestmark = pytest.mark.usefixtures("compositor")
 
 CHILD = textwrap.dedent(
     """
@@ -40,11 +42,6 @@ CLOCK = re.compile(r"^\[(\d+):(\d+):(\d+\.\d+)\]")  # newer libwayland: [HH:MM:S
 # number is MILLISECONDS with a microsecond fraction.
 MONO = re.compile(r"^\[\s*(\d+\.\d+)\]")
 COMMIT = re.compile(r"wl_surface[#@]\d+\.commit\(\)")
-
-
-def _sway():
-    if not (shutil.which("swaymsg") and os.environ.get("SWAYSOCK")):
-        pytest.skip("needs a headless sway (SWAYSOCK; tools/sway_live.sh)")
 
 
 def _seconds(line):
@@ -87,34 +84,7 @@ def _diagnosis(lines, start, extra=""):
     )
 
 
-def _fullscreen(change):
-    out = subprocess.run(
-        ["swaymsg", f'[title="resize-cap"] fullscreen {change}'],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return out
-
-
-def _is_fullscreen():
-    tree = subprocess.run(
-        ["swaymsg", "-t", "get_tree"], capture_output=True, text=True, check=False
-    ).stdout
-    node = next(
-        (n for n in _walk(json.loads(tree)) if n.get("name") == "resize-cap"), None
-    )
-    return bool(node and node.get("fullscreen_mode"))
-
-
-def _walk(node):
-    yield node
-    for child in node.get("nodes", []) + node.get("floating_nodes", []):
-        yield from _walk(child)
-
-
 def test_a_size_change_does_not_make_an_animating_window_commit_in_a_burst():
-    _sway()
     with tempfile.TemporaryDirectory() as tmp:
         log = os.path.join(tmp, "protocol.log")
         env = dict(os.environ, WAYLAND_DEBUG="1")
@@ -127,16 +97,16 @@ def test_a_size_change_does_not_make_an_animating_window_commit_in_a_burst():
             )
         try:
             deadline = time.monotonic() + 20
-            while time.monotonic() < deadline and not _is_window():
+            while time.monotonic() < deadline and not live_compositor.toplevel("resize-cap"):
                 time.sleep(0.2)
             time.sleep(2.0)
             for change in ("enable", "disable"):
                 start = len(_lines(log))
-                out = _fullscreen(change)
-                assert out.returncode == 0 and '"success": true' in out.stdout, (
-                    f"swaymsg fullscreen {change}: rc {out.returncode} {out.stdout} {out.stderr}"
-                )
-                assert _is_fullscreen() == (change == "enable")
+                live_compositor.window_action("resize-cap", "fullscreen" if change == "enable" else "unfullscreen")
+                settle = time.monotonic() + 5  # a floating compositor (KWin) takes a moment to say so
+                while live_compositor.is_fullscreen("resize-cap") != (change == "enable") and time.monotonic() < settle:
+                    time.sleep(0.1)
+                assert live_compositor.is_fullscreen("resize-cap") == (change == "enable")
                 time.sleep(2.0)
                 lines = _lines(log)
                 n, first = _burst(lines, start, 0.5)
@@ -147,9 +117,3 @@ def test_a_size_change_does_not_make_an_animating_window_commit_in_a_burst():
             proc.kill()
             proc.wait()
 
-
-def _is_window():
-    tree = subprocess.run(
-        ["swaymsg", "-t", "get_tree"], capture_output=True, text=True, check=False
-    ).stdout
-    return any(n.get("name") == "resize-cap" for n in _walk(json.loads(tree)))
