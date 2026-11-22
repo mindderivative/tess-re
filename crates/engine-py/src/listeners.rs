@@ -331,10 +331,12 @@ pub(crate) enum WindowEventType {
     Warning,
     /// 0.5.8 (#205): a margin drag ended; `margin` is the final `(top, right, bottom, left)`.
     Moved,
+    /// 0.6.12 (P11): a double-click on the drag region, with `titlebar_double_click="event"`.
+    TitlebarDoubleClick,
 }
 
 impl WindowEventType {
-    const ALL: [WindowEventType; 24] = [
+    const ALL: [WindowEventType; 25] = [
         Self::Resize,
         Self::ColorScheme,
         Self::ScaleFactor,
@@ -359,6 +361,7 @@ impl WindowEventType {
         Self::OutputChanged,
         Self::Warning,
         Self::Moved,
+        Self::TitlebarDoubleClick,
     ];
 
     pub(crate) fn name(self) -> &'static str {
@@ -387,6 +390,7 @@ impl WindowEventType {
             Self::OutputChanged => "output_changed",
             Self::Warning => "warning",
             Self::Moved => "moved",
+            Self::TitlebarDoubleClick => "titlebar_double_click",
         }
     }
 

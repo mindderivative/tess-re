@@ -142,6 +142,7 @@ fn window_request(setup: &WindowSetup, index: usize, max_frames: Option<u32>) ->
                 always_on_top: setup.handles.always_on_top.get(),
                 resizable: setup.handles.resizable.get(),
                 skip_taskbar: setup.handles.skip_taskbar.get(),
+                undecorated_shadow: setup.handles.undecorated_shadow.get(),
                 start_hidden: setup.handles.first_present.starts_hidden(),
             },
         },
@@ -649,17 +650,6 @@ fn cursor_at(tree: &Tree, root: NodeId, position: Point) -> Cursor {
         current = node.parent;
     }
     Cursor::Default
-}
-
-/// 0.5.0 M3: the resize cursor for an edge or corner of the resize border.
-fn border_cursor(direction: winit::window::ResizeDirection) -> Cursor {
-    use winit::window::ResizeDirection as Dir;
-    match direction {
-        Dir::North | Dir::South => Cursor::NsResize,
-        Dir::East | Dir::West => Cursor::EwResize,
-        Dir::NorthWest | Dir::SouthEast => Cursor::NwseResize,
-        Dir::NorthEast | Dir::SouthWest => Cursor::NeswResize,
-    }
 }
 
 /// M94: `winit`'s cursor for each of the engine's cursor shapes; 0.5.4 (#140) a
@@ -2463,7 +2453,13 @@ impl App {
                 {
                     // 0.5.0 M3: the resize border's cursors come first.
                     let wanted = crate::dispatch::border_direction(&runtime.handles, *position)
-                        .map(border_cursor)
+                        .map(|direction| {
+                            runtime
+                                .handles
+                                .resize_cursors
+                                .get()
+                                .for_direction(direction)
+                        })
                         .or_else(|| {
                             // 0.5.4 (#131): text asks for a pointer over a link and
                             // an I-beam over selectable text, unless its node (or

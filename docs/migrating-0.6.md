@@ -529,6 +529,17 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   `ScrollAxis` it grabbed. The Python API has no such change.
 
 ## 0.6.12
+- **`titlebar_double_click`, `resize_cursors`, `undecorated_shadow` (new `Window` properties, P11; no default changes).**
+  `titlebar_double_click` is what a double-click on a `window_region="drag"` node does: `None` (default, as before: the
+  user's setting on macOS, maximize elsewhere), `"maximize"`, `"minimize"`, `"none"`, or `"event"` (nothing happens;
+  the window fires a new `titlebar_double_click` event with `x`, `y`). `resize_cursors` maps the eight `resize_border`
+  zones (`north`, `south`, `east`, `west`, `north_west`, `north_east`, `south_west`, `south_east`) to cursor names;
+  `None`, the default, is the stock `ns_resize`/`ew_resize`/`nwse_resize`/`nesw_resize` map. `undecorated_shadow`
+  (`bool`, default `True`) keeps or drops the OS's shadow around an undecorated window; Windows only, stored and
+  ignored on macOS and Linux (tess_re draws no shadow of its own). Bad values raise `ValueError`; `LayerWindow` and
+  `PopupWindow` refuse all three like `system_menu`. Skipped: separate corner size for the resize border (one
+  `resize_border` serves edges and corners), double-click time/slop (the OS value, and P6's multi-click settings).
+  See [Custom title bars](reference/window.md#window-controls-and-state).
 - **A path node's `shadows` follow the path, holes included (a fix).** Every node's shadow was its box, blurred, so a
   `path` ring's hole filled with solid shadow. A path now casts the silhouette of what it paints (the fill under the
   non-zero rule, plus the trimmed stroke), offset, grown by `spread` and blurred by the same `blur / 2` as a box.

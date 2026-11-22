@@ -769,8 +769,29 @@ fn window_drag(
         .last_drag_press
         .set((!double).then_some((now, position)));
     // 0.5.0 M4: what the double-click does is the user's setting on macOS.
+    // 0.6.12 (P11): unless the window's `titlebar_double_click` says otherwise.
+    use crate::window_hooks::DoubleClick;
     use engine_platform::titlebar::TitleBarDoubleClick as Action;
-    let action = double.then(engine_platform::titlebar::title_bar_double_click);
+    let configured = io.window.titlebar_double_click.get();
+    if double && configured == Some(DoubleClick::Event) {
+        crate::listeners::deliver_window(
+            io.listeners,
+            py,
+            crate::listeners::WindowEventType::TitlebarDoubleClick,
+            |e| {
+                e.x = Some(position.x);
+                e.y = Some(position.y);
+            },
+        );
+        end_press(ctx, io, target, position, py);
+        return;
+    }
+    let action = double.then(|| match configured {
+        Some(DoubleClick::Maximize) => Action::Maximize,
+        Some(DoubleClick::Minimize) => Action::Minimize,
+        Some(DoubleClick::Nothing) => Action::Nothing,
+        Some(DoubleClick::Event) | None => engine_platform::titlebar::title_bar_double_click(),
+    });
     match (io.window.os_window.borrow().as_ref(), action) {
         (Some(window), Some(Action::Maximize)) => window.set_maximized(!window.is_maximized()),
         (Some(window), Some(Action::Minimize)) => window.set_minimized(true),
