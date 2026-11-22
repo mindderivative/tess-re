@@ -28,7 +28,7 @@ pytestmark = [
         not sys.platform.startswith("linux") or not tess_re.supports("layer_shell"),
         reason="needs a compositor with the layer-shell protocol",
     ),
-    pytest.mark.usefixtures("compositor"),
+    pytest.mark.usefixtures("pinned_compositor"),
 ]
 
 CHILD = textwrap.dedent(

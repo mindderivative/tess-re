@@ -227,8 +227,9 @@ only makes sense on KWin). Ask the compositor through `tests/live_compositor.py`
 is held) and `input_device()` (pointer `move`/`click`/`press`/`release` and `key("Escape")`), each answered by
 sway's tools in one lane and by KWin's D-Bus, a script in its log and its fake input in the other. Where the
 two compositors really differ, write both answers into the test (a dict keyed by `compositor`, with the reason
-in a comment), so a change on either side shows. The protocol-log helpers of `test_first_present_live.py` read
-both libwayland timestamp formats.
+in a comment), so a change on either side shows, and ask for `pinned_compositor` instead: its sway variant skips on
+a CI runner, whose Ubuntu sway is older than the one the answers were taken from. The protocol-log helpers of
+`test_first_present_live.py` read both libwayland timestamp formats.
 
 **The pull-request rule:** the body of every PR states the live-compositor result in one line, `sway: x
 passed, KWin(virtual): y passed`, or `... / not applicable` with the reason (no live test touches the

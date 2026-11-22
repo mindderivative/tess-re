@@ -13,7 +13,7 @@ import time
 import live_compositor
 import pytest
 
-pytestmark = pytest.mark.usefixtures("compositor")
+pytestmark = pytest.mark.usefixtures("pinned_compositor")
 
 CHILD = textwrap.dedent(
     """

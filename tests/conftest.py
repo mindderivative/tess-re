@@ -75,3 +75,13 @@ def compositor(request):
     if reason:
         pytest.skip(reason)
     return request.param
+
+
+@pytest.fixture
+def pinned_compositor(compositor):
+    """`compositor`, for a test that pins what one compositor does (docs/contributing.md, "What differs in
+    KWin"). The sway answers were taken from a current sway: on a CI runner (Ubuntu's older sway) that variant
+    skips rather than fail on an unchecked version."""
+    if compositor == "sway" and os.environ.get("CI"):
+        pytest.skip("pinned against a current sway; the CI runner's sway is older and not checked")
+    return compositor
