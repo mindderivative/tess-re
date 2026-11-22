@@ -10996,6 +10996,8 @@ mod edge_scroll {
         assert_eq!(tree.pointer_capture(), None);
         assert!(!tree.tick_all(t0 + ms(17)).0);
     }
+}
+
 /// 0.6.12 (P10): a layer's viewport margin, flip threshold and alignment come from its own meta,
 /// else the tree's `layer_defaults`, and changing either places the layer again.
 #[test]
