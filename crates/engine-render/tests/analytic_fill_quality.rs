@@ -7,7 +7,7 @@ mod support;
 use engine_render::FrameRenderer;
 use peniko::Color;
 use peniko::kurbo::{Affine, Rect, RoundedRect, Shape};
-use vello_gpu::{RenderSize, RenderTargetConfig, Scene};
+use vello_gpu::{RenderTargetConfig, Scene};
 
 const S: u16 = 64;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -15,6 +15,7 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 fn draw(device: &wgpu::Device, queue: &wgpu::Queue, paint: impl Fn(&mut Scene)) -> Vec<u8> {
     let mut renderer = FrameRenderer::new(
         device,
+        queue,
         &RenderTargetConfig {
             format: FORMAT,
             width: S,
@@ -42,18 +43,7 @@ fn draw(device: &wgpu::Device, queue: &wgpu::Queue, paint: impl Fn(&mut Scene)) 
     scene.fill_rect(&Rect::new(0.0, 0.0, f64::from(S), f64::from(S)));
     paint(&mut scene);
     let mut encoder = device.create_command_encoder(&Default::default());
-    renderer.render_into(
-        &scene,
-        device,
-        queue,
-        &mut encoder,
-        &RenderSize {
-            width: S,
-            height: S,
-        },
-        &view,
-        None,
-    );
+    renderer.render_into(&scene, &mut encoder, &view, None);
     queue.submit([encoder.finish()]);
     support::read_texture(device, queue, &target)
 }
@@ -74,7 +64,7 @@ fn analytic_fill_vs_path_fill() {
                 });
                 let b = draw(&device, &queue, |s| {
                     s.set_paint(white);
-                    s.fill_blurred_rounded_rect(&rect, radius as f32, sigma, false);
+                    s.fill_blurred_rounded_rect(&rect, radius as f32, sigma);
                 });
                 let row = (u32::from(S) * 4).next_multiple_of(256) as usize;
                 let (mut max, mut sum, mut n) = (0i32, 0i64, 0i64);

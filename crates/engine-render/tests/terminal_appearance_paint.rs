@@ -406,7 +406,7 @@ fn the_history_bar_is_not_drawn_by_default_and_is_the_spec_thumb_when_asked() {
 fn the_history_bar_thumb_moves_with_the_view_and_repaints_like_a_full_draw() {
     let (device, queue) = pollster::block_on(support::device("terminal history bar device"));
     let (mut tree, root, id) = history_frame_tree(Some(engine_core::Show::Overflow), 400);
-    let mut output = Output::new(&device);
+    let mut output = Output::new(&device, &queue);
     output.frame(&device, &queue, &tree, root, true);
     let mut last = output.pixels(&device, &queue);
     for back in [200, 400, 0] {
@@ -416,7 +416,7 @@ fn the_history_bar_thumb_moves_with_the_view_and_repaints_like_a_full_draw() {
         assert_ne!(damage, Damage::None, "back {back} is damage");
         let partial = output.pixels(&device, &queue);
         assert_ne!(partial, last, "back {back} moves the thumb");
-        let mut fresh = Output::new(&device);
+        let mut fresh = Output::new(&device, &queue);
         fresh.frame(&device, &queue, &tree, root, false);
         assert_eq!(
             partial,
@@ -439,7 +439,7 @@ struct Output {
 }
 
 impl Output {
-    fn new(device: &wgpu::Device) -> Self {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let surface = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("terminal appearance test target"),
             size: wgpu::Extent3d {
@@ -457,7 +457,7 @@ impl Output {
             view_formats: &[],
         });
         let view = surface.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut renderer = WindowRenderer::new(device, FORMAT, SIZE, SIZE, true);
+        let mut renderer = WindowRenderer::new(device, queue, FORMAT, SIZE, SIZE, true);
         renderer.set_scale(1.0);
         Self {
             renderer,
@@ -553,7 +553,7 @@ fn changing_how_a_terminal_paints_repaints_like_a_full_draw() {
         ("selection_radius", Box::new(|s| s.selection_radius = 6.0)),
         ("caret_on", Box::new(|s| s.caret_on = false)),
     ];
-    let mut output = Output::new(&device);
+    let mut output = Output::new(&device, &queue);
     output.frame(&device, &queue, &tree, root, true);
     let mut last = output.pixels(&device, &queue);
     for (name, edit) in edits {
@@ -563,7 +563,7 @@ fn changing_how_a_terminal_paints_repaints_like_a_full_draw() {
         assert_ne!(damage, Damage::None, "{name} is damage");
         let partial = output.pixels(&device, &queue);
         assert_ne!(partial, last, "{name} changes the pixels");
-        let mut fresh = Output::new(&device);
+        let mut fresh = Output::new(&device, &queue);
         fresh.frame(&device, &queue, &tree, root, false);
         assert_eq!(
             partial,

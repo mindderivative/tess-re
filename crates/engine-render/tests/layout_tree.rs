@@ -17,7 +17,7 @@ use engine_core::{NodeKind, PaintProperties, Tree};
 use engine_render::{FrameRenderer, GeometryCache, TextRenderer, build_tree_scene};
 use peniko::Color;
 use taffy::prelude::{AvailableSpace, FlexDirection, Size, Style, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 
@@ -102,6 +102,7 @@ fn two_row_children_paint_at_their_own_laid_out_positions() {
 
         let mut frame_renderer = FrameRenderer::new(
             &device,
+            &queue,
             &RenderTargetConfig {
                 format: texture.format(),
                 width,
@@ -119,10 +120,9 @@ fn two_row_children_paint_at_their_own_laid_out_positions() {
             &mut text_renderer,
             &mut geometry_cache,
         );
-        let render_size = RenderSize { width, height };
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+        frame_renderer.render(&scene, &mut encoder, &view);
 
         queue.submit([encoder.finish()]);
         let bytes_per_row = (u32::from(width) * 4).next_multiple_of(256);

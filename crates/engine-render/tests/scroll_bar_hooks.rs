@@ -59,7 +59,8 @@ impl Window {
             view_formats: &[],
         });
         let surface_view = surface.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut renderer = WindowRenderer::new(&gpu.device, FORMAT, W as u32, H as u32, true);
+        let mut renderer =
+            WindowRenderer::new(&gpu.device, &gpu.queue, FORMAT, W as u32, H as u32, true);
         renderer.set_scale(1.0);
         // The scenes are small: always use the shift, to test it.
         renderer.set_scroll_blit_min_nodes(0);

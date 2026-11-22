@@ -9,7 +9,7 @@ use engine_core::{NodeId, NodeKind, PaintProperties, Tree};
 use engine_render::{FrameRenderer, GeometryCache, TextRenderer, build_tree_scene};
 use peniko::Color;
 use taffy::prelude::{AvailableSpace, FlexWrap, Size, Style, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 const W: u16 = 960;
 const H: u16 = 480;
@@ -119,6 +119,7 @@ fn time_tree(name: &str, tree: Tree, root: NodeId, count: usize) {
     let (device, queue) = pollster::block_on(support::device("scene cost"));
     let mut renderer = FrameRenderer::new(
         &device,
+        &queue,
         &RenderTargetConfig {
             format: FORMAT,
             width: W,
@@ -160,18 +161,7 @@ fn time_tree(name: &str, tree: Tree, root: NodeId, count: usize) {
         );
         let t1 = Instant::now();
         let mut encoder = device.create_command_encoder(&Default::default());
-        renderer.render_into(
-            &scene,
-            &device,
-            &queue,
-            &mut encoder,
-            &RenderSize {
-                width: W,
-                height: H,
-            },
-            &view,
-            None,
-        );
+        renderer.render_into(&scene, &mut encoder, &view, None);
         queue.submit([encoder.finish()]);
         let t2 = Instant::now();
         if i >= 3 {

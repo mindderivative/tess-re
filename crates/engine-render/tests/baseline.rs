@@ -548,7 +548,7 @@ fn run(device: &wgpu::Device, queue: &wgpu::Queue, scenario: &Scenario) -> Stage
         view_formats: &[],
     });
     let view = image.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut renderer = WindowRenderer::new(device, format, u32::from(W), u32::from(H), true);
+    let mut renderer = WindowRenderer::new(device, queue, format, u32::from(W), u32::from(H), true);
     let space = Size {
         width: AvailableSpace::Definite(f32::from(W)),
         height: AvailableSpace::Definite(f32::from(H)),

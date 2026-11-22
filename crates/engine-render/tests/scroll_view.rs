@@ -8,7 +8,7 @@ use engine_core::{NodeId, NodeKind, PaintProperties, ScrollViewState, Tree};
 use engine_render::{FrameRenderer, GeometryCache, TextRenderer, build_tree_scene};
 use peniko::Color;
 use taffy::prelude::{AvailableSpace, Position, Rect as TaffyRect, Size, Style, auto, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 
@@ -38,6 +38,7 @@ async fn render(tree: &Tree, root: NodeId) -> (Vec<u8>, u32) {
 
     let mut frame_renderer = FrameRenderer::new(
         &device,
+        &queue,
         &RenderTargetConfig {
             format: texture.format(),
             width: WIDTH,
@@ -55,13 +56,9 @@ async fn render(tree: &Tree, root: NodeId) -> (Vec<u8>, u32) {
         &mut text_renderer,
         &mut geometry_cache,
     );
-    let render_size = RenderSize {
-        width: WIDTH,
-        height: HEIGHT,
-    };
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+    frame_renderer.render(&scene, &mut encoder, &view);
 
     queue.submit([encoder.finish()]);
     let bytes_per_row = (u32::from(WIDTH) * 4).next_multiple_of(256);

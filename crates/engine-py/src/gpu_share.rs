@@ -102,7 +102,7 @@ pub(crate) fn renderer_for(
         if let Some(existing) = renderers.get(&key).and_then(WeakSharedRenderer::upgrade) {
             return existing;
         }
-        let made = SharedRenderer::for_format(&shared.device, format, width, height);
+        let made = SharedRenderer::for_format(&shared.device, &shared.queue, format, width, height);
         renderers.insert(key, made.downgrade());
         made
     })

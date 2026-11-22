@@ -86,7 +86,7 @@ fn damage_walk_cost() {
 fn scene_cost_follows_the_damage() {
     use engine_render::{FrameRenderer, GeometryCache, ShaderTextures, build_tree_scene_shaded};
     use vello_gpu::RenderTargetConfig;
-    let (device, _queue) = pollster::block_on(support::device("scene cost"));
+    let (device, queue) = pollster::block_on(support::device("scene cost"));
     for n in [2_304usize, 9_216] {
         let (mut tree, root, ids) = grid(n);
         let (w, h) = (960u16, ((n / 96 + 1) * 10) as u16);
@@ -94,6 +94,7 @@ fn scene_cost_follows_the_damage() {
         let mut geometry = GeometryCache::new();
         let frames = FrameRenderer::new(
             &device,
+            &queue,
             &RenderTargetConfig {
                 format: wgpu::TextureFormat::Rgba8Unorm,
                 width: w,

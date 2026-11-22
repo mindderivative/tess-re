@@ -51,7 +51,7 @@ Resolved architectural questions, in one place. Add a row when a question is set
 | Docking | Fixed five zones; Tesserae Engine docks, drags, and reports; the framework draws handles and highlights (§11.4) | The mechanism is hard to get right; the look is design |
 | Virtualization | `virtual_list` kind that builds its own visible rows from `materialize(index)` (§11.7) | 100k real nodes would blow the frame budget |
 | Versioning | 0.3.x ended at `0.3.5`, with fixes as `0.3.5.x`; the `0.4.x` line began with `0.4.0`, partial redraw on upstream `vello_gpu` (issue #4); `0.4.1` and `0.4.2` are feature releases on it | The user's policy |
-| Renderer source | `vello_gpu` from a pinned upstream Git commit, with `vello_common` and `glifo` from the same commit (0.4.0 M1) | Upstream renamed `vello_hybrid` to `vello_gpu` and added the no-clear and rect-clear render partial redraw needs; it isn't published yet, and a pin makes every bump deliberate |
+| Renderer source | `vello_gpu`, `vello_common` and `glifo` from crates.io at exact `=` versions (0.6.14: `vello_gpu` 0.4.0, `vello_common` 0.4.0, `glifo` 0.5.0; 0.4.0 to 0.6.13: one upstream Git commit) | The no-clear and rect-clear render partial redraw needs is stable API in `vello_gpu` 0.4.0 (`RenderOptions::target_init`); exact versions make every bump deliberate |
 
 ---
 
@@ -62,7 +62,7 @@ Resolved architectural questions, in one place. Add a row when a question is set
 3. **The PyO3 boundary is the only stability contract.** `engine-core`, `engine-render`, and `engine-platform` change freely; `engine-py`'s Python surface is what's versioned and documented.
 4. **No dependency leaks across the boundary.** Vello, kurbo, peniko, taffy, and accesskit types never appear in Python signatures. Python sees ints, floats, strings, tuples, and Tesserae Engine's own classes.
 5. **Mechanism in the engine, meaning and look in the framework.** Tesserae Engine detects what it can know on its own — where the pointer is, what has focus, whether focus came from the keyboard — and reports it. What a node means (a checked checkbox) and how anything looks (a hover tint, a focus ring, a ripple) are set by the framework through ordinary properties and animations.
-6. **De-risk unknowns before building on them.** A new rendering capability gets a pixel test against the pinned `vello_gpu` before anything depends on it.
+6. **De-risk unknowns before building on them.** A new rendering capability gets a pixel test against the pinned `vello_gpu` version before anything depends on it.
 
 ---
 
@@ -72,7 +72,7 @@ Resolved architectural questions, in one place. Add a row when a question is set
 |---|---|---|
 | Windowing, input, IME | `winit` | Event loop (owns the main thread), windows, keyboard and pointer input |
 | GPU | `wgpu` | Device and surface management |
-| 2D rendering | `vello_gpu` at a pinned upstream commit (`wgpu`, `wgpu_default`, and `text` features); `vello_hybrid` before 0.4.0 | CPU preprocess, GPU raster of paths, images, and blurred shadows |
+| 2D rendering | `vello_gpu` at an exact crates.io version (`wgpu`, `wgpu_default`, and `text` features); `vello_hybrid` before 0.4.0 | CPU preprocess, GPU raster of paths, images, and blurred shadows |
 | Geometry, color | `kurbo`, `peniko` | `BezPath`, `Affine`, `Color` — Vello's vocabulary |
 | Text | `parley` (with `glifo` for glyph drawing) | Shaping, line breaking, BiDi, font fallback |
 | Layout | `taffy` | Flexbox and CSS Grid (0.4.2); text leaf sizes come from Parley |
@@ -85,7 +85,7 @@ Resolved architectural questions, in one place. Add a row when a question is set
 | Packaging | `maturin` | Builds the wheel |
 | Errors, logging | `thiserror`, `tracing` | Typed errors at the boundary; structured logs controlled by `RUST_LOG` |
 
-`vello_gpu`, `vello_common`, `glifo`, `parley`, `kurbo`, `peniko`, and `wgpu` move together: the workspace `Cargo.toml` pins the first three to one upstream commit and `wgpu` to the major version it uses. Bump them as a set, and re-run the pixel tests.
+`vello_gpu`, `vello_common`, `glifo`, `parley`, `kurbo`, `peniko`, and `wgpu` move together: the workspace `Cargo.toml` pins the first three to exact crates.io versions (`=`) and `wgpu` to the major version `vello_gpu` uses. Bump them as a set, and re-run the pixel tests.
 
 ---
 
@@ -410,7 +410,7 @@ Historical. The original fifteen-step de-risking order (a static rect through `v
 
 | Risk | Detail | Mitigation |
 |---|---|---|
-| Vello churn | `vello_gpu` is pre-1.0 and unreleased; upstream renamed it from `vello_hybrid` and reworks it often | Pin one upstream commit; confine Vello calls to `engine-render`; pixel tests for every capability |
+| Vello churn | `vello_gpu` is pre-1.0; upstream renamed it from `vello_hybrid` and reworks it often | Pin exact crates.io versions, bumped deliberately and together; confine Vello calls to `engine-render`; pixel tests for every capability |
 | Partial redraw correctness | A missed paint input leaves stale pixels | The tracker compares fingerprints rather than hooking mutations; state structs are destructured without `..`, so a new field can't be missed; GPU pixel tests check partial frames against full ones |
 | `accesskit` churn | Breaking changes between minor versions | Pin one minor version; verify against the pinned source |
 | Wheel packaging | A repaired wheel vendors system libraries | Test the built wheel end to end (§13) |

@@ -157,7 +157,7 @@ struct Output {
 }
 
 impl Output {
-    fn new(device: &wgpu::Device) -> Self {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let surface = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("text input bar test target"),
             size: wgpu::Extent3d {
@@ -175,7 +175,7 @@ impl Output {
             view_formats: &[],
         });
         let view = surface.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut renderer = WindowRenderer::new(device, FORMAT, SIZE, SIZE, true);
+        let mut renderer = WindowRenderer::new(device, queue, FORMAT, SIZE, SIZE, true);
         renderer.set_scale(1.0);
         Self {
             renderer,
@@ -234,7 +234,7 @@ fn layout_to(tree: &mut Tree, root: NodeId) {
 fn the_thumb_moves_with_the_scroll_and_repaints_like_a_full_draw() {
     let (device, queue) = pollster::block_on(support::device("text input bar device"));
     let (mut tree, root, id) = input(Some(Show::Overflow), 40);
-    let mut output = Output::new(&device);
+    let mut output = Output::new(&device, &queue);
     output.frame(&device, &queue, &tree, root, true);
     let mut last = output.pixels(&device, &queue);
     let max = {
@@ -251,7 +251,7 @@ fn the_thumb_moves_with_the_scroll_and_repaints_like_a_full_draw() {
             partial, last,
             "offset {offset} moves the text and the thumb"
         );
-        let mut fresh = Output::new(&device);
+        let mut fresh = Output::new(&device, &queue);
         fresh.frame(&device, &queue, &tree, root, false);
         assert_eq!(
             partial,
@@ -270,7 +270,7 @@ fn the_thumb_moves_with_the_scroll_and_repaints_like_a_full_draw() {
     let damage = output.frame(&device, &queue, &tree, root, true);
     assert_ne!(damage, Damage::None, "scrollbar_width is damage");
     let partial = output.pixels(&device, &queue);
-    let mut fresh = Output::new(&device);
+    let mut fresh = Output::new(&device, &queue);
     fresh.frame(&device, &queue, &tree, root, false);
     assert_eq!(partial, fresh.pixels(&device, &queue), "scrollbar_width");
     assert_ne!(partial, last, "scrollbar_width changes the pixels");

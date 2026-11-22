@@ -164,8 +164,14 @@ fn run(device: &wgpu::Device, queue: &wgpu::Queue, workload: Workload, partial: 
     });
     let view = image.create_view(&wgpu::TextureViewDescriptor::default());
     // The app's own frame sequence (0.4.0 M6).
-    let mut renderer =
-        WindowRenderer::new(device, format, u32::from(WIDTH), u32::from(HEIGHT), true);
+    let mut renderer = WindowRenderer::new(
+        device,
+        queue,
+        format,
+        u32::from(WIDTH),
+        u32::from(HEIGHT),
+        true,
+    );
     let space = Size {
         width: AvailableSpace::Definite(f32::from(WIDTH)),
         height: AvailableSpace::Definite(f32::from(HEIGHT)),

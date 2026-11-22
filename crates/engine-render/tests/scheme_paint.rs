@@ -427,7 +427,7 @@ impl Output {
             view_formats: &[],
         });
         let view = surface.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut renderer = WindowRenderer::new(&gpu.device, FORMAT, SIZE, SIZE, true);
+        let mut renderer = WindowRenderer::new(&gpu.device, &gpu.queue, FORMAT, SIZE, SIZE, true);
         renderer.set_scale(1.0);
         Self {
             renderer,

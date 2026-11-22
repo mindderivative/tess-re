@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use engine_core::{Animated, MotionCurve};
 use engine_render::{FrameRenderer, INITIAL_COLOR, build_rect_scene};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 
@@ -66,16 +66,16 @@ fn animated_color_and_opacity_render_the_interpolated_value_mid_flight() {
         let scene = build_rect_scene(width, height, color.current, opacity.current);
         let mut frame_renderer = FrameRenderer::new(
             &device,
+            &queue,
             &RenderTargetConfig {
                 format: texture.format(),
                 width,
                 height,
             },
         );
-        let render_size = RenderSize { width, height };
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+        frame_renderer.render(&scene, &mut encoder, &view);
 
         queue.submit([encoder.finish()]);
         let bytes_per_row = (u32::from(width) * 4).next_multiple_of(256);

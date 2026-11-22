@@ -20,7 +20,7 @@ use engine_core::{NodeKind, PaintProperties, TextAlign, TextState, Tree};
 use engine_render::{FrameRenderer, GeometryCache, TextRenderer, build_tree_scene};
 use peniko::Color;
 use taffy::prelude::{AvailableSpace, FlexDirection, Size, Style, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 
@@ -165,6 +165,7 @@ fn type_roles_and_rtl_string_render_real_ink() {
 
         let mut frame_renderer = FrameRenderer::new(
             &device,
+            &queue,
             &RenderTargetConfig {
                 format: texture.format(),
                 width: WIDTH,
@@ -182,13 +183,9 @@ fn type_roles_and_rtl_string_render_real_ink() {
             &mut text_renderer,
             &mut geometry_cache,
         );
-        let render_size = RenderSize {
-            width: WIDTH,
-            height: HEIGHT,
-        };
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        frame_renderer.render(&scene, &device, &queue, &mut encoder, &render_size, &view);
+        frame_renderer.render(&scene, &mut encoder, &view);
 
         queue.submit([encoder.finish()]);
         let bytes_per_row = (u32::from(WIDTH) * 4).next_multiple_of(256);

@@ -44,7 +44,7 @@ use engine_render::{
 };
 use peniko::Color;
 use taffy::prelude::{AvailableSpace, FlexWrap, Size, Style, length};
-use vello_gpu::{RenderSize, RenderTargetConfig};
+use vello_gpu::RenderTargetConfig;
 
 mod support;
 
@@ -134,16 +134,13 @@ fn frame_pipeline_fits_the_16_6ms_budget() {
         );
         let mut frame_renderer = FrameRenderer::new(
             &device,
+            &queue,
             &RenderTargetConfig {
                 format: texture.format(),
                 width: WIDTH,
                 height: HEIGHT,
             },
         );
-        let render_size = RenderSize {
-            width: WIDTH,
-            height: HEIGHT,
-        };
 
         let start = Instant::now();
         let (mut tree, root) = build_grid_tree(start);
@@ -169,14 +166,7 @@ fn frame_pipeline_fits_the_16_6ms_budget() {
             );
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-            frame_renderer.render(
-                &scene,
-                &device,
-                &queue,
-                &mut encoder,
-                &render_size,
-                target.view(),
-            );
+            frame_renderer.render(&scene, &mut encoder, target.view());
             target.copy_to(&mut encoder, &texture);
             queue.submit([encoder.finish()]);
         };
