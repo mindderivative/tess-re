@@ -1,7 +1,7 @@
 //! Vello Scene building and GPU rendering.
 //!
 //! §14 build-order step 1: one static rounded rect through the renderer
-//! (`vello_hybrid` then; 0.4.0 M2: upstream `vello_gpu` at a pinned commit).
+//! (`vello_hybrid` then; 0.4.0 M2: upstream `vello_gpu` at a pinned commit; 0.6.14: `vello_gpu` 0.4.0 from crates.io).
 //! No layout, no text, no Python -- proving the render pipeline itself
 //! exists before anything is built on top of it (Design Principle 5).
 //!
