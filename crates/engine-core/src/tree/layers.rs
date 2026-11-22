@@ -1,7 +1,7 @@
 //! Overlays and layers: opening, placing, and dismissing them, and hit-testing past them.
 
 use super::*;
-use crate::overlay::AnchorBox;
+use crate::overlay::{AnchorBox, LayerDefaults, PlaceInput};
 
 impl Tree {
     /// §14 step 13 (§11.3): positions `content` with `Position::
@@ -257,6 +257,44 @@ impl Tree {
         Some(meta)
     }
 
+    /// 0.6.12 (P10): the policy a layer follows when it sets no viewport margin or flip
+    /// threshold of its own.
+    pub fn layer_defaults(&self) -> LayerDefaults {
+        self.layer_defaults
+    }
+
+    /// 0.6.12 (P10): sets that policy; every layer without its own is placed again at the next layout.
+    pub fn set_layer_defaults(&mut self, defaults: LayerDefaults) {
+        if self.layer_defaults != defaults {
+            self.layer_defaults = defaults;
+            self.mark_layers_dirty();
+        }
+    }
+
+    /// 0.6.12 (P10): replaces the open layer `id`'s placement policy (`viewport_margin`,
+    /// `flip_threshold`, `align`, `no_flip`, `no_shift`; the rest of its meta is kept) and places
+    /// it again at the next layout. Returns `false` when `id` is not an open layer.
+    pub fn update_layer(&mut self, id: NodeId, edit: impl FnOnce(&mut OverlayMeta)) -> bool {
+        let Some((_, meta)) = self.overlays.iter_mut().find(|(open, _)| *open == id) else {
+            return false;
+        };
+        let before = *meta;
+        edit(meta);
+        if *meta != before {
+            self.mark_layers_dirty();
+        }
+        true
+    }
+
+    /// Layers are placed during layout, so a change of policy lays out again.
+    fn mark_layers_dirty(&mut self) {
+        self.dirty = true;
+        for index in 0..self.overlays.len() {
+            let layer = self.overlays[index].0;
+            self.relayout(layer);
+        }
+    }
+
     /// M96: whether `id` is an open layer or legacy overlay.
     pub fn is_layer(&self, id: NodeId) -> bool {
         self.is_overlay(id)
@@ -335,8 +373,10 @@ impl Tree {
     /// the room and the other has more, then shifting along both axes to
     /// stay inside `root`. Records the side used as `placed`. Returns
     /// whether any layer moved, so layout runs again. 0.5.7 (#179): a
-    /// placement that names a point of the anchor, or a layer that is `pinned`,
-    /// is neither flipped nor shifted; `offset` moves the attachment point.
+    /// placement that names a point of the anchor, a layer with `no_flip`, or one with `no_shift`,
+    /// is not flipped, not shifted, respectively; `offset` moves the attachment point.
+    /// 0.6.12 (P10): the viewport margin, flip threshold, alignment and the
+    /// flip and shift switches come from the layer's meta, else `layer_defaults`.
     pub(super) fn place_layers(&mut self, root: NodeId) -> bool {
         let window = {
             let size = self.layout(root).size;
@@ -355,35 +395,22 @@ impl Tree {
             let (dx, dy) = self.anchor_offset(anchor, meta.offset);
             let size = self.layout(layer).size;
             let (w, h) = (f64::from(size.width), f64::from(size.height));
-            // Room on each side of the anchor.
-            let room = |side: Placement| match side {
-                Placement::Below => window.1 - (target.y + target.h),
-                Placement::Above => target.y,
-                Placement::Start => target.x,
-                Placement::End => window.0 - (target.x + target.w),
-                _ => f64::INFINITY,
-            };
-            let needed = |side: Placement| match side {
-                Placement::Below | Placement::Above => h,
-                _ => w,
-            };
-            let fits = !meta.pinned && !preferred.is_point();
-            let side = if fits
-                && room(preferred) < needed(preferred)
-                && room(preferred.opposite()) > room(preferred)
-            {
-                preferred.opposite()
-            } else {
-                preferred
-            };
-            let (x, y) = side.origin(target, w, h);
-            let (x, y) = (x + dx, y + dy);
-            let fit = |at: f64, extent: f64, limit: f64| at.min(limit - extent).max(0.0);
-            let (x, y) = if fits {
-                (fit(x, w, window.0), fit(y, h, window.1))
-            } else {
-                (x, y)
-            };
+            let (x, y, side) = crate::overlay::place(&PlaceInput {
+                window,
+                target,
+                size: (w, h),
+                offset: (dx, dy),
+                preferred,
+                align: meta.align,
+                flip: !meta.no_flip,
+                shift: !meta.no_shift,
+                margin: meta
+                    .viewport_margin
+                    .unwrap_or(self.layer_defaults.viewport_margin),
+                flip_threshold: meta
+                    .flip_threshold
+                    .unwrap_or(self.layer_defaults.flip_threshold),
+            });
             let (x, y) = (x as f32, y as f32);
             let mut style = self.nodes[layer].layout_style.clone();
             let inset = TaffyRect {

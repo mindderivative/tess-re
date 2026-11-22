@@ -300,8 +300,10 @@ class Node:
         one at its current, mid-animation value -- plus the read-only
         `kind` (by the name `create` takes), `focused`, `layer_placement`,
         and `layout_x`/`layout_y`/`layout_width`/`layout_height`, which
-        run any pending layout first. Raises `ValueError` for an unknown
-        name.
+        run any pending layout first. (0.6.12) A shown layer also reads
+        `layer_viewport_margin`, `layer_flip_threshold`, `layer_align`, `layer_flip`
+        and `layer_shift` (the values in force, `None` on a node that is not a layer).
+        Raises `ValueError` for an unknown name.
         """
         ...
     def set(self, **props: Any) -> None:
@@ -721,6 +723,9 @@ class Window:
         scheme: Literal["light", "dark", "auto"] | None = ...,
         scheme_colors: dict[str, tuple[int, int, int, int]] | None = ...,
         background: tuple[int, int, int, int] | None = ...,
+        layer_viewport_margin: float | tuple[float, float, float, float] | None = ...,
+        layer_flip_threshold: float | None = ...,
+        ime_offset: tuple[float, float] | None = ...,
     ) -> None:
         """M94: sets window properties -- `title`, and (0.4.0 M5)
         `partial_redraw`: `True` (the default) redraws only what changed
@@ -735,7 +740,11 @@ class Window:
         the kept frame; off by default. (0.5.4) `profile_nodes`: `True` times each
         node the paint walk reaches, so `frame_stats()['profile']` can say where
         the scene-building time went; off by default (it costs two clock reads a
-        node). (0.5.8) `touch_slop`: how far, in layout pixels, a finger may wander and still be
+        node). (0.6.12) `layer_viewport_margin` (a number, or `(top, right, bottom, left)`; default 0) and
+        `layer_flip_threshold` (pixels; default 0): the distance a flipped or shifted `show_layer` layer
+        keeps from the window's edge and the extra room its preferred side needs, for every layer that sets
+        none of its own (`None` sets 0). `ime_offset`: `(dx, dy)` layout pixels added to the caret box the
+        input method places its candidate window at (default `(0, 0)`). (0.5.8) `touch_slop`: how far, in layout pixels, a finger may wander and still be
         a tap or a long press (default 10); `touch_target_slop`: how far from a node that
         listens for touches a touch still counts as on it (default 0, off). (0.6.12) The other
         thresholds, each defaulting to the value it always had: `gesture_long_press_ms` (500, more
@@ -863,6 +872,12 @@ class Window:
         ],
     ) -> float: ...
     @overload
+    def get(self, name: Literal["layer_viewport_margin"]) -> tuple[float, float, float, float]: ...
+    @overload
+    def get(self, name: Literal["layer_flip_threshold"]) -> float: ...
+    @overload
+    def get(self, name: Literal["ime_offset"]) -> tuple[float, float]: ...
+    @overload
     def get(self, name: Literal["title"]) -> str: ...
     @overload
     def get(self, name: Literal["partial_redraw"]) -> bool: ...
@@ -948,6 +963,10 @@ class Window:
         dismissible: bool = True,
         offset: tuple[float, float] = ...,
         flip: bool = True,
+        viewport_margin: float | tuple[float, float, float, float] | None = None,
+        flip_threshold: float | None = None,
+        align: Literal["start", "center", "end"] = "start",
+        shift: bool | None = None,
     ) -> None:
         """M96: shows `node` over the window's content, above every layer
         already open. With `anchor`, it's placed against that node on the
@@ -958,7 +977,14 @@ class Window:
         layer's centre on that point of the anchor, never flipped or shifted.
         `offset=(dx, dy)` moves the point it attaches to, in the anchor's own
         coordinates (a scaled anchor scales it); `flip=False` keeps a side
-        placement from flipping or shifting too. `modal` blocks input beneath it and moves focus
+        placement from flipping or shifting too. (0.6.12) `viewport_margin` (a number of pixels, or
+        `(top, right, bottom, left)`) is the distance a flipped or shifted layer keeps from the window's
+        edges and `flip_threshold` the free space beyond its size the preferred side needs to keep it;
+        `None` (the default) follows `Window.set(layer_viewport_margin=, layer_flip_threshold=)` (both 0).
+        `align` lines the layer up with the anchor's `"start"`, `"center"` or `"end"` edge, and `shift=False`
+        stops it being moved inside the window (`None` follows `flip`). Once shown, `node.set`/`get` take
+        `layer_viewport_margin`, `layer_flip_threshold`, `layer_align`, `layer_flip` and `layer_shift`.
+        `modal` blocks input beneath it and moves focus
         into it; `dismissible` delivers `dismiss` to it on an outside press
         (which it consumes) or Escape (the topmost dismissible layer only).
         Events inside a layer stop at it, and it's its own Tab scope."""
@@ -1271,6 +1297,12 @@ class PopupWindow(Window):
     inside `size`; the default is the whole surface. A compositor that resizes the popup resizes the
     body: the surface follows with the same margins.
 
+    `edge_margin` (0.6.12, constructor only) is the clearance, a whole number of pixels or `(top, right,
+    bottom, left)`, the compositor keeps between the body and the output's edge when it flips or slides
+    the popup (default `None`: 0). It is taken from the transparent room around `geometry`, so a side
+    with less gets what there is (`get("edge_margin_applied")`) and a popup without `geometry` gets none;
+    `get("edge_margin")` reads the request.
+
     `input_region` (0.6.5, #282) is where the compositor delivers pointer and touch input, as in a
     `LayerWindow`: `None` (the default: the whole surface), `[]` (nothing), or rectangles
     `[(x, y, width, height), ...]` in the popup's own logical pixels, at most 256; or the string
@@ -1303,6 +1335,7 @@ class PopupWindow(Window):
         offset: tuple[int, int] | None = ...,
         grab: bool = ...,
         geometry: tuple[int, int, int, int] | None = ...,
+        edge_margin: int | tuple[int, int, int, int] | None = ...,
         input_region: Sequence[Sequence[float]] | Literal["geometry"] | None = ...,
         scheme: Literal["light", "dark", "auto"] | None = ...,
         first_present: Literal["immediate", "on_ready"] | int | None = ...,

@@ -316,15 +316,122 @@ pub struct PopupConfig {
     /// The compositor places and constrains this rectangle and ignores the rest of the surface
     /// (a transparent shadow margin). `None` is the whole surface.
     pub geometry: Option<Rect>,
+    /// 0.6.12 (P10): `(top, right, bottom, left)`, the distance in logical pixels the compositor
+    /// keeps between the body and the edge of the output when it flips or slides the popup. The
+    /// compositor constrains the window geometry, so the margin is the transparent space the
+    /// surface keeps around the body (`geometry`): a side with less is kept as far as it goes
+    /// (see [`PopupConfig::edge_fit`]). `(0, 0, 0, 0)`, the default, is what popups always did.
+    pub edge_margin: (i32, i32, i32, i32),
     /// #282: where the compositor delivers input, `(x, y, width, height)` rectangles in the
     /// popup's own logical pixels (margin included). `None` is the whole surface, `Some(vec![])`
     /// nothing, so a click in a shadow margin can reach the window below.
     pub input_region: Option<Vec<Rect>>,
 }
 
+/// 0.6.12 (P10): what the positioner is given for a popup with an `edge_margin`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EdgeFit {
+    /// The margin that fits in the surface, `(top, right, bottom, left)`.
+    pub applied: (i32, i32, i32, i32),
+    /// The window geometry and positioner size: the body grown by `applied`.
+    pub geometry: Rect,
+    /// The anchor rectangle, moved so the body, not the grown rectangle, lands where the
+    /// unmargined popup would, flipped or not.
+    pub anchor_rect: Rect,
+}
+
+/// One axis' side of an anchor or gravity.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Low,
+    Middle,
+    High,
+}
+
+impl PopupEdge {
+    fn sides(self) -> (Side, Side) {
+        use PopupEdge::*;
+        let x = match self {
+            Left | TopLeft | BottomLeft => Side::Low,
+            Right | TopRight | BottomRight => Side::High,
+            _ => Side::Middle,
+        };
+        let y = match self {
+            Top | TopLeft | TopRight => Side::Low,
+            Bottom | BottomLeft | BottomRight => Side::High,
+            _ => Side::Middle,
+        };
+        (x, y)
+    }
+}
+
+/// The anchor rectangle's `(start, length)` on one axis, moved for a popup grown by `before` and
+/// `after` on that axis. The positioner puts the grown rectangle's edge on the anchor edge; a
+/// popup that extends away from the edge it attaches to (anchor and gravity on the same side)
+/// needs the edge pulled back by the margin to keep the body on it, one on the other side needs the
+/// rectangle grown by both margins, so that the flipped popup (anchor and gravity both inverted) is
+/// as far from it. A popup centred on the anchor point moves by half the difference; a centred
+/// anchor with an edge gravity cannot be right both ways and is left alone.
+fn grow_axis(
+    start: i32,
+    len: i32,
+    before: i32,
+    after: i32,
+    anchor: Side,
+    gravity: Side,
+) -> (i32, i32) {
+    match (anchor, gravity) {
+        (_, Side::Middle) => (start + (after - before) / 2, len),
+        (Side::Middle, _) => (start, len),
+        (a, g) if a == g => {
+            if len >= before + after {
+                (start + after, len - before - after)
+            } else {
+                // Narrower than the margins: a point in the middle.
+                (start + len / 2, 0)
+            }
+        }
+        _ => (start - before, len + before + after),
+    }
+}
+
 impl PopupConfig {
+    /// 0.6.12 (P10): the window geometry, positioner size and anchor rectangle that give the body
+    /// `edge_margin` of clearance from the output's edge: the body grown by the margin on each
+    /// side, as far as the surface has transparent room (`geometry`; a popup without one has none,
+    /// its whole surface is the body).
+    pub fn edge_fit(&self) -> EdgeFit {
+        let (sw, sh) = (self.size.0 as i32, self.size.1 as i32);
+        let (gx, gy, gw, gh) = self.geometry.unwrap_or((0, 0, sw, sh));
+        let (top, right, bottom, left) = self.edge_margin;
+        let applied = (
+            top.clamp(0, gy),
+            right.clamp(0, (sw - gx - gw).max(0)),
+            bottom.clamp(0, (sh - gy - gh).max(0)),
+            left.clamp(0, gx),
+        );
+        let (t, r, b, l) = applied;
+        let (x, y, w, h) = self.anchor_rect;
+        let ((anchor_x, anchor_y), (gravity_x, gravity_y)) =
+            (self.anchor.sides(), self.gravity.sides());
+        let (rx, rw) = grow_axis(x, w, l, r, anchor_x, gravity_x);
+        let (ry, rh) = grow_axis(y, h, t, b, anchor_y, gravity_y);
+        EdgeFit {
+            applied,
+            geometry: (gx - l, gy - t, gw + l + r, gh + t + b),
+            anchor_rect: (rx, ry, rw, rh),
+        }
+    }
+
     /// Refuses what the protocol would answer with a fatal error, naming the key.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        let (t, r, b, l) = self.edge_margin;
+        if t < 0 || r < 0 || b < 0 || l < 0 {
+            return Err(error(
+                "edge_margin",
+                "must be a number of pixels, zero or more, or (top, right, bottom, left)",
+            ));
+        }
         if self.size.0 == 0 || self.size.1 == 0 {
             return Err(error("size", "must be a width and a height above 0"));
         }
@@ -679,9 +786,18 @@ mod tests {
             offset: (0, 0),
             grab: true,
             geometry: None,
+            edge_margin: (0, 0, 0, 0),
             input_region: None,
         };
         assert!(ok.validate().is_ok());
+        assert!(
+            PopupConfig {
+                edge_margin: (0, -1, 0, 0),
+                ..ok.clone()
+            }
+            .validate()
+            .is_err()
+        );
         assert!(
             PopupConfig {
                 size: (0, 50),
@@ -738,5 +854,78 @@ mod tests {
                 "{bad:?}"
             );
         }
+    }
+
+    /// A 120 x 80 popup whose 100 x 60 body sits 10 px in from every side, placed from a 40 x 20
+    /// anchor rectangle at (200, 100).
+    fn margined(
+        anchor: PopupEdge,
+        gravity: PopupEdge,
+        edge_margin: (i32, i32, i32, i32),
+    ) -> PopupConfig {
+        PopupConfig {
+            parent: 1,
+            size: (120, 80),
+            anchor_rect: (200, 100, 40, 20),
+            anchor,
+            gravity,
+            adjustments: adjust::FLIP_Y | adjust::SLIDE_X,
+            offset: (0, 0),
+            grab: true,
+            geometry: Some((10, 10, 100, 60)),
+            edge_margin,
+            input_region: None,
+        }
+    }
+
+    #[test]
+    fn no_edge_margin_leaves_the_positioner_as_it_was() {
+        let fit = margined(PopupEdge::BottomLeft, PopupEdge::BottomRight, (0, 0, 0, 0)).edge_fit();
+        assert_eq!(fit.applied, (0, 0, 0, 0));
+        assert_eq!(fit.geometry, (10, 10, 100, 60));
+        assert_eq!(fit.anchor_rect, (200, 100, 40, 20));
+    }
+
+    #[test]
+    fn the_margin_grows_the_geometry_as_far_as_the_surface_has_room() {
+        let fit = margined(PopupEdge::BottomLeft, PopupEdge::BottomRight, (8, 4, 25, 8)).edge_fit();
+        // 25 below does not fit in 10: clamped.
+        assert_eq!(fit.applied, (8, 4, 10, 8));
+        assert_eq!(fit.geometry, (2, 2, 112, 78));
+        // Without `geometry` the whole surface is the body and nothing is left to grow into.
+        let mut plain = margined(PopupEdge::BottomLeft, PopupEdge::BottomRight, (8, 8, 8, 8));
+        plain.geometry = None;
+        let fit = plain.edge_fit();
+        assert_eq!(fit.applied, (0, 0, 0, 0));
+        assert_eq!(fit.geometry, (0, 0, 120, 80));
+    }
+
+    #[test]
+    fn the_anchor_rectangle_follows_where_the_body_attaches() {
+        // Below the rectangle (anchor bottom, gravity bottom) and left-aligned (anchor left,
+        // gravity right): y shrinks by both margins, x grows by both, so a flip above or right
+        // keeps the body against the rectangle too.
+        let fit = margined(PopupEdge::BottomLeft, PopupEdge::BottomRight, (8, 6, 4, 2)).edge_fit();
+        assert_eq!(fit.anchor_rect, (200 - 2, 100 + 4, 40 + 2 + 6, 20 - 8 - 4));
+        // The mirror: above and right-aligned.
+        let fit = margined(PopupEdge::TopRight, PopupEdge::TopLeft, (8, 6, 4, 2)).edge_fit();
+        assert_eq!(fit.anchor_rect, (200 - 2, 100 + 4, 40 + 2 + 6, 20 - 8 - 4));
+        // A rectangle thinner than the margins becomes a point in its middle.
+        let mut thin = margined(PopupEdge::BottomLeft, PopupEdge::BottomRight, (8, 6, 8, 2));
+        thin.anchor_rect = (200, 100, 40, 10);
+        assert_eq!(
+            thin.edge_fit().anchor_rect.1..=thin.edge_fit().anchor_rect.1 + 1,
+            105..=106
+        );
+        assert_eq!(thin.edge_fit().anchor_rect.3, 0);
+    }
+
+    #[test]
+    fn a_popup_centred_on_the_anchor_moves_by_half_the_difference() {
+        let fit = margined(PopupEdge::Bottom, PopupEdge::None, (0, 6, 0, 2)).edge_fit();
+        assert_eq!(fit.anchor_rect.0, 200 + 2);
+        // A centred anchor with an edge gravity is left alone.
+        let fit = margined(PopupEdge::None, PopupEdge::BottomRight, (8, 6, 4, 2)).edge_fit();
+        assert_eq!(fit.anchor_rect, (200, 100, 40, 20));
     }
 }

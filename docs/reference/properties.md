@@ -309,6 +309,49 @@ Cost: a node with an outline widens the area it repaints by the larger of its tw
 whichever state it is in), so a partial redraw stays exact when focus or `outline_*` change; a node with none pays
 nothing.
 
+## Layer placement policy (0.6.12)
+
+How a [layer](layers.md) (`show_layer`) is kept in the window is a set of properties, not a rule baked into
+the engine. Spec: Tesserae UX "Anchored Placement" (flip: the preferred side has less free space than the
+layer plus the gap and the opposite side has more; shift: the layer is moved along the other axis to keep the
+viewport margin). The defaults are what layers always did (margin 0, slack 0, aligned to the anchor's start,
+flip and shift on), so nothing changes unless you set one. The UX note's design choice is a viewport margin of
+`8` (`space.3`): `window.set(layer_viewport_margin=8)` once, and every layer keeps 8 px from the window edge.
+
+| Property | Where | Value | Default |
+| --- | --- | --- | --- |
+| `layer_viewport_margin` | `Window.set`/`get` | The distance a flipped or shifted layer keeps from each window edge, in layout pixels: a number (every side) or `(top, right, bottom, left)`, each zero or more. `None` sets 0. Reads as `(top, right, bottom, left)`. | `0` |
+| `layer_flip_threshold` | `Window.set`/`get` | The free space beyond its own size (px, zero or more) the preferred side must have before the layer stays on it. `None` sets 0. | `0` |
+| `ime_offset` | `Window.set`/`get` | `(dx, dy)` layout pixels added to the caret box the input method puts its candidate window at (`None` sets `(0, 0)`). | `(0, 0)` |
+
+The same placement policy per layer, as `show_layer` arguments and, once the layer is shown, node properties
+(`node.set(...)`/`node.get(...)`; a node that is not a shown layer raises `ValueError` on `set` and reads `None`):
+
+| `show_layer` argument | Node property | Value | Default |
+| --- | --- | --- | --- |
+| `viewport_margin` | `layer_viewport_margin` | As the window's; `None` follows the window's. A read gives the value in force. | `None` |
+| `flip_threshold` | `layer_flip_threshold` | As the window's; `None` follows the window's. | `None` |
+| `align` | `layer_align` | `"start"`, `"center"` or `"end"`: which edge of the anchor a layer on one of its sides lines up with (left/right for `"below"`/`"above"`, top/bottom for `"start"`/`"end"`). A point placement ignores it. | `"start"` |
+| `flip` | `layer_flip` | Whether the layer may go to the opposite side. | `True` |
+| `shift` | `layer_shift` | Whether the layer is moved to stay inside the window less the margin. `shift=None` in `show_layer` follows `flip`, as `flip=False` always pinned the layer. | `True` (`flip` when not given) |
+
+The room on a side is measured to the window edge **less the viewport margin on that side** (above and start:
+the anchor's top or left less the margin), so a margin also makes a layer flip before it would have to be pushed
+over its anchor. A layer then flips when the preferred side's room is below the layer's size plus
+`flip_threshold` and the opposite side has more room than the preferred one. After the flip it is shifted
+along both axes to keep the margin; a layer larger than the window less its margins sits at the top or left
+margin. Changing the window's value or a layer's places the layers again at the next layout. `offset` is added
+before the shift. Point placements (`top_start`, ..., `center`) never flip or shift. Invalid values raise
+`ValueError`.
+
+```python
+window.set(layer_viewport_margin=8)                     # the UX spec's design choice, set once
+window.show_layer(menu, anchor=button)                  # keeps 8 px from every window edge
+window.show_layer(tip, anchor=icon, placement="above",
+                  flip_threshold=4, align="center")     # centred on the icon, flips with 4 px to spare
+menu.set(layer_viewport_margin=(8, 8, 16, 8))           # more room above a bottom bar
+```
+
 ## Text
 
 On `text` and `text_input` unless noted.
@@ -592,6 +635,7 @@ accessibility properties (`role`, `label`, `checked`, ...) is on [Node](node.md#
 | `kind` | The node's kind, by the name `create` takes — `"box"`, `"text"`, `"text_input"`, ... |
 | `focused` | Whether the node has keyboard focus |
 | `layer_placement` | A shown [layer](layers.md)'s side or point of its anchor — `"below"`, `"above"`, `"start"`, `"end"`, or (0.5.7) `"top_start"`, `"top_end"`, `"bottom_start"`, `"bottom_end"`, `"center"` — or `None` |
+| `layer_viewport_margin`, `layer_flip_threshold`, `layer_align`, `layer_flip`, `layer_shift` | (0.6.12) A shown layer's placement policy as in force (also settable on the layer: [Layer placement policy](#layer-placement-policy-0612)); `None` on a node that is not a layer |
 | `layout_x`, `layout_y` | The node's position in the window, as drawn — its own and its ancestors' transforms included |
 | `layout_width`, `layout_height` | Its computed size, before any `scale` |
 

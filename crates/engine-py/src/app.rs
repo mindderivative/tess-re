@@ -2035,6 +2035,13 @@ impl App {
                 // 0.5.6 (#162): the IME's candidate window goes at the caret, and a
                 // password field tells it not to learn from the text.
                 let ime = crate::caret::ime_state(&runtime.handles.tree, &mut runtime.ime_cache);
+                // 0.6.12 (P10): `ime_offset` moves the candidate window from the caret box.
+                let ime = ime.map(|mut state| {
+                    let (dx, dy) = runtime.handles.ime_offset.get();
+                    state.area.0 += dx;
+                    state.area.1 += dy;
+                    state
+                });
                 if ime != runtime.ime {
                     if let Some(os) = runtime.handles.os_window.borrow().as_ref() {
                         let scale = runtime.handles.scale.get();

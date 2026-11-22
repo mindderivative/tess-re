@@ -633,6 +633,9 @@ enum Role {
         /// #266: the body `(x, y, width, height)` the compositor places, when it is not the
         /// whole surface; the rest is a transparent margin.
         geometry: Option<crate::layer_config::Rect>,
+        /// 0.6.12 (P10): the `edge_margin` that fit, `(top, right, bottom, left)`: the window
+        /// geometry the compositor places is the body grown by it.
+        edge: (i32, i32, i32, i32),
     },
 }
 
@@ -1008,12 +1011,13 @@ impl State {
         let Ok(positioner) = XdgPositioner::new(xdg) else {
             return fail(self, "this compositor would not make an xdg_positioner");
         };
-        let (width, height) = (config.size.0 as i32, config.size.1 as i32);
         // #266: the positioner's size is the window geometry's, so a popup with a shadow margin
         // is placed by its body.
-        let (gx, gy, gw, gh) = config.geometry.unwrap_or((0, 0, width, height));
+        // 0.6.12 (P10): an `edge_margin` grows it, and the anchor rectangle moves with it.
+        let fit = config.edge_fit();
+        let (gx, gy, gw, gh) = fit.geometry;
         positioner.set_size(gw, gh);
-        let (x, y, w, h) = config.anchor_rect;
+        let (x, y, w, h) = fit.anchor_rect;
         positioner.set_anchor_rect(x, y, w, h);
         positioner.set_anchor(positioner_anchor(config.anchor));
         positioner.set_gravity(positioner_gravity(config.gravity));
@@ -1078,6 +1082,7 @@ impl State {
                     popup,
                     parent: config.parent,
                     geometry: config.geometry,
+                    edge: fit.applied,
                 },
                 config: LayerConfig {
                     size: config.size,
@@ -1698,27 +1703,38 @@ impl PopupHandler for State {
             surf.size = (w as u32, h as u32);
             // #266: the compositor's size is the body's (it may have resized it); the surface is
             // the body plus the same margins it was made with, and the geometry follows.
+            // 0.6.12 (P10): what the compositor sized and placed is the body grown by the
+            // `edge_margin` that fit, so the body is `edge` smaller and `edge` further in.
+            let mut edge = (0, 0, 0, 0);
             if let Role::Popup {
                 popup,
                 geometry: Some((gx, gy, gw, gh)),
+                edge: fitted,
                 ..
             } = &surf.role
             {
+                edge = *fitted;
+                let (t, r, b, l) = edge;
                 let margin = (
                     surf.config.size.0 as i32 - gw,
                     surf.config.size.1 as i32 - gh,
                 );
-                popup.xdg_surface().set_window_geometry(*gx, *gy, w, h);
-                surf.size = ((w + margin.0).max(1) as u32, (h + margin.1).max(1) as u32);
+                popup
+                    .xdg_surface()
+                    .set_window_geometry(*gx - l, *gy - t, w, h);
+                surf.size = (
+                    (w - l - r + margin.0).max(1) as u32,
+                    (h - t - b + margin.1).max(1) as u32,
+                );
             }
+            // Where the compositor put it, in the parent's coordinates: before the size, so
+            // the app hears both together.
+            self.emit(LayerEvent::PopupPlaced {
+                id,
+                x: config.position.0 + edge.3,
+                y: config.position.1 + edge.0,
+            });
         }
-        // Where the compositor put it, in the parent's coordinates: before the size, so the
-        // app hears both together.
-        self.emit(LayerEvent::PopupPlaced {
-            id,
-            x: config.position.0,
-            y: config.position.1,
-        });
         self.announce(id, true);
     }
 

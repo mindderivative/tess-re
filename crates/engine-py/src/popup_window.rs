@@ -50,6 +50,7 @@ const FIXED: &[&str] = &[
     "offset",
     "grab",
     "geometry",
+    "edge_margin",
 ];
 
 /// `input_region`: `None` (the whole surface), `[]` (nothing), rectangles in the popup's own
@@ -102,6 +103,25 @@ fn pair_i32(key: &str, value: &Bound<'_, PyAny>) -> PyResult<(i32, i32)> {
         .map_err(|_| bad(key, "must be two whole numbers"))
 }
 
+/// 0.6.12 (P10): `edge_margin`, whole pixels, zero or more: one number for every side or
+/// `(top, right, bottom, left)`.
+fn parse_edge_margin(value: &Bound<'_, PyAny>) -> PyResult<(i32, i32, i32, i32)> {
+    let expected = "a whole number of pixels, zero or more, or (top, right, bottom, left)";
+    if value.is_instance_of::<pyo3::types::PyBool>() {
+        return Err(bad("edge_margin", &format!("must be {expected}")));
+    }
+    let sides = match value.extract::<i32>() {
+        Ok(all) => (all, all, all, all),
+        Err(_) => value
+            .extract::<(i32, i32, i32, i32)>()
+            .map_err(|_| bad("edge_margin", &format!("must be {expected}")))?,
+    };
+    if sides.0 < 0 || sides.1 < 0 || sides.2 < 0 || sides.3 < 0 {
+        return Err(bad("edge_margin", &format!("must be {expected}")));
+    }
+    Ok(sides)
+}
+
 /// The parent's layer-thread state, from a `LayerWindow` or a `PopupWindow`.
 fn parent_state(parent: &Bound<'_, PyAny>) -> PyResult<Rc<LayerState>> {
     let window = parent
@@ -134,6 +154,7 @@ impl PyPopupWindow {
         offset = None,
         grab = true,
         geometry = None,
+        edge_margin = None,
         input_region = None,
         scheme = None,
         first_present = None,
@@ -150,6 +171,7 @@ impl PyPopupWindow {
         offset: Option<&Bound<'_, PyAny>>,
         grab: bool,
         geometry: Option<&Bound<'_, PyAny>>,
+        edge_margin: Option<&Bound<'_, PyAny>>,
         input_region: Option<&Bound<'_, PyAny>>,
         scheme: Option<&Bound<'_, PyAny>>,
         first_present: Option<&Bound<'_, PyAny>>,
@@ -223,6 +245,10 @@ impl PyPopupWindow {
                     })?)
                 }
                 _ => None,
+            },
+            edge_margin: match edge_margin {
+                Some(value) if !value.is_none() => parse_edge_margin(value)?,
+                _ => (0, 0, 0, 0),
             },
             input_region: None,
         };
@@ -320,7 +346,7 @@ impl PyPopupWindow {
     }
 
     /// Reads a popup setting (`size`, `anchor_rect`, `anchor`, `gravity`,
-    /// `constraint_adjustment`, `offset`, `grab`, `geometry`, `input_region`), where the compositor put it (`position`, in
+    /// `constraint_adjustment`, `offset`, `grab`, `geometry`, `edge_margin`, `edge_margin_applied`, `input_region`), where the compositor put it (`position`, in
     /// the parent's coordinates, `None` until it is placed), or anything `Window.get` reads.
     fn get(slf: &Bound<'_, Self>, name: &str) -> PyResult<Py<PyAny>> {
         let py = slf.py();
@@ -351,6 +377,8 @@ impl PyPopupWindow {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind(),
+            "edge_margin" => c.edge_margin.into_pyobject(py)?.into_any().unbind(),
+            "edge_margin_applied" => c.edge_fit().applied.into_pyobject(py)?.into_any().unbind(),
             "input_region" => match &state.config.borrow().input_region {
                 None => py.None(),
                 Some(rects) => pyo3::types::PyList::new(py, rects.iter().copied())?

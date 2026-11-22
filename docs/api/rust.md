@@ -275,6 +275,23 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- |
 | `fn new(size: f64) -> Self` | Creates an empty zone with the given size. |
 
+### Edges { #edges }
+
+*struct.* A distance for each side of a window, in layout pixels (`viewport_margin`).
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `left` | `f64` |  |
+| `top` | `f64` |  |
+| `right` | `f64` |  |
+| `bottom` | `f64` |  |
+
+| Method | Description |
+| --- | --- |
+| `fn all(distance: f64) -> Self` | The same distance on every side. |
+
 ### FitContent { #fitcontent }
 
 *struct.* Which sides of a text node are the size of its text, written `width="fit-content"` and `height="fit-content"`.
@@ -407,6 +424,17 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn matches(&self, key: &str, held: Modifiers) -> bool` | Whether `key` (an `InputEvent::Key` name) pressed with exactly `held` is this chord. |
 | `fn name(&self) -> String` | The chord as `parse` reads it, modifiers in the order ctrl, shift, alt, meta. |
 | `fn parse(text: &str) -> Result<KeyChord, String>` | Parses `ctrl+shift+escape`. |
+
+### LayerDefaults { #layerdefaults }
+
+*struct.* The window-wide policy a layer follows when it sets none of its own (`Window.layer_viewport_margin`, `Window.layer_flip_threshold`).
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `viewport_margin` | `Edges` |  |
+| `flip_threshold` | `f64` |  |
 
 ### LayoutAnim { #layoutanim }
 
@@ -546,7 +574,11 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `placement` | `Option<Placement>` | The side of the anchor the overlay prefers. |
 | `placed` | `Option<Placement>` | The side the last layout actually used. |
 | `offset` | `(f64, f64)` | Moves the point of the anchor the layer attaches to, in the anchor's own coordinates (a scaled anchor scales it). |
-| `pinned` | `bool` | `true` never flips the layer to the other side or shifts it to fit the window, so it stays where it was placed. |
+| `no_flip` | `bool` | `true` never flips the layer to the other side. |
+| `no_shift` | `bool` | `true` never moves the layer to keep it inside the window. |
+| `align` | `Align` | Which edge of the anchor the layer lines up with. |
+| `viewport_margin` | `Option<Edges>` | The distance the layer keeps from each window edge when it flips or shifts; `None` follows `Tree::layer_defaults`. |
+| `flip_threshold` | `Option<f64>` | The extra free space the preferred side needs before the layer stays on it; `None` follows `Tree::layer_defaults`. |
 | `restore_focus` | `Option<NodeId>` | The node to give focus back to when the overlay closes. |
 
 ### Overrides { #overrides }
@@ -657,6 +689,25 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn names(&self) -> Vec<&str>` | The parameter names it uses, each once, in order of first use. |
 | `fn parse(text: &str) -> Result<Self, String>` | Parses a template: every `{` closes with a `}` and holds an expression. |
 | `fn source(&self) -> &str` | The template as written. |
+
+### PlaceInput { #placeinput }
+
+*struct.* Everything `place` needs to put a layer against its anchor.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `window` | `(f64, f64)` | The window's size. |
+| `target` | `AnchorBox` | The anchor's box in window space. |
+| `size` | `(f64, f64)` | The layer's size. |
+| `offset` | `(f64, f64)` | The anchor offset, already in window space. |
+| `preferred` | `Placement` |  |
+| `align` | `Align` |  |
+| `flip` | `bool` | The layer may go to the opposite side when the preferred one lacks room. |
+| `shift` | `bool` | The layer is moved to keep inside the window (less the margin). |
+| `margin` | `Edges` | The distance a flipped or shifted layer keeps from each window edge. |
+| `flip_threshold` | `f64` | The extra free space the preferred side must have beyond the layer's own size before the layer stays on it. |
 
 ### ResolvedPalette { #resolvedpalette }
 
@@ -1478,6 +1529,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn insert_child(&mut self, parent: NodeId, index: usize, child: NodeId) -> bool` | Attaches a child under a parent at a given position in its child list. |
 | `fn is_dirty(&self) -> bool` | Whether a frame is owed, without taking the flag. |
 | `fn is_layer(&self, id: NodeId) -> bool` | Returns whether a node is an open layer or overlay. |
+| `fn layer_defaults(&self) -> LayerDefaults` | The policy a layer follows when it sets no viewport margin or flip threshold of its own. |
 | `fn layout(&self, id: NodeId) -> &Layout` | Returns a node's computed layout box from the last layout pass. |
 | `fn layout_epoch(&self) -> u64` | How many times a layout has been computed. |
 | `fn layout_target(&self, id: NodeId, prop: LayoutProp) -> Option<f64>` | Where `id`'s running animation of `prop` is heading. |
@@ -1531,6 +1583,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn set_held_modifiers(&mut self, held: Modifiers)` | Tells the tree which modifier keys are held; the window calls it before each event. |
 | `fn set_hit_testable(&mut self, id: NodeId, hit_testable: Option<bool>)` | Sets whether a node can claim a hit by itself. |
 | `fn set_hovered(&mut self, hit: Option<NodeId>) -> Option<NodeId>` | Sets the hovered node and returns the previous one if it changed. |
+| `fn set_layer_defaults(&mut self, defaults: LayerDefaults)` | Sets that policy; every layer without its own is placed again at the next layout. |
 | `fn set_layout_style(&mut self, id: NodeId, style: Style)` | Updates a node's layout style and keeps the layout engine in sync. |
 | `fn set_margin_drag_allowed(&mut self, allowed: bool)` |  |
 | `fn set_os_reduced_motion(&mut self, reduced: bool)` | What the OS asks for (the window reads it at creation and on each change, `InputEvent::ReducedMotionChanged`). |
@@ -1575,6 +1628,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn tick_all(&mut self, now: Instant) -> (bool, Vec<CompletionHandle>)` | Advances every animation to the given time and returns finished ones. |
 | `fn try_add_child(&mut self, parent: NodeId, child: NodeId) -> bool` | Attaches a child under a parent unless that would create a cycle. |
 | `fn update_hover(&mut self, root: NodeId, point: Point) -> Option<NodeId>` | Updates the hovered node from a pointer position and returns the old one if it changed. |
+| `fn update_layer(&mut self, id: NodeId, edit: impl FnOnce(&mut OverlayMeta)) -> bool` | Replaces the open layer `id`'s placement policy (`viewport_margin`, `flip_threshold`, `align`, `no_flip`, `no_shift`; the rest of its meta is kept)… |
 | `fn virtual_list_adopt(&mut self, list: NodeId, index: usize, row: NodeId) -> bool` | Attaches a caller-built node as a given row of a virtual list. |
 | `fn virtual_list_release_outside(&mut self, list: NodeId, keep: Range<usize>) -> Vec<NodeId>` | Detaches the list's rows outside a range and returns them, still alive. |
 | `fn virtual_list_visible(&self, list: NodeId) -> Range<usize>` | Returns the range of rows a virtual list's viewport currently shows. |
@@ -1616,6 +1670,18 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | --- | --- | --- |
 | `Text` | `(String)` | A text value. |
 | `Number` | `(f64)` | A numeric value, such as a slider position. |
+
+### Align { #align }
+
+*enum.* Which edge of the anchor a layer placed on one of its sides lines up with, on the axis along that side: `Start` (left or top, the default and what…
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Variant | Payload | Description |
+| --- | --- | --- |
+| `Start` |  |  |
+| `Center` |  |  |
+| `End` |  |  |
 
 ### Arrows { #arrows }
 
@@ -2238,6 +2304,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn is_point(self) -> bool` | Whether this names a point of the anchor (a corner or its centre) rather than a side of it. |
 | `fn opposite(self) -> Self` | Returns the placement on the opposite side of the anchor. |
 | `fn origin(self, anchor: AnchorBox, w: f64, h: f64) -> (f64, f64)` | Where a node `w` x `h` goes against `anchor`, as its top-left corner, before any offset. |
+| `fn origin_aligned(self, anchor: AnchorBox, w: f64, h: f64, align: Align) -> (f64, f64)` | `origin` with the node aligned to the anchor's `align` edge (or its middle) on the axis along the anchor's side; a point ignores it. |
 
 ### PointerButton { #pointerbutton }
 
@@ -2758,6 +2825,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn frame_block(size: (f32, f32), time: f32, scale: f32) -> [u8; 16]` | Returns the bytes of the per-frame shader uniform block for a size and time. |
 | `fn from_access_id(id: NodeId) -> NodeId` | Converts an accessibility node id back into a tree node id. |
 | `fn node_id_as_u64(id: NodeId) -> u64` | Returns a stable u64 for a node id. |
+| `fn place(input: &PlaceInput) -> (f64, f64, Placement)` | Where a layer goes, as its top-left corner in window space, and the side it ended on. |
 | `fn shader_animations_pending() -> bool` | Whether any shader has a uniform animation running or waiting to start. |
 | `fn take_cancelled(owned: impl Fn(CompletionHandle) -> bool) -> Vec<CompletionHandle>` | Takes the cancelled-animation handles `owned` claims; the rest stay for their own window. |
 | `fn to_access_id(id: NodeId) -> NodeId` | Converts a tree node id into a stable accessibility node id. |
@@ -3285,6 +3353,18 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `key` | `&'static str` |  |
 | `message` | `String` |  |
 
+### EdgeFit { #edgefit }
+
+*struct.* What the positioner is given for a popup with an `edge_margin`.
+
+**Implements:** [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html), [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html), [`Eq`](https://doc.rust-lang.org/std/cmp/trait.Eq.html)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `applied` | `(i32, i32, i32, i32)` | The margin that fits in the surface, `(top, right, bottom, left)`. |
+| `geometry` | `Rect` | The window geometry and positioner size: the body grown by `applied`. |
+| `anchor_rect` | `Rect` | The anchor rectangle, moved so the body, not the grown rectangle, lands where the unmargined popup would, flipped or not. |
+
 ### EventLoopWaker { #eventloopwaker }
 
 *struct.* A thread-safe handle that background code uses to wake or steer the event loop.
@@ -3462,10 +3542,12 @@ The `winit` event loop, window creation, platform input translation and the acce
 | `offset` | `(i32, i32)` | A fixed shift after placement, in logical pixels. |
 | `grab` | `bool` | Whether the popup grabs the keyboard and pointer, so an outside click or Escape ends it. |
 | `geometry` | `Option<Rect>` | The popup's body, `(x, y, width, height)` in the popup's own pixels, inside `size`. |
+| `edge_margin` | `(i32, i32, i32, i32)` | `(top, right, bottom, left)`, the distance in logical pixels the compositor keeps between the body and the edge of the output when it flips or… |
 | `input_region` | `Option<Vec<Rect>>` | Where the compositor delivers input, `(x, y, width, height)` rectangles in the popup's own logical pixels (margin included). |
 
 | Method | Description |
 | --- | --- |
+| `fn edge_fit(&self) -> EdgeFit` | The window geometry, positioner size and anchor rectangle that give the body `edge_margin` of clearance from the output's edge: the body grown by… |
 | `fn validate(&self) -> Result<(), ConfigError>` | Refuses what the protocol would answer with a fatal error, naming the key. |
 
 ### RawPtr { #rawptr }

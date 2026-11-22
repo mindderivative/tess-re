@@ -181,6 +181,9 @@ pub(crate) struct WindowHandles {
     /// (`pointer_cancel`), so its release, if the platform delivers one at
     /// all, reaches no listener. The next press clears it.
     pub(crate) press_cancelled: Rc<Cell<bool>>,
+    /// 0.6.12 (P10): `ime_offset`, `(dx, dy)` in layout pixels added to the caret box the
+    /// input method places its candidate window at.
+    pub(crate) ime_offset: Rc<Cell<(f64, f64)>>,
     /// 0.5.4 (#113): this window's fingers and gesture recognizer.
     pub(crate) touch: Rc<RefCell<crate::touch::TouchRouter>>,
     /// 0.6.12 (P6): multi-click time and distance, and the drag start distance.
@@ -416,6 +419,7 @@ impl PyWindow {
                 min_size: Rc::new(Cell::new((0.0, 0.0))),
                 icon: Rc::new(RefCell::new(None)),
                 press_cancelled: Rc::new(Cell::new(false)),
+                ime_offset: Rc::new(Cell::new((0.0, 0.0))),
                 touch: Rc::new(RefCell::new(crate::touch::TouchRouter::default())),
                 pointer: Rc::new(Default::default()),
                 text_interaction: Rc::new(RefCell::new(Default::default())),

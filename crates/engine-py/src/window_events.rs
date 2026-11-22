@@ -452,7 +452,8 @@ const SETTABLE: &str = "title, partial_redraw, show_damage, profile_nodes, glyph
 touch_slop, touch_target_slop, pause_when_occluded, reduced_motion, scheme, scheme_colors, background, \
     gesture_long_press_ms, gesture_tap_ms, gesture_double_tap_ms, gesture_double_tap_px, \
     gesture_swipe_speed, gesture_swipe_px, gesture_rotate_slop, multi_click_ms, multi_click_px, \
-    drag_start_px";
+    drag_start_px, \
+    layer_viewport_margin, layer_flip_threshold, ime_offset";
 
 /// 0.5.8 (#132): a distance in layout pixels, zero or more.
 fn extract_distance(name: &str, value: &Bound<'_, PyAny>) -> PyResult<f64> {
@@ -939,6 +940,7 @@ impl PyWindow {
         let mut scheme = None;
         let mut scheme_colors = None;
         let mut background = None;
+        let (mut layer_margin, mut layer_threshold, mut ime_offset) = (None, None, None);
         if let Some(props) = props {
             for (name, value) in props.iter() {
                 let name: String = name.extract()?;
@@ -1064,6 +1066,42 @@ impl PyWindow {
                         thresholds
                             .extend(crate::pointer_settings::Threshold::parse(&name, &value)?);
                     }
+                    // 0.6.12 (P10): the placement policy a layer follows unless it sets its own;
+                    // `None` is the default, 0.
+                    "layer_viewport_margin" => {
+                        layer_margin = Some(if value.is_none() {
+                            engine_core::Edges::default()
+                        } else {
+                            crate::layer_policy::parse_margin("window property", &name, &value)?
+                        });
+                    }
+                    "layer_flip_threshold" => {
+                        layer_threshold = Some(if value.is_none() {
+                            0.0
+                        } else {
+                            crate::layer_policy::parse_threshold("window property", &name, &value)?
+                        });
+                    }
+                    // 0.6.12 (P10): shifts where the input method puts its candidate window.
+                    "ime_offset" => {
+                        ime_offset = Some(if value.is_none() {
+                            (0.0, 0.0)
+                        } else {
+                            value
+                                .extract::<(f64, f64)>()
+                                .ok()
+                                .filter(|(x, y)| {
+                                    x.is_finite()
+                                        && y.is_finite()
+                                        && !value.is_instance_of::<pyo3::types::PyBool>()
+                                })
+                                .ok_or_else(|| {
+                                    PyValueError::new_err(
+                                        "window property `ime_offset` must be a pair of numbers (dx, dy) or None",
+                                    )
+                                })?
+                        });
+                    }
                     // 0.6.11: `None` follows the app's scheme again.
                     "scheme" => {
                         scheme = Some(if value.is_none() {
@@ -1158,6 +1196,16 @@ impl PyWindow {
             let mut tree = self.handles.tree.borrow_mut();
             tree.set_reduced_motion_override(choice);
             tree.mark_dirty();
+        }
+        if layer_margin.is_some() || layer_threshold.is_some() {
+            let mut tree = self.handles.tree.borrow_mut();
+            let mut defaults = tree.layer_defaults();
+            defaults.viewport_margin = layer_margin.unwrap_or(defaults.viewport_margin);
+            defaults.flip_threshold = layer_threshold.unwrap_or(defaults.flip_threshold);
+            tree.set_layer_defaults(defaults);
+        }
+        if let Some(offset) = ime_offset {
+            self.handles.ime_offset.set(offset);
         }
         if let Some(slop) = touch_slop {
             self.handles.touch.borrow_mut().set_slop(slop);
@@ -1646,6 +1694,28 @@ impl PyWindow {
                 .to_owned()
                 .into_any()
                 .unbind(),
+            "layer_viewport_margin" => crate::layer_policy::margin_tuple(
+                self.handles.tree.borrow().layer_defaults().viewport_margin,
+            )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind(),
+            "layer_flip_threshold" => self
+                .handles
+                .tree
+                .borrow()
+                .layer_defaults()
+                .flip_threshold
+                .into_pyobject(py)?
+                .into_any()
+                .unbind(),
+            "ime_offset" => self
+                .handles
+                .ime_offset
+                .get()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind(),
             "touch_target_slop" => self
                 .handles
                 .touch
@@ -1742,7 +1812,8 @@ impl PyWindow {
                      min_height, platform, resize_border, system_menu, titlebar_double_click, resize_cursors, undecorated_shadow, titlebar_inset, \
                      native_controls, gpu_watchdog, present_mode, dpi_scaling, transparent, \
                      transparent_active, blur_behind, click_through, x, y, always_on_top, resizable, \
-                     skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, scheme, scheme_resolved, scheme_colors, first_present, first_presented, background, {}",
+                     skip_taskbar, touch_slop, touch_target_slop, pause_when_occluded, scheme, scheme_resolved, scheme_colors, first_present, first_presented, background, \
+                     layer_viewport_margin, layer_flip_threshold, ime_offset, {}",
                     crate::pointer_settings::NAMES
                 )));
             }

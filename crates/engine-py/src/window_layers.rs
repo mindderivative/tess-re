@@ -47,7 +47,25 @@ impl PyWindow {
     /// keeps a side placement from flipping or shifting too.
     /// `modal` blocks input beneath it and moves focus into it;
     /// `dismissible` delivers `dismiss` to it on an outside press or Escape.
-    #[pyo3(signature = (node, anchor=None, placement="below", modal=false, dismissible=true, offset=(0.0, 0.0), flip=true))]
+    /// (0.6.12, P10) `viewport_margin` (a number, or `(top, right, bottom, left)`) is the
+    /// distance a flipped or shifted layer keeps from the window's edges and `flip_threshold` the
+    /// free space beyond its own size the preferred side needs; `None` follows the window's
+    /// `layer_viewport_margin` and `layer_flip_threshold` (both 0). `align` lines the layer up with
+    /// the anchor's `"start"` (default), `"center"` or `"end"` edge; `shift=False` keeps it from
+    /// being moved inside the window (`None` follows `flip`, as before).
+    #[pyo3(signature = (
+        node,
+        anchor=None,
+        placement="below",
+        modal=false,
+        dismissible=true,
+        offset=(0.0, 0.0),
+        flip=true,
+        viewport_margin=None,
+        flip_threshold=None,
+        align=None,
+        shift=None
+    ))]
     #[allow(clippy::too_many_arguments)]
     fn show_layer(
         &self,
@@ -58,8 +76,24 @@ impl PyWindow {
         dismissible: bool,
         offset: (f64, f64),
         flip: bool,
+        viewport_margin: Option<&Bound<'_, PyAny>>,
+        flip_threshold: Option<&Bound<'_, PyAny>>,
+        align: Option<&Bound<'_, PyAny>>,
+        shift: Option<bool>,
         py: Python<'_>,
     ) -> PyResult<()> {
+        let viewport_margin = viewport_margin
+            .filter(|v| !v.is_none())
+            .map(|v| crate::layer_policy::parse_margin("show_layer:", "viewport_margin", v))
+            .transpose()?;
+        let flip_threshold = flip_threshold
+            .filter(|v| !v.is_none())
+            .map(|v| crate::layer_policy::parse_threshold("show_layer:", "flip_threshold", v))
+            .transpose()?;
+        let align = match align.filter(|v| !v.is_none()) {
+            Some(v) => crate::layer_policy::parse_align("show_layer:", "align", v)?,
+            None => engine_core::Align::default(),
+        };
         if !(offset.0.is_finite() && offset.1.is_finite()) {
             return Err(PyValueError::new_err(
                 "show_layer: `offset` must be a pair of finite numbers",
@@ -82,7 +116,11 @@ impl PyWindow {
             dismissible,
             placement: Some(placement),
             offset,
-            pinned: !flip,
+            no_flip: !flip,
+            no_shift: !shift.unwrap_or(flip),
+            align,
+            viewport_margin,
+            flip_threshold,
             restore_focus,
             ..Default::default()
         };

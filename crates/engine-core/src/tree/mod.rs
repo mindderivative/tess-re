@@ -33,7 +33,7 @@ use crate::input::{ChangedValue, DispatchOutcome, InputEvent, Key, PointerButton
 use crate::node::{ImageState, Node, NodeId, NodeKind, PaintProperties, TextFieldState};
 #[cfg(test)]
 use crate::node::{ItemExtent, TerminalCell, TerminalState, VirtualListState};
-use crate::overlay::{OverlayMeta, Placement};
+use crate::overlay::OverlayMeta;
 use crate::scrollbar::Scroller;
 #[cfg(test)]
 use peniko::kurbo::BezPath;
@@ -167,6 +167,8 @@ pub struct Tree {
     /// metadata only, never the node itself, which already lives in
     /// `nodes` like any other.
     overlays: Vec<(NodeId, OverlayMeta)>,
+    /// 0.6.12 (P10): the viewport margin and flip threshold of a layer that sets none.
+    layer_defaults: crate::overlay::LayerDefaults,
     /// M96: layers an outside press or Escape asked to dismiss, since the
     /// last `take_dismissals`.
     dismissals: Vec<NodeId>,
@@ -348,6 +350,7 @@ impl Tree {
             reduced_motion_override: None,
             clock: Instant::now(),
             overlays: Vec::new(),
+            layer_defaults: crate::overlay::LayerDefaults::default(),
             dismissals: Vec::new(),
             dirty: true,
             scroll_view_count: 0,
