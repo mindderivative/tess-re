@@ -344,3 +344,90 @@ fn the_pointer_leaving_the_window_clears_the_hover_layer() {
     settle(&mut tree, t1);
     assert!(alpha(&tree, button) < 1e-6);
 }
+
+#[test]
+fn a_quick_enter_press_release_leave_always_comes_to_rest_with_no_layer() {
+    // Frames at irregular intervals, the events between them at other times, the hover fade
+    // shorter than a frame: whatever the order, the layer ends at rest, nothing drawn.
+    let mut seed = 0x2545F4914F6CDD1Du64;
+    let mut next = move |n: u64| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed % n
+    };
+    for hover_ms in [15.0, 20.0, 30.0, 50.0] {
+        for _ in 0..300 {
+            let (mut tree, root, button, _) = scene();
+            tree.set_focus_visible(false);
+            tree.edit_state_layer(button, |l| l.hover_ms = Some(hover_ms));
+            let mut t = Instant::now();
+            let mut step = |tree: &mut Tree, t: &mut Instant, ms: u64| {
+                *t += Duration::from_millis(ms);
+                tree.tick_all(*t);
+            };
+            step(&mut tree, &mut t, 5);
+            let order = next(3);
+            let (a, b, c) = (next(30), next(30), next(2));
+            let log = format!("order {order} a {a} b {b} c {c}");
+            mv(&mut tree, root, 50.0, 50.0, t);
+            if order == 0 {
+                step(&mut tree, &mut t, a);
+            }
+            press(&mut tree, root, 50.0, 50.0, t);
+            if order != 1 {
+                step(&mut tree, &mut t, b);
+            }
+            tree.dispatch(
+                root,
+                InputEvent::PointerReleased {
+                    position: Point::new(50.0, 50.0),
+                    button: PointerButton::Primary,
+                },
+                t,
+            );
+            if c == 0 {
+                step(&mut tree, &mut t, b);
+            }
+            mv(&mut tree, root, 150.0, 150.0, t);
+            // The frames after it, 16.7 ms apart (some a frame late).
+            for i in 0..30 {
+                step(&mut tree, &mut t, if i % 7 == 3 { 33 } else { 17 });
+            }
+            let layer = tree.get(button).unwrap().paint.state_layer.as_deref().unwrap();
+            assert!(
+                layer.visible().is_none(),
+                "{log} hover_ms {hover_ms}: left {:?} (active {})",
+                layer.shown.current,
+                layer.shown.active.is_some()
+            );
+        }
+    }
+}
+
+#[test]
+fn the_tick_that_ends_a_fade_marks_the_tree_to_be_drawn_even_when_every_node_was_looked_at() {
+    // A tick that walks every node (an animation started somewhere since the last one, and the
+    // arena reached whole) ends a node's fade without going through `get_mut`: the frame that shows
+    // the end of the fade must still be asked for, or the last drawn one (a layer still faintly
+    // there) stays on screen. Found on a layer surface under sway (`hover_layer_ms` 15..30).
+    let (mut tree, root, button, _) = scene();
+    tree.set_focus_visible(false);
+    let t0 = Instant::now();
+    tree.tick_all(t0);
+    mv(&mut tree, root, 50.0, 50.0, t0);
+    tree.tick_all(t0 + Duration::from_millis(1));
+    assert!(tree.take_dirty());
+    // Mid-fade: still going.
+    let (active, _) = tree.tick_all(t0 + Duration::from_millis(40));
+    assert!(active);
+    tree.take_dirty();
+    // Some other animation starts, and the arena is reached whole.
+    let mut other = crate::animation::Animated::new(0.0_f64);
+    other.animate_to(1.0, Duration::from_millis(10), crate::animation::MotionCurve::Linear, t0);
+    tree.nodes.iter_mut().for_each(drop);
+    let (active, _) = tree.tick_all(t0 + Duration::from_millis(200));
+    assert!(!active, "the fade has ended");
+    assert!(tree.take_dirty(), "its last step has not been drawn");
+    assert_eq!(alpha(&tree, button), 0.078431375);
+}

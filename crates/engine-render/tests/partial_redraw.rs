@@ -838,3 +838,75 @@ fn the_kept_frame_can_be_given_back_and_made_again() {
         "a partial redraw over the new kept frame"
     );
 }
+
+/// A `hover_layer` with `hover_layer_ms` shorter than a frame, over the frames a compositor
+/// delivers (about 17 ms apart): every frame's partial redraw equals the full redraw, and after the
+/// pointer has left the pixels are the ones from before it came (a layer pixel left behind).
+#[test]
+fn a_short_hover_fade_leaves_no_layer_pixel_behind() {
+    use engine_core::{InputEvent, PointerButton};
+    for hover_ms in [15.0, 20.0, 30.0, 50.0, 100.0] {
+        let gpu = Gpu::new();
+        let mut s = scene();
+        s.tree.set_focus_visible(false);
+        s.tree.edit_state_layer(s.card, |l| {
+            l.hover = Some(Color::from_rgba8(0xFF, 0xFF, 0xFF, 0x20));
+            l.pressed = Some(Color::from_rgba8(0xFF, 0xFF, 0xFF, 0x30));
+            l.hover_ms = Some(hover_ms);
+        });
+        let mut partial = Window::new(&gpu);
+        let mut full = Window::new(&gpu);
+        s.tree.tick_all(Instant::now());
+        layout(&mut s.tree, s.root);
+        partial.frame(&gpu, &s.tree, s.root, true);
+        full.frame(&gpu, &s.tree, s.root, false);
+        let before = full.pixels(&gpu);
+        let mut now = Instant::now();
+        let at = |x: f64, y: f64| peniko::kurbo::Point::new(x, y);
+        let mut frame = |s: &mut Scene, now: Instant, label: &str| {
+            s.tree.tick_all(now);
+            layout(&mut s.tree, s.root);
+            let damage = partial.frame(&gpu, &s.tree, s.root, true);
+            full.frame(&gpu, &s.tree, s.root, false);
+            let (a, b) = (partial.pixels(&gpu), full.pixels(&gpu));
+            let differing = a.iter().zip(&b).filter(|(a, b)| a != b).count();
+            assert_eq!(
+                differing, 0,
+                "hover_ms {hover_ms} {label}: {differing} bytes differ between partial and full ({damage:?})"
+            );
+        };
+        // Enter, press, release, leave, with a frame (or a late one) between most.
+        s.tree
+            .dispatch(s.root, InputEvent::PointerMoved { position: at(50.0, 40.0) }, now);
+        for (i, gap) in [17u64, 17, 17].into_iter().enumerate() {
+            now += Duration::from_millis(gap);
+            frame(&mut s, now, &format!("enter {i}"));
+        }
+        s.tree.dispatch(
+            s.root,
+            InputEvent::PointerPressed { position: at(50.0, 40.0), button: PointerButton::Primary },
+            now,
+        );
+        now += Duration::from_millis(17);
+        frame(&mut s, now, "press");
+        s.tree.dispatch(
+            s.root,
+            InputEvent::PointerReleased { position: at(50.0, 40.0), button: PointerButton::Primary },
+            now,
+        );
+        now += Duration::from_millis(17);
+        frame(&mut s, now, "release");
+        s.tree
+            .dispatch(s.root, InputEvent::PointerMoved { position: at(230.0, 150.0) }, now);
+        for i in 0..40 {
+            now += Duration::from_millis(if i % 9 == 4 { 33 } else { 17 });
+            frame(&mut s, now, &format!("leave {i}"));
+        }
+        let after = full.pixels(&gpu);
+        let differing = before.iter().zip(&after).filter(|(a, b)| a != b).count();
+        assert_eq!(differing, 0, "hover_ms {hover_ms}: {differing} bytes differ from the look before");
+        let kept = partial.pixels(&gpu);
+        let differing = before.iter().zip(&kept).filter(|(a, b)| a != b).count();
+        assert_eq!(differing, 0, "hover_ms {hover_ms}: partial redraw left {differing} bytes behind");
+    }
+}
