@@ -165,7 +165,7 @@ pub enum CloseReason {
     OutputRemoved,
     /// The app closed it.
     App,
-    /// A popup the compositor ended: an outside click, Escape, or its parent going away.
+    /// A popup the compositor ended: an outside click, or its parent going away (Escape does not end a grabbing popup: the popup hears the key and nobody dismisses it).
     Dismissed,
 }
 
@@ -1740,7 +1740,7 @@ impl PopupHandler for State {
 
     fn done(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup) {
         if let Some(id) = self.id_of_layer_surface(popup.wl_surface()) {
-            // The compositor ended it: an outside click, Escape, or its parent going away.
+            // The compositor ended it: an outside click, or its parent going away (not Escape).
             self.closing.push(id);
         }
     }

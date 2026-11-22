@@ -4,7 +4,7 @@
 //! It is a layer-thread surface like a `LayerWindow` (so its GPU surface, scale, input, frames,
 //! input method and screen-reader tree are the layer path's) with a different role: the
 //! compositor places it from the positioner (it flips and slides it to stay on screen), and a
-//! grab makes an outside click or Escape end it (`closed`, reason `"dismissed"`).
+//! grab makes an outside click end it, and Escape does not (the popup hears the key) (`closed`, reason `"dismissed"`).
 
 use std::rc::Rc;
 
