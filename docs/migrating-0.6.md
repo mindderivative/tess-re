@@ -762,8 +762,10 @@ order they were added; **Internal (Rust)** lists API changes Python never sees.
   `Tree::set_text_field_extent` takes the measured text size (`TextRenderer::field_content_extent`) and `Tree::bar_fields`
   lists the inputs to measure; `caret_following_fields` is now `shaped_fields` (and includes those whose bar is on).
   `NodeKind::takes_wheel` and `takes_scroll_keys` say which scrollers the wheel and the keys move. The text renderer's
-  caret-follow stamp no longer hashes the scroll offsets, so a scroll moved away from the caret by the bar is kept until
-  the caret or the text changes.
+  caret-follow stamp no longer hashes the scroll offsets **while the input's bar is on**, so a scroll moved away from the
+  caret by the bar is kept until the caret or the text changes. An input without the bar (every existing one) keeps the
+  stamp it always had, offsets included, so a wrapped multiline input behaves exactly as before; not hashing the offsets
+  for every input is a candidate for a later release on its own, with its own test.
 
 - `Node` gained `item_selectable` and `selection: Option<Box<SelectionState>>`; `SelectionState` gained `announce`,
   `announce_ms` and the debounce state (`note_reported`, `take_announcement`, `set_announce`, `fits`) and a hand-written
