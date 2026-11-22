@@ -1471,7 +1471,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn max_scroll_axis(&self, view: NodeId, axis: ScrollAxis) -> Option<f64>` | `max_scroll` along `axis`. |
 | `fn move_focus(&mut self, root: NodeId, direction: FocusDirection) -> Option<(Option<NodeId>, Option<NodeId>)>` | Moves keyboard focus to the next or previous node in tab order, wrapping at the ends. |
 | `fn new() -> Self` | Creates an empty tree. |
-| `fn node_count(&self) -> usize` |  |
+| `fn node_count(&self) -> usize` | How many nodes the tree holds. |
 | `fn open_overlay(&mut self, root: NodeId, anchor: NodeId, content: NodeId, meta: OverlayMeta)` | Opens content as an overlay positioned just below its anchor node. |
 | `fn outline_of(&self, id: NodeId) -> Option<Outline>` | The outline `id` draws now, if any: its `focus_outline_*` while it has keyboard focus that is visible, else its `outline_*`. |
 | `fn overlay_meta(&self, id: NodeId) -> Option<&OverlayMeta>` | Returns the settings of an open overlay, if the node is one. |
@@ -1496,7 +1496,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `fn scroll_view_for_key(&self, from: NodeId, key: Key) -> Option<NodeId>` | Returns the scroll view that a key press scrolls, starting from a node. |
 | `fn scroll_virtual_list_by(&mut self, id: NodeId, delta_y: f64)` | Moves a virtual list's scroll offset by a pixel amount, clamped to its range. |
 | `fn scroll_virtual_list_to_index(&mut self, list: NodeId, index: usize, align: ScrollAlign) -> Option<bool>` | Scrolls virtual list `list` so row `index` shows as `align` says, from the offsets the list knows. |
-| `fn scrollbar_pressed(&self) -> bool` | How many nodes the tree holds. |
+| `fn scrollbar_pressed(&self) -> bool` | Whether the last primary press landed on a scrollbar and was used up by it, so whatever sits under the bar (a terminal's cell selection) is not to… |
 | `fn select_across(&mut self, anchor: (NodeId, usize), focus: (NodeId, usize)) -> bool` | Selects from `anchor` to `focus`, each a text node and a byte offset (clamped to a character boundary). |
 | `fn select_all_static_text(&mut self) -> bool` | Ctrl+A in static text: selects all of the text node the selection started in. |
 | `fn select_all_text_field(&mut self, field: NodeId) -> bool` | Selects all the text in a text field. |
