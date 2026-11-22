@@ -767,6 +767,11 @@ pub struct TextFieldState {
     /// `primary` at 30% while `tint_scheme`, else `text_tint` at 30%
     /// alpha.
     pub selection_fill: Option<Color>,
+    /// 0.6.12 (P8): the colour of the selected glyphs; `None` keeps each glyph's own colour.
+    pub selection_foreground: Option<Color>,
+    /// 0.6.12 (P8): the corner radius of the highlight, in pixels (one rectangle per line);
+    /// `0` is square.
+    pub selection_radius: f32,
     /// M95: a password field -- every character paints as a bullet, and
     /// its text never leaves through copy or cut.
     pub obscured: bool,
@@ -1002,6 +1007,8 @@ impl TextFieldState {
             preedit_cursor: None,
             last_inserted: None,
             selection_fill: None,
+            selection_foreground: None,
+            selection_radius: 0.0,
             wrap: None,
             overflow: None,
             follow_stamp: 0,
@@ -1301,6 +1308,14 @@ pub struct TextOptions {
     /// when the box is taller than they are. Paint and input geometry, not
     /// layout: see `same_layout`.
     pub vertical_align: VerticalAlign,
+    /// 0.6.12 (P8): the highlight behind selected text; `None` is the scheme's `primary` at 30%
+    /// while the text has no `fill` of its own, else the text colour at 30%. Paint, not layout.
+    pub selection_fill: Option<Color>,
+    /// 0.6.12 (P8): the colour of the selected glyphs; `None` keeps each glyph's own colour.
+    pub selection_foreground: Option<Color>,
+    /// 0.6.12 (P8): the corner radius of the highlight, in pixels (one rectangle per line);
+    /// `0` is square.
+    pub selection_radius: f32,
 }
 
 /// 0.6.11 (P3): where text sits in the vertical room its node's content box
@@ -1357,6 +1372,9 @@ impl TextOptions {
             selectable: _,
             selection: _,
             vertical_align: _,
+            selection_fill: _,
+            selection_foreground: _,
+            selection_radius: _,
         } = self;
         *italic == other.italic
             && *letter_spacing == other.letter_spacing
@@ -1406,6 +1424,9 @@ impl Default for TextOptions {
             selectable: false,
             selection: None,
             vertical_align: VerticalAlign::Start,
+            selection_fill: None,
+            selection_foreground: None,
+            selection_radius: 0.0,
         }
     }
 }

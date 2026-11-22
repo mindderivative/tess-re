@@ -203,7 +203,8 @@ label.on("link", lambda event: open_page(event.href))
 A span's `font_size` makes its line taller when it is larger than the rest, and
 `font_family` picks another face for the range.
 
-Selected text shows the text colour at 30% behind it. Double-click selects a
+Selected text shows the text colour at 30% behind it (the scheme's `primary` at 30% while
+the text has no `fill` of its own; see [Selection appearance](#selection-appearance-0612)). Double-click selects a
 word and triple-click a line. With a selection showing, Ctrl+A selects all of
 that text, and Shift+Left, Shift+Right, Shift+Home and Shift+End move the end
 of the selection a character, or to the start or end of the text. Ctrl+Shift+Left
@@ -233,6 +234,32 @@ inside a button doesn't swallow the button's clicks): turn it on for text that
 stands alone. A text input's own selection is separate, and Copy takes the
 focused input's selection first. A screen reader sees the selection (see
 [Text, selection and links](accessibility.md#text-selection-and-links)).
+
+### Selection appearance (0.6.12)
+
+How a selection is painted is three properties, on a static `text` and on a `text_input`
+(a terminal's selection is its `palette["selection"]`):
+
+```python
+label.set(
+    selectable=True,
+    selection_fill=(103, 80, 164, 77),             # the highlight behind the glyphs
+    selection_foreground=(255, 255, 255, 255),     # the glyphs inside it
+    selection_radius=4,                            # its corners, in pixels
+)
+```
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `selection_fill` | `None`: the scheme's `primary` at 30% (the text colour at 30% when the node has its own `fill`) | The highlight's colour. A `text` had no way to set it before 0.6.12; a `text_input` did |
+| `selection_foreground` | `None`: every glyph keeps its own colour | The colour of the glyphs the selection covers. A ligature or a glyph the highlight's edge cuts goes by where its middle is |
+| `selection_radius` | `0`: square | The highlight's corner radius. Each selected line is one rectangle, rounded alone, never by more than half its shorter side |
+
+The defaults paint exactly what 0.6.11 painted. The UX note "Text Selection" gives the highlight as
+`primary` at 30% with the selected text keeping its colour and a square corner (`shape.none`): those
+are the defaults, so a project sets these only to depart from the spec. `None` returns a property to
+its default; `Window.set_defaults("text", selection_radius=4)` sets one for every text created
+afterwards.
 
 ## Text input
 
@@ -269,7 +296,8 @@ field.on("change", lambda e: validate(e.new_value))
 | `read_only` | (0.5.6) it can be focused, selected and copied but not edited; Enter still `submit`s |
 | `input_mode` | (0.5.6) `"text"`, `"numeric"`, `"decimal"`, `"email"`, `"phone"`, `"url"` or `"search"`: kept for a keyboard that can adapt. A desktop window has no use for it yet; `obscured` is passed to the IME as a password |
 | `caret_color`, `selection_fill` | the caret and selection colors; `caret_color` animates (0.5.6) |
-| `caret_visible`, `caret_width`, `caret_shape` | (0.5.6) draw the caret or leave it to you, its width in pixels (an underline's thickness), and `"bar"`, `"block"` or `"underline"` |
+| `selection_foreground`, `selection_radius` | (0.6.12) the colour of the selected glyphs (`None`: each keeps its own) and the highlight's corner radius in pixels (`0`: square); see [Selection appearance](#selection-appearance-0612) |
+| `caret_visible`, `caret_width`, `caret_shape` | (0.5.6) draw the caret or leave it to you, its width in pixels (an underline's thickness; default `1.5`), and `"bar"`, `"block"` or `"underline"` |
 | `caret_blink` | (0.5.6) milliseconds between the caret going off and on, or `None` for steady. A keystroke or click restarts it, so it is solid while you type, and an idle field wakes only at each edge |
 | `syntax_spans` | `[(start, end, color), ...]` byte ranges to color |
 | `folded_ranges` | `[(start, end), ...]` byte ranges drawn as "…" |

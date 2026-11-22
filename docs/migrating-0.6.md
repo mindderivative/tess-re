@@ -567,6 +567,16 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   drags are not held back), because tre had no drag threshold at all and the Tesserae spec wants 4 dp.
   `multi_click_px` is also the title-bar double click's press distance (it was a separate fixed 4). Bad values raise
   `ValueError` naming the property. See [Gesture, click and drag thresholds](reference/window.md#gesture-click-and-drag-thresholds-0612).
+- **`selection_fill` on a static `text`; `selection_foreground` and `selection_radius` on `text` and `text_input` (new,
+  opt-in; no default changes).** The UX note "Text Selection" has the highlight as `primary` at 30 % with the selected text
+  keeping its own colour and a square corner. A `text_input` took `selection_fill`; a `text` had no way to set its
+  highlight, its text colour, or its corner. `selection_fill` is now settable on a `text` (`None`, the default, is the
+  scheme's `primary` at 30 %, or the text colour at 30 % with a `fill` of its own: what was painted), `selection_foreground`
+  is the colour of the glyphs the selection covers (`None`: each glyph keeps its colour, as before) and `selection_radius`
+  the highlight's corner radius in pixels (a number from `0`, the default: square, as before). Bad values raise `ValueError`.
+  `caret_width` (a `text_input`'s, 1.5 px by default) is unchanged. `TextOptions` gained `selection_fill`,
+  `selection_foreground` and `selection_radius` and `TextFieldState` gained `selection_foreground` and `selection_radius`
+  (Rust). See [Selection appearance](guide/text.md#selection-appearance-0612).
 - **A path node's `shadows` follow the path, holes included (a fix).** Every node's shadow was its box, blurred, so a
   `path` ring's hole filled with solid shadow. A path now casts the silhouette of what it paints (the fill under the
   non-zero rule, plus the trimmed stroke), offset, grown by `spread` and blurred by the same `blur / 2` as a box.
