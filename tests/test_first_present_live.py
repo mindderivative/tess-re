@@ -1,27 +1,30 @@
 """0.6.11 (P5): `Window(first_present=...)` holds the first present until the app is ready.
 
 On a headless sway (`tools/sway_live.sh --renderer pixman -- tools/with_adapter.sh lvp -- python -m
-pytest tests/test_first_present_live.py`). A Wayland surface is mapped by the first buffer it commits,
+pytest tests/test_first_present_live.py`) or on a headless KWin (`tools/kwin_live.sh -- tools/with_adapter.sh lvp
+-- python -m pytest tests/test_first_present_live.py`; the `[kwin]` variants, which skip anywhere else). A Wayland surface is mapped by the first buffer it commits,
 so the proof is in the protocol log (`WAYLAND_DEBUG=1`): the toplevel's first `wl_surface.attach` with a
 buffer comes after `window.ready()` for `'on_ready'`, after the deadline for a number of milliseconds,
 and at once for `'immediate'`. The child writes its own markers into the same stderr, so line order
 is the order things happened in. The window's presence in sway's tree and a screenshot of the first
-frame's colour (`background`) say the same from the compositor's side. Skips without sway and grim.
+frame's colour (`background`) say the same from the compositor's side (`tests/live_compositor.py`: sway's tree
+and grim, or KWin's window list and ScreenShot2). Skips without a private compositor.
 X11, macOS and Windows (where the OS window is also kept hidden until the first present) are not
 covered here.
 """
 
-import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 import textwrap
 import time
 
+import live_compositor
 import pytest
+
+pytestmark = pytest.mark.usefixtures("compositor")
 
 TITLE = "first-present-probe"
 
@@ -59,13 +62,6 @@ XDG_SURFACE = re.compile(r"get_xdg_surface\(new id xdg_surface[#@]\d+, wl_surfac
 ATTACH = r"wl_surface[#@]%s\.attach\(wl_buffer[#@]\d+"
 
 
-def _sway():
-    if not (shutil.which("swaymsg") and os.environ.get("SWAYSOCK")):
-        pytest.skip("needs a headless sway (SWAYSOCK; tools/sway_live.sh)")
-    if not shutil.which("grim"):
-        pytest.skip("needs grim to read pixels")
-
-
 def _seconds(line):
     """The protocol log's own timestamp of a line, whichever libwayland wrote it."""
     match = CLOCK.match(line)
@@ -81,33 +77,17 @@ def _lines(path):
         return log.read().splitlines()
 
 
-def _walk(node):
-    yield node
-    for child in node.get("nodes", []) + node.get("floating_nodes", []):
-        yield from _walk(child)
-
-
 def _node():
-    tree = subprocess.run(
-        ["swaymsg", "-t", "get_tree"], capture_output=True, text=True, check=False
-    ).stdout
-    return next((n for n in _walk(json.loads(tree)) if n.get("name") == TITLE), None)
+    return live_compositor.toplevel(TITLE)
 
 
 def _pixel(node):
-    """The colour of a pixel inside the window, from a screenshot of the sway output."""
-    rect, inner = node["rect"], node["window_rect"]
-    x = rect["x"] + inner["x"] + inner["width"] - 20
-    y = rect["y"] + inner["y"] + inner["height"] - 20
-    out = subprocess.run(
-        ["grim", "-g", f"{x},{y} 1x1", "-t", "ppm", "-"], capture_output=True, check=False
-    ).stdout
-    # P6\n1 1\n255\n then r g b
-    return tuple(out[-3:])
+    """The colour of a pixel inside the window, from a screenshot of the output."""
+    return live_compositor.pixel(node["x"] + node["width"] - 20, node["y"] + node["height"] - 20)
 
 
 def run_child(mode, background="None", ready_at=0):
-    """Runs the child to its end; returns (protocol log lines, what sway's tree said at each
+    """Runs the child to its end; returns (protocol log lines, what the compositor's window list said at each
     probe: {'hold': node or None, 'after': node or None, 'pixel': colour or None})."""
     seen = {}
     with tempfile.TemporaryDirectory() as tmp:
@@ -165,7 +145,6 @@ def _context(lines):
 
 
 def test_immediate_presents_at_once_and_ready_changes_nothing():
-    _sway()
     lines, seen = run_child("immediate", ready_at=100)
     surface = _toplevel_surface(lines)
     assert surface, _context(lines)
@@ -176,7 +155,6 @@ def test_immediate_presents_at_once_and_ready_changes_nothing():
 
 
 def test_on_ready_commits_no_buffer_until_ready():
-    _sway()
     lines, seen = run_child("on_ready", ready_at=3500)
     surface = _toplevel_surface(lines)
     assert surface, "the toplevel was created (hidden)\n" + _context(lines)
@@ -192,7 +170,6 @@ def test_on_ready_commits_no_buffer_until_ready():
 
 
 def test_a_number_of_milliseconds_is_a_deadline_without_ready():
-    _sway()
     lines, seen = run_child(2000)
     surface = _toplevel_surface(lines)
     assert surface, _context(lines)
@@ -211,7 +188,6 @@ def test_a_number_of_milliseconds_is_a_deadline_without_ready():
 
 def test_ready_before_the_deadline_presents_at_once():
     """A 30 s deadline, ready() at 3.5 s: the buffer comes with ready(), not at the deadline."""
-    _sway()
     lines, seen = run_child(30_000, ready_at=3500)
     surface = _toplevel_surface(lines)
     assert surface, _context(lines)
@@ -222,7 +198,6 @@ def test_ready_before_the_deadline_presents_at_once():
 
 
 def test_a_long_deadline_holds_a_window_that_is_never_ready():
-    _sway()
     lines, seen = run_child(30_000)
     surface = _toplevel_surface(lines)
     assert surface
@@ -231,13 +206,11 @@ def test_a_long_deadline_holds_a_window_that_is_never_ready():
 
 
 def test_the_first_frame_is_cleared_to_the_background_colour():
-    _sway()
     lines, seen = run_child("immediate", background="(10, 200, 30, 255)")
     assert seen["pixel"] == (10, 200, 30), (seen["pixel"], _context(lines))
 
 
 def test_the_default_background_is_the_scheme_surface():
-    _sway()
     lines, seen = run_child("immediate")
     # scheme="light": role `surface` is #FEF7FF.
     assert seen["pixel"] == (0xFE, 0xF7, 0xFF), (seen["pixel"], _context(lines))
