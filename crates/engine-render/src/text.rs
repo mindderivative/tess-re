@@ -962,6 +962,9 @@ impl TextRenderer {
             scene.push_layer(Some(&clip.to_path(0.1)), None, None, None, None);
         }
         // 0.5.4 (#112): the selection, behind the glyphs, in the text colour at 30%.
+        // 0.6.12 (P8): or in `selection_fill`, as rounded as `selection_radius` says, and the
+        // glyphs in it in `selection_foreground`.
+        let mut selected_rects: Vec<(usize, Rect)> = Vec::new();
         if let Some((anchor, focus)) = state.options.selection
             && anchor != focus
         {
@@ -977,16 +980,26 @@ impl TextRenderer {
                 Cursor::from_byte_index(layout, clamp(anchor), Affinity::Downstream),
                 Cursor::from_byte_index(layout, clamp(focus), Affinity::Downstream),
             );
-            scene.set_paint(selection_fill.unwrap_or_else(|| crate::with_opacity(at.color, 0.3)));
-            for (bounds, _line) in selection.geometry(layout) {
-                scene.fill_rect(&Rect::new(
-                    bounds.x0 + at.x,
-                    bounds.y0 + at.y,
-                    bounds.x1 + at.x,
-                    bounds.y1 + at.y,
-                ));
+            let fill = state
+                .options
+                .selection_fill
+                .or(selection_fill)
+                .unwrap_or_else(|| crate::with_opacity(at.color, 0.3));
+            scene.set_paint(fill);
+            selected_rects = selection_rects(layout, &selection);
+            for (_line, rect) in &selected_rects {
+                fill_highlight(
+                    scene,
+                    *rect + peniko::kurbo::Vec2::new(at.x, at.y),
+                    state.options.selection_radius,
+                    false,
+                );
             }
         }
+        let selection_foreground = state
+            .options
+            .selection_foreground
+            .filter(|_| !selected_rects.is_empty());
         // What a run with no colour of its own is painted with: the gradient
         // across the text, or the node's colour.
         let base = gradient.map(|gradient| {
@@ -1002,7 +1015,7 @@ impl TextRenderer {
             None => scene.set_paint(at.color),
         }
         let rich = !state.options.spans.is_empty();
-        for line in layout.lines().take(shown) {
+        for (line_index, line) in layout.lines().take(shown).enumerate() {
             for item in line.items() {
                 let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                     continue;
@@ -1010,11 +1023,7 @@ impl TextRenderer {
                 let run = glyph_run.run();
                 let font = run.font();
                 let font_size = run.font_size();
-                let glyphs = glyph_run.positioned_glyphs().map(|g| glifo::Glyph {
-                    id: g.id,
-                    x: g.x + at.x as f32,
-                    y: g.y + at.y as f32,
-                });
+                let glyphs = glyph_run.positioned_glyphs();
                 // 0.5.4 (#112): a span's colour is the run's brush.
                 if rich {
                     let brush = glyph_run.style().brush;
@@ -1026,18 +1035,44 @@ impl TextRenderer {
                         scene.set_paint(at.color);
                     }
                 }
-                let mut builder = scene
-                    .glyph_run(resources, font)
-                    .font_size(font_size)
-                    .atlas_cache(atlas_for(font, glyph_cache));
                 // M96: italics with no italic face -- slanted by the angle
                 // font matching suggests (y-down, so the shear is negated;
                 // see `draw_terminal`'s own synthetic italic).
-                if let Some(degrees) = run.synthesis().skew() {
-                    let shear = -f64::from(degrees).to_radians().tan();
-                    builder = builder.glyph_transform(Affine::skew(shear, 0.0));
+                let skew = run
+                    .synthesis()
+                    .skew()
+                    .map(|degrees| Affine::skew(-f64::from(degrees).to_radians().tan(), 0.0));
+                let run_glyphs = RunGlyphs {
+                    font,
+                    font_size,
+                    atlas: atlas_for(font, glyph_cache),
+                    skew,
+                };
+                let place = |g: &parley::layout::Glyph| glifo::Glyph {
+                    id: g.id,
+                    x: g.x + at.x as f32,
+                    y: g.y + at.y as f32,
+                };
+                match selection_foreground {
+                    None => run_glyphs.fill(scene, resources, glyphs.map(|g| place(&g))),
+                    // 0.6.12 (P8): the glyphs the selection covers are drawn after the rest, in
+                    // `selection_foreground`.
+                    Some(foreground) => {
+                        let (selected, rest): (Vec<_>, Vec<_>) = glyphs.partition(|g| {
+                            glyph_selected(&selected_rects, line_index, g.x, g.advance)
+                        });
+                        run_glyphs.fill(scene, resources, rest.iter().map(&place));
+                        if !selected.is_empty() {
+                            scene.set_paint(foreground);
+                            run_glyphs.fill(scene, resources, selected.iter().map(&place));
+                            // The next run with no colour of its own is painted as before.
+                            match &base {
+                                Some((paint, _)) => scene.set_paint(paint.clone()),
+                                None => scene.set_paint(at.color),
+                            }
+                        }
+                    }
                 }
-                report_glyph_errors(builder.fill_glyphs(glyphs));
                 if rich {
                     paint_decorations(scene, &glyph_run, at.x, at.y, at.color);
                 }
@@ -1543,6 +1578,7 @@ impl TextRenderer {
         // so this stays keyed on `cursor_for_layout` unconditionally --
         // `state.cursor` itself, remapped through `to_display_offset`
         // whenever whitespace substitution is active (M31 Phase 3).
+        let mut selected_rects: Vec<(usize, Rect)> = Vec::new();
         if let Some(anchor) = anchor_for_layout
             && anchor != cursor_for_layout
             && !ellipsize
@@ -1552,18 +1588,23 @@ impl TextRenderer {
                 Cursor::from_byte_index(layout, cursor_for_layout, Affinity::Downstream);
             let selection = Selection::new(anchor_cursor, focus_cursor);
             scene.set_paint(colors.selection);
-            for (bounds, _line_idx) in selection.geometry(layout) {
-                let rect = Rect::new(
-                    bounds.x0 + at.x,
-                    bounds.y0 + at.y,
-                    bounds.x1 + at.x,
-                    bounds.y1 + at.y,
+            selected_rects = selection_rects(layout, &selection);
+            for (_line, rect) in &selected_rects {
+                // 0.6.12 (P8): rounded by `selection_radius`.
+                fill_highlight(
+                    scene,
+                    *rect + peniko::kurbo::Vec2::new(at.x, at.y),
+                    state.selection_radius,
+                    true,
                 );
-                scene.fill_path(&rect.to_path(0.1));
             }
         }
+        // 0.6.12 (P8): the glyphs the selection covers take `selection_foreground`.
+        let selection_foreground = state
+            .selection_foreground
+            .filter(|_| !selected_rects.is_empty());
 
-        for line in layout.lines() {
+        for (line_index, line) in layout.lines().enumerate() {
             for item in line.items() {
                 let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                     continue;
@@ -1587,7 +1628,14 @@ impl TextRenderer {
                 let mut batch: Vec<glifo::Glyph> = Vec::new();
                 let mut batch_color = text_color;
                 for g in glyph_run.positioned_glyphs() {
-                    let color = resolve_brush(styles[g.style_index as usize].brush, text_color);
+                    let color = match selection_foreground {
+                        Some(foreground)
+                            if glyph_selected(&selected_rects, line_index, g.x, g.advance) =>
+                        {
+                            foreground
+                        }
+                        _ => resolve_brush(styles[g.style_index as usize].brush, text_color),
+                    };
                     if !batch.is_empty() && color != batch_color {
                         scene.set_paint(batch_color);
                         report_glyph_errors(
@@ -2819,6 +2867,68 @@ fn has_bitmap_strikes(font: &peniko::FontData) -> bool {
 /// follow `glyph_cache`, so their pixels are unchanged.
 fn atlas_for(font: &peniko::FontData, glyph_cache: bool) -> bool {
     glyph_cache || has_bitmap_strikes(font)
+}
+
+/// 0.6.12 (P8): the glyphs of one run, with what it takes to draw them.
+struct RunGlyphs<'a> {
+    font: &'a peniko::FontData,
+    font_size: f32,
+    atlas: bool,
+    skew: Option<Affine>,
+}
+
+impl RunGlyphs<'_> {
+    fn fill(
+        &self,
+        scene: &mut Scene,
+        resources: &mut Resources,
+        glyphs: impl Iterator<Item = glifo::Glyph> + Clone,
+    ) {
+        let mut builder = scene
+            .glyph_run(resources, self.font)
+            .font_size(self.font_size)
+            .atlas_cache(self.atlas);
+        if let Some(shear) = self.skew {
+            builder = builder.glyph_transform(shear);
+        }
+        report_glyph_errors(builder.fill_glyphs(glyphs));
+    }
+}
+
+/// 0.6.12 (P8): the rectangles `selection` highlights in `layout`, each with the index of its
+/// line, in the layout's own coordinates.
+fn selection_rects(layout: &parley::Layout<[u8; 4]>, selection: &Selection) -> Vec<(usize, Rect)> {
+    selection
+        .geometry(layout)
+        .into_iter()
+        .map(|(b, line)| (line, Rect::new(b.x0, b.y0, b.x1, b.y1)))
+        .collect()
+}
+
+/// 0.6.12 (P8): whether a glyph at `x` (layout coordinates, `advance` wide) on line `line` is
+/// inside one of `rects`: the glyph's middle is the test, so a ligature or a glyph the
+/// highlight's edge cuts goes with the side most of it is on.
+fn glyph_selected(rects: &[(usize, Rect)], line: usize, x: f32, advance: f32) -> bool {
+    let middle = f64::from(x + advance / 2.0);
+    rects
+        .iter()
+        .any(|(l, r)| *l == line && (r.x0..r.x1).contains(&middle))
+}
+
+/// 0.6.12 (P8): fills one highlight rectangle with the paint already set, its corners rounded by
+/// `radius` (never more than half its shorter side); `0` is the square one as it always was
+/// (`as_path`: through `fill_path`, as a text input draws it, else `fill_rect`).
+fn fill_highlight(scene: &mut Scene, rect: Rect, radius: f32, as_path: bool) {
+    let radius = f64::from(radius)
+        .min(rect.width() / 2.0)
+        .min(rect.height() / 2.0);
+    if radius > 0.0 {
+        scene.fill_path(&peniko::kurbo::RoundedRect::from_rect(rect, radius).to_path(0.1));
+    } else if as_path {
+        scene.fill_path(&rect.to_path(0.1));
+    } else {
+        scene.fill_rect(&rect);
+    }
 }
 
 /// `vello_gpu` draws every glyph it can and reports the ones it couldn't.

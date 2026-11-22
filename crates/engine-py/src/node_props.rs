@@ -26,7 +26,7 @@ use crate::node_layout::{LAYOUT_PROPS, StyleEdit, parse_layout, read_layout};
 
 /// Every property `set` accepts besides the layout ones
 /// (`node_layout::LAYOUT_PROPS`), in the order its error lists them.
-const SETTABLE: [&str; 90] = [
+const SETTABLE: [&str; 92] = [
     // 0.5.7 (#179): placed against another node.
     "anchor",
     "placement",
@@ -71,6 +71,9 @@ const SETTABLE: [&str; 90] = [
     "caret_shape",
     "caret_blink",
     "selection_fill",
+    // 0.6.12 (P8): how a selection is painted.
+    "selection_foreground",
+    "selection_radius",
     "obscured",
     "palette",
     "role",
@@ -321,6 +324,9 @@ pub(crate) enum Change {
     CaretShape(engine_core::CaretShape),
     CaretBlink(u32),
     SelectionFill(Option<Color>),
+    /// 0.6.12 (P8).
+    SelectionForeground(Option<Color>),
+    SelectionRadius(f32),
     Obscured(bool),
     Palette(Box<PalettePatch>),
 }
@@ -863,7 +869,11 @@ impl Change {
             Change::CaretWidth(_) => ("caret_width", "text_input", text_input),
             Change::CaretShape(_) => ("caret_shape", "text_input", text_input),
             Change::CaretBlink(_) => ("caret_blink", "text_input", text_input),
-            Change::SelectionFill(_) => ("selection_fill", "text_input", text_input),
+            Change::SelectionFill(_) => ("selection_fill", "text or text_input", text_or_input),
+            Change::SelectionForeground(_) => {
+                ("selection_foreground", "text or text_input", text_or_input)
+            }
+            Change::SelectionRadius(_) => ("selection_radius", "text or text_input", text_or_input),
             Change::Obscured(_) => ("obscured", "text_input", text_input),
             Change::Palette(_) => ("palette", "terminal", terminal),
             Change::FillGradient(_) => ("fill", "box, path or text", box_node),
@@ -1467,6 +1477,8 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
             },
         ),
         "selection_fill" => Change::SelectionFill(optional_color(value, name)?),
+        "selection_foreground" => Change::SelectionForeground(optional_color(value, name)?),
+        "selection_radius" => Change::SelectionRadius(parse_non_negative(value, name)? as f32),
         "obscured" => Change::Obscured(boolean(value, name)?),
         "palette" => Change::Palette(Box::new(parse_palette(value, name)?)),
         _ => {
@@ -2127,9 +2139,36 @@ impl Node {
                     };
                     return Ok(any(value.into_pyobject(py)?.into_any()));
                 }
-                "placeholder" | "placeholder_fill" | "caret_color" | "selection_fill"
-                | "obscured" | "max_length" | "read_only" | "input_mode" | "caret_visible"
-                | "caret_width" | "caret_shape" | "caret_blink" => {
+                "selection_fill" | "selection_foreground" | "selection_radius" => {
+                    let (fill, foreground, radius) = match &node.kind {
+                        NodeKind::Text(state) => (
+                            state.options.selection_fill,
+                            state.options.selection_foreground,
+                            state.options.selection_radius,
+                        ),
+                        NodeKind::TextField(state) => (
+                            state.selection_fill,
+                            state.selection_foreground,
+                            state.selection_radius,
+                        ),
+                        _ => {
+                            return Err(PyValueError::new_err(format!(
+                                "node property `{name}` applies only to a text or text_input node"
+                            )));
+                        }
+                    };
+                    let color = |c: Option<Color>| -> PyResult<Py<PyAny>> {
+                        c.map_or_else(|| Ok(py.None()), |c| color_to_py(c, py))
+                    };
+                    match name {
+                        "selection_fill" => color(fill)?,
+                        "selection_foreground" => color(foreground)?,
+                        _ => any(f64::from(radius).into_pyobject(py)?.into_any()),
+                    }
+                }
+                "placeholder" | "placeholder_fill" | "caret_color" | "obscured" | "max_length"
+                | "read_only" | "input_mode" | "caret_visible" | "caret_width" | "caret_shape"
+                | "caret_blink" => {
                     let NodeKind::TextField(state) = &node.kind else {
                         return Err(PyValueError::new_err(format!(
                             "node property `{name}` applies only to a text_input node"
@@ -2144,7 +2183,6 @@ impl Node {
                         }
                         "placeholder_fill" => color(state.placeholder_fill)?,
                         "caret_color" => color(state.caret_color.as_ref().map(|c| c.current))?,
-                        "selection_fill" => color(state.selection_fill)?,
                         "max_length" => any(state.max_length.into_pyobject(py)?.into_any()),
                         "read_only" => {
                             any(state.read_only.into_pyobject(py)?.to_owned().into_any())
@@ -2794,11 +2832,21 @@ impl Node {
                         state.caret_epoch = None;
                     }
                 }
-                Change::SelectionFill(color) => {
-                    if let NodeKind::TextField(state) = &mut node.kind {
-                        state.selection_fill = color;
-                    }
-                }
+                Change::SelectionFill(color) => match &mut node.kind {
+                    NodeKind::TextField(state) => state.selection_fill = color,
+                    NodeKind::Text(state) => state.options.selection_fill = color,
+                    _ => {}
+                },
+                Change::SelectionForeground(color) => match &mut node.kind {
+                    NodeKind::TextField(state) => state.selection_foreground = color,
+                    NodeKind::Text(state) => state.options.selection_foreground = color,
+                    _ => {}
+                },
+                Change::SelectionRadius(radius) => match &mut node.kind {
+                    NodeKind::TextField(state) => state.selection_radius = radius,
+                    NodeKind::Text(state) => state.options.selection_radius = radius,
+                    _ => {}
+                },
                 Change::Obscured(obscured) => {
                     if let NodeKind::TextField(state) = &mut node.kind {
                         state.obscured = obscured;

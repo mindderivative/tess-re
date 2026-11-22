@@ -330,6 +330,9 @@ On `text` and `text_input` unless noted.
 | `overflow` | `"clip"` cuts text past the box or the line limit; `"ellipsis"` ends each cut line with "…". On a text input (0.6.6) it is for a single-line one, and takes `"scroll"` too: see [Text input](#text-input) |
 | `spans` | (0.5.4) `[(start, end, style), ...]`: UTF-8 byte ranges styled with a dict of `color`, `weight`, `italic`, `underline`, `strikethrough`, `font_size`, `font_family`, `link` (`text` only; later spans win where they overlap) |
 | `selectable` | (0.5.4) `True` lets a press and drag select the text and Copy take it (`text` only; default `False`) |
+| `selection_fill` | (0.6.12 on `text`; a `text_input` had it from 0.5.6) The highlight behind selected text, `(r, g, b, a)`. Default `None`: the scheme's `primary` at 30% alpha while the text has no `fill` of its own, else the text colour at 30% (the UX note "Text Selection": `primary` at 30%). Example: `label.set(selection_fill=(103, 80, 164, 77))` |
+| `selection_foreground` | (0.6.12) The colour of the glyphs inside the selection, `(r, g, b, a)`. Default `None`: each glyph keeps its own colour (the UX note "Text Selection": selected text keeps its own colour). A glyph is selected when its middle is inside the highlight; underline and strikethrough of a span keep the span's colour. Example: `field.set(selection_foreground=(255, 255, 255, 255))` |
+| `selection_radius` | (0.6.12) The corner radius of the highlight in pixels, a number from `0`. Default `0`: square, as before (the UX note "Text Selection" gives `shape.none`). One rectangle per selected line, each rounded on its own and never by more than half its shorter side. Example: `label.set(selection_radius=4)` |
 | `fill` | The glyph color (animatable) |
 
 A text node with no `width` or `height` is the size of its text (0.6.2, #263; `"auto"`

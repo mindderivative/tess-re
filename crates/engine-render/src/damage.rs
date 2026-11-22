@@ -1959,6 +1959,9 @@ fn options_fingerprint(h: &mut impl Hasher, options: &TextOptions) {
         selectable,
         selection,
         vertical_align,
+        selection_fill,
+        selection_foreground,
+        selection_radius,
     } = options;
     italic.hash(h);
     letter_spacing.to_bits().hash(h);
@@ -1970,6 +1973,14 @@ fn options_fingerprint(h: &mut impl Hasher, options: &TextOptions) {
     selection.hash(h);
     // 0.6.11 (P3): where the lines sit in the box.
     vertical_align.hash(h);
+    // 0.6.12 (P8): how the selection is painted.
+    for fill in [selection_fill, selection_foreground] {
+        fill.is_some().hash(h);
+        if let Some(c) = fill {
+            color(h, *c);
+        }
+    }
+    selection_radius.to_bits().hash(h);
     // 0.5.4 (#112): spans.
     for span in spans {
         let engine_core::TextSpan {
@@ -2059,6 +2070,8 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
         preedit_cursor: _,
         last_inserted: _,
         selection_fill,
+        selection_foreground,
+        selection_radius,
         obscured,
         wrap,
         overflow,
@@ -2072,6 +2085,7 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
     } = state;
     caret_visible.hash(h);
     caret_width.to_bits().hash(h);
+    selection_radius.to_bits().hash(h);
     (*caret_shape as u8).hash(h);
     caret_on.hash(h);
     content.hash(h);
@@ -2093,7 +2107,7 @@ fn field_fingerprint(h: &mut impl Hasher, state: &TextFieldState) {
     num(h, scroll_offset.current);
     num(h, horizontal_scroll_offset.current);
     placeholder.hash(h);
-    for fill in [placeholder_fill, selection_fill] {
+    for fill in [placeholder_fill, selection_fill, selection_foreground] {
         fill.is_some().hash(h);
         if let Some(c) = fill {
             color(h, *c);

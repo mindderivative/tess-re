@@ -1253,6 +1253,8 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `preedit_cursor` | `Option<(usize, usize)>` | The IME's cursor range inside the preedit text, in bytes. |
 | `last_inserted` | `Option<Range<usize>>` | The bytes the last edit inserted, for `caret_move`. |
 | `selection_fill` | `Option<Color>` | The selection highlight's color; `None` is the scheme's `primary` at 30% while `tint_scheme`, else `text_tint` at 30% alpha. |
+| `selection_foreground` | `Option<Color>` | The colour of the selected glyphs; `None` keeps each glyph's own colour. |
+| `selection_radius` | `f32` | The corner radius of the highlight, in pixels (one rectangle per line); `0` is square. |
 | `obscured` | `bool` | A password field — every character paints as a bullet, and its text never leaves through copy or cut. |
 | `wrap` | `Option<bool>` | `Some(true)` wraps a multiline input's lines at its width (by word); `Some(false)` keeps each line whole and scrolls sideways. |
 | `overflow` | `Option<FieldOverflow>` | How a single-line input shows a line longer than its box. |
@@ -1293,6 +1295,9 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `selectable` | `bool` | Whether a press and drag on the text selects it, and Copy takes the selection. |
 | `selection` | `Option<(usize, usize)>` | The selected bytes as `(anchor, focus)`, either order. |
 | `vertical_align` | `VerticalAlign` | Where the laid-out lines sit in the node's content box when the box is taller than they are. |
+| `selection_fill` | `Option<Color>` | The highlight behind selected text; `None` is the scheme's `primary` at 30% while the text has no `fill` of its own, else the text colour at 30%.… |
+| `selection_foreground` | `Option<Color>` | The colour of the selected glyphs; `None` keeps each glyph's own colour. |
+| `selection_radius` | `f32` | The corner radius of the highlight, in pixels (one rectangle per line); `0` is square. |
 
 | Method | Description |
 | --- | --- |

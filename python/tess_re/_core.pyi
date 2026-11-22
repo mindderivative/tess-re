@@ -347,6 +347,14 @@ class Node:
         takes `image_sampling` (`"linear"` by default, `"nearest"`, `"cubic"`).
         `shadows` works on every kind.
 
+        (0.6.12) How a selection paints, on a `text` and a `text_input`:
+        `selection_fill` (a colour; default `None`: the scheme's `primary` at
+        30 %, the text colour at 30 % with a `fill` of its own; a `text` took
+        none before), `selection_foreground` (the colour of the selected
+        glyphs; default `None`: each keeps its own) and `selection_radius`
+        (the highlight's corner radius in pixels, from `0`, the default:
+        square). `caret_width` (pixels, default `1.5`) is a `text_input`'s.
+
         (0.6.11) A scroll view and a virtual list take the scrollbar and scroll-feel
         properties -- `scrollbar_width`, `_hit_width`, `_margin`, `_min_length`,
         `_gutter`, `_corner`, `_radius`, `_opacity`, `_opacity_hover`, `_opacity_drag`,
