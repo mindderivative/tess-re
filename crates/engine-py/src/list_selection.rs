@@ -271,7 +271,7 @@ pub(crate) fn fire_changes(ctx: &NodeContext<'_>, py: Python<'_>) {
                 );
                 e.count = u32::try_from(change.selected.len()).ok();
                 e.anchor = change.anchor;
-                e.source = Some(change.source.name().to_string());
+                e.selection_source = Some(change.source.name().to_string());
             },
         );
     }

@@ -555,9 +555,9 @@ One behaviour changes for every scroll view and virtual list: the wheel notch. T
   several chooses it alone on release unless the pointer went `drag_start_px`) and keys (Up, Down, Home, End, Page keys
   move focus to a selectable row, Shift extends from the anchor, Ctrl moves focus alone, Space and Ctrl+Space toggle,
   Ctrl+A with `select_all_key`, Escape never clears) are the engine's; `selection_change` carries `selection`, `ranges`,
-  `count`, `anchor` and `source`. **Behaviour to know:** with a `selection_mode` a list takes the arrow, Home, End and Page
+  `count`, `anchor` and `selection_source`. **Behaviour to know:** with a `selection_mode` a list takes the arrow, Home, End and Page
   keys itself (focus moves to the next row and the list scrolls by the least distance) instead of scrolling by 40 and the
-  page; with the default none of that happens. New `Event` fields `selection`, `ranges`, `anchor`, `source`. Not built:
+  page; with the default none of that happens. New `Event` fields `selection`, `ranges`, `anchor`, `selection_source`. Not built:
   container children as items, the `selected` and `multiselectable` accessibility flags set from the set, and the
   announcement of the count (the next change). See [Selecting rows of a virtual list](guide/nodes-and-layout.md#selecting-rows-of-a-virtual-list).
 - **`titlebar_double_click`, `resize_cursors`, `undecorated_shadow` (new `Window` properties, P11; no default changes).**

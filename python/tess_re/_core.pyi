@@ -66,7 +66,7 @@ class Event:
     declares one parameter -- never constructed directly. A field is
     `None` when the event has nothing to say about it (never fabricated).
     M100 removed the legacy `kind`, `source`, `node`, and `position`:
-    `type` and `target` replace the first and third. (0.6.12) `source` is back, for
+    `type` and `target` replace the first and third. (0.6.12) `selection_source` is new, for
     `selection_change` only.
     """
 
@@ -191,7 +191,7 @@ class Event:
     """`selection_change` (0.6.12): the same set as half-open `(start, end)` ranges, ascending."""
     anchor: int | None
     """`selection_change` (0.6.12): the row a range starts from, or `None`."""
-    source: str | None
+    selection_source: str | None
     """`selection_change` (0.6.12): what changed the set: `"pointer"`, `"keyboard"` or `"api"`."""
     scale: float | None
     """`pinch`: the distance between fingers over what it was at the start."""
@@ -456,7 +456,7 @@ class Node:
         focus moved to).
         (0.6.12) Also `selection_change` (the chosen rows of a `virtual_list` with a
         `selection_mode` changed: `event.selection`, `event.ranges`, `event.count`,
-        `event.anchor`, `event.source`; once for a key press, click or `set`).
+        `event.anchor`, `event.selection_source`; once for a key press, click or `set`).
         (0.6.7) Also `overwrite_change` (the user toggled a text input's overwrite
         mode with Insert; `event.old_value` and `event.new_value`).
         (0.5.7) Also `layout` (the node's laid-out size changed, or it was

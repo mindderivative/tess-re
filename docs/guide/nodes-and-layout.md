@@ -565,7 +565,7 @@ and the anchor (the Tesserae UX note "Selection", AC-SLT-1 to AC-SLT-6 and AC-SL
 ```python
 lst = window.create("virtual_list", item_count=100_000, item_extent=32, materialize=row,
                     width=320, height=400, selection_mode="multiple", select_all_key=True)
-lst.on("selection_change", lambda e: print(e.count, e.anchor, e.source))
+lst.on("selection_change", lambda e: print(e.count, e.anchor, e.selection_source))
 lst.get("selection")          # [] -- the chosen rows' keys, ascending
 lst.set(selection=[3, 4, 9])  # replaces the whole set; selection_change, source "api"
 ```
@@ -640,5 +640,5 @@ listener on the list itself does not stop the engine: it hears the keys of its r
 
 **`selection_change`** fires on the list (it does not bubble) once for each key press, click or `set` that changed
 the set, with the whole new set: `event.selection` (the keys, ascending), `event.ranges` (the same set as
-half-open `(start, end)` pairs, which stays small for any size), `event.count`, `event.anchor` and `event.source`
+half-open `(start, end)` pairs, which stays small for any size), `event.count`, `event.anchor` and `event.selection_source`
 (`"pointer"`, `"keyboard"` or `"api"`). A call that leaves the set as it was fires nothing.

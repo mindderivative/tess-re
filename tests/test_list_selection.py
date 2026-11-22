@@ -35,7 +35,7 @@ def make_list(window, count=5, extent=20.0, height=100, mode="multiple", **props
         **props,
     )
     LOGS[id(lst)] = log = []
-    lst.on("selection_change", lambda e: log.append((e.selection, e.anchor, e.source)))
+    lst.on("selection_change", lambda e: log.append((e.selection, e.anchor, e.selection_source)))
     BUILT[id(lst)] = built
     window.root.add_child(lst)
     window.advance(16)
@@ -391,7 +391,7 @@ def test_the_event_carries_the_count_and_the_ranges():
     window = Window(width=800, height=600)
     lst = make_list(window, count=100_000)
     seen = []
-    lst.on("selection_change", lambda e: seen.append((e.count, e.ranges, e.anchor, e.source)))
+    lst.on("selection_change", lambda e: seen.append((e.count, e.ranges, e.anchor, e.selection_source)))
     click(window, lst, 2)
     click(window, lst, 4, ctrl=True)
     row(lst, 4).focus()

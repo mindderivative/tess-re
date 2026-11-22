@@ -257,7 +257,7 @@ pub struct Event {
     #[pyo3(get)]
     pub(crate) anchor: Option<usize>,
     #[pyo3(get)]
-    pub(crate) source: Option<String>,
+    pub(crate) selection_source: Option<String>,
     pub(crate) stopped: bool,
     pub(crate) cancelled: bool,
     pub(crate) cancellable: bool,
@@ -376,7 +376,7 @@ impl Event {
             selection: None,
             ranges: None,
             anchor: None,
-            source: None,
+            selection_source: None,
             stopped: false,
             cancelled: false,
             cancellable: false,

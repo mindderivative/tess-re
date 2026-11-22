@@ -508,7 +508,7 @@ What a listener receives when it takes one argument; never constructed directly.
 | `selection` | `list[int] \| None` |  |
 | `ranges` | `list[tuple[int, int]] \| None` |  |
 | `anchor` | `int \| None` |  |
-| `source` | `str \| None` |  |
+| `selection_source` | `str \| None` |  |
 | `scale` | `float \| None` |  |
 | `scale_delta` | `float \| None` |  |
 | `rotation` | `float \| None` |  |
