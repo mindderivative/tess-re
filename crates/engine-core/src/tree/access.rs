@@ -269,6 +269,9 @@ impl Tree {
         if access.busy {
             access_node.set_busy();
         }
+        if let Some(popup) = access.has_popup {
+            access_node.set_has_popup(popup);
+        }
         if let Some(current) = access.current {
             access_node.set_aria_current(current);
         }

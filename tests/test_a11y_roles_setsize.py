@@ -111,3 +111,32 @@ def test_a_virtual_list_row_reads_back_only_what_was_set():
     assert made, "rows are built"
     # The engine derives the position for the screen reader; it does not store it on the row.
     assert all(row.get("pos_in_set") is None and row.get("set_size") is None for row in made)
+
+
+MENU_ROLES = ["menubar", "menuitemcheckbox", "menuitemradio"]
+
+
+@pytest.mark.parametrize("role", MENU_ROLES)
+def test_the_menu_roles_of_0_6_14_are_accepted_and_read_back(node, role):
+    node.set(role=role)
+    assert node.get("role") == role
+
+
+def test_a_menu_bar_title_exposes_haspopup_and_expanded_and_a_check_item_checked(node):
+    node.set(role="menuitem", haspopup="menu", expanded=False)
+    assert node.get("haspopup") == "menu" and node.get("expanded") is False
+    node.set(haspopup=True)
+    assert node.get("haspopup") == "menu"
+    node.set(haspopup="dialog")
+    assert node.get("haspopup") == "dialog"
+    node.set(haspopup=None)
+    assert node.get("haspopup") is None
+    node.set(role="menuitemcheckbox", checked=True)
+    assert node.get("checked") is True
+    node.set(role="menuitemradio", checked=False)
+    assert node.get("checked") is False
+
+
+def test_haspopup_refuses_an_unknown_kind(node):
+    with pytest.raises(ValueError):
+        node.set(haspopup="popover")

@@ -70,6 +70,7 @@ The node tree, animation, layout, input dispatch, focus, layers and docking. Pur
 | `invalid` | `bool` | The value is not acceptable. |
 | `busy` | `bool` | The node is updating. |
 | `current` | `Option<AriaCurrent>` | The current item of a set (a page, a step...). |
+| `has_popup` | `Option<HasPopup>` | The kind of popup the node opens (a menu bar title, a combo box). |
 | `extra` | `Option<Box<AccessExtra>>` | The rarely set, larger accessibility data, boxed so a node that has none pays one pointer. |
 | `set_size` | `Option<usize>` | How many items the set this node holds. |
 | `pos_in_set` | `Option<usize>` | This node's 1-based place in its set (AccessKit's is zero-based, the tree builder subtracts one). |
@@ -3013,6 +3014,7 @@ Types re-exported from other crates:
 - `Action` from `access`
 - `ActionData` from `access`
 - `AriaCurrent` from `access`
+- `HasPopup` from `access`
 - `Live` from `access`
 - `Orientation` from `access`
 - `Role` from `access`

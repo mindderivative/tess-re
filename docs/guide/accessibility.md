@@ -67,6 +67,8 @@ the AccessKit role themselves and have not been looked at.
 | `option` (0.6.11) | ListBoxOption | list item |
 | `listbox` (0.6.11) | ListBox | list box |
 | `toolbar` (0.6.11) | Toolbar | tool bar |
+| `menubar` (0.6.14) | MenuBar | menu bar |
+| `menuitemcheckbox`, `menuitemradio` (0.6.14) | MenuItemCheckBox, MenuItemRadio | check menu item, radio menu item (take `checked`) |
 | `navigation`, `complementary`, `region` (0.6.11) | Navigation, Complementary, Region | landmark |
 | `grid` (0.6.11) | Grid | table |
 | `row` (0.6.11) | Row | table row |
