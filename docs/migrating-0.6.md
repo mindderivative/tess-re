@@ -808,3 +808,9 @@ is drawn**).
   from the engine, because a `key_down` event cannot be cancelled to give one back: a row with a bare listener stops
   Shift+Arrow from extending the selection. Listen on the list or container itself (or above) to hear the keys without
   blocking them. This was already the rule for keyboard scrolling; it is now written in the events reference too.
+
+- **`menubar`, `menuitemcheckbox`, `menuitemradio` roles and `haspopup` (new; UXREQ-011).** The WAI-ARIA menu bar pattern: a node
+  with `role="menubar"` is a menu bar in the platform tree, its titles are `role="menuitem"` with `haspopup="menu"` and `expanded`
+  (`haspopup` is `"menu"`, `"listbox"`, `"tree"`, `"grid"`, `"dialog"`, `True` for a menu, or `None`), and a check or radio entry
+  is `menuitemcheckbox` / `menuitemradio` with `checked`. Unknown role names still raise the same `ValueError`, which now lists 45
+  names. No default changes; `Node` accessibility data gained `has_popup` (Rust).

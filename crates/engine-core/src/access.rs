@@ -5,7 +5,7 @@
 //! kinds of its own to derive such states from, so the framework that
 //! draws a checkbox is the one that says it is checked.
 
-pub use accesskit::{Action, ActionData, AriaCurrent, Live, Orientation, Role, Toggled};
+pub use accesskit::{Action, ActionData, AriaCurrent, HasPopup, Live, Orientation, Role, Toggled};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AccessStates {
@@ -68,6 +68,8 @@ pub struct AccessNodeData {
     pub busy: bool,
     /// 0.5.6 (#160): the current item of a set (a page, a step...).
     pub current: Option<AriaCurrent>,
+    /// 0.6.14 (UXREQ-011): the kind of popup the node opens (a menu bar title, a combo box).
+    pub has_popup: Option<HasPopup>,
     /// 0.5.6 (#160): the rarely set, larger accessibility data, boxed so a
     /// node that has none pays one pointer.
     pub extra: Option<Box<AccessExtra>>,
@@ -127,6 +129,7 @@ impl AccessNodeData {
             invalid: false,
             busy: false,
             current: None,
+            has_popup: None,
             extra: None,
             level: None,
             set_size: None,
@@ -168,6 +171,8 @@ impl AccessNodeData {
                 | Role::RadioButton
                 | Role::Switch
                 | Role::MenuItem
+                | Role::MenuItemCheckBox
+                | Role::MenuItemRadio
                 | Role::Tab
                 | Role::TreeItem
         ) {

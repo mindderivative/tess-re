@@ -11082,3 +11082,45 @@ fn layer_placement_policy_is_a_default_a_layer_may_override() {
     assert_eq!(at(&tree), (160.0, 20.0), "end edges line up, not shifted");
     assert!(!tree.update_layer(anchor, |_| {}), "not a layer");
 }
+
+/// 0.6.14 (UXREQ-011): a menu bar, its titles (`has_popup`, `expanded`) and a check menu item (`checked`) reach the
+/// AccessKit tree with the platform menu roles.
+#[test]
+fn a_menu_bar_its_titles_and_check_items_reach_the_access_tree() {
+    use crate::access::{AccessNodeData, HasPopup, Role, Toggled};
+    let mut tree = Tree::new();
+    let (k, s, p) = leaf(200.0, 24.0);
+    let bar = tree.insert(k, s, p);
+    let (k, s, p) = leaf(60.0, 24.0);
+    let title = tree.insert(k, s, p);
+    let (k, s, p) = leaf(60.0, 24.0);
+    let check = tree.insert(k, s, p);
+    tree.add_child(bar, title);
+    tree.add_child(bar, check);
+    tree.set_access(bar, AccessNodeData::new(Role::MenuBar).with_label("Main"));
+    let mut data = AccessNodeData::new(Role::MenuItem).with_label("File");
+    data.has_popup = Some(HasPopup::Menu);
+    data.expanded = Some(false);
+    tree.set_access(title, data);
+    let mut data = AccessNodeData::new(Role::MenuItemCheckBox).with_label("Show grid");
+    data.checked = Some(Toggled::True);
+    tree.set_access(check, data);
+    tree.compute_layout(
+        bar,
+        Size {
+            width: AvailableSpace::Definite(200.0),
+            height: AvailableSpace::Definite(24.0),
+        },
+    );
+    let update = tree.build_access_update(bar);
+    let node = |id: NodeId| {
+        let want = to_access_id(id);
+        &update.nodes.iter().find(|(n, _)| *n == want).unwrap().1
+    };
+    assert_eq!(node(bar).role(), Role::MenuBar);
+    assert_eq!(node(title).role(), Role::MenuItem);
+    assert_eq!(node(title).has_popup(), Some(HasPopup::Menu));
+    assert_eq!(node(title).is_expanded(), Some(false));
+    assert_eq!(node(check).role(), Role::MenuItemCheckBox);
+    assert_eq!(node(check).toggled(), Some(Toggled::True));
+}

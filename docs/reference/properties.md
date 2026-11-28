@@ -660,7 +660,8 @@ accessibility properties (`role`, `label`, `checked`, ...) is on [Node](node.md#
 | `checked` | `True`, `False`, `"mixed"`, `None` | `None` | | `parent.set(checked="mixed")` |
 | `a11y_orientation` | `"horizontal"`, `"vertical"`, `None` | `None` (the platform's default for the role) | | `slider.set(a11y_orientation="horizontal")` |
 | `modal` | `bool` | `False` | | `dialog.set(role="dialog", modal=True)` |
-| `role` | 42 names, 18 new: `status`, `spinbutton`, `radiogroup`, `option`, `listbox`, `toolbar`, `navigation`, `complementary`, `region`, `grid`, `row`, `gridcell`, `columnheader`, `rowheader`, `searchbox`, `combobox`, `tooltip`, `scrollbar` | `"none"`-like (unset) | | `box.set(role="status")` |
+| `haspopup` | `"menu"`, `"listbox"`, `"tree"`, `"grid"`, `"dialog"`, `True` (a menu), `False`/`None` | `None` | | `title.set(role="menuitem", haspopup="menu", expanded=False)` (0.6.14: a menu bar title opens a menu) |
+| `role` | 45 names (0.6.14: `menubar`, `menuitemcheckbox`, `menuitemradio`; 0.6.11: 18 new: `status`, `spinbutton`, `radiogroup`, `option`, `listbox`, `toolbar`, `navigation`, `complementary`, `region`, `grid`, `row`, `gridcell`, `columnheader`, `rowheader`, `searchbox`, `combobox`, `tooltip`, `scrollbar` | `"none"`-like (unset) | | `box.set(role="status")` |
 
 `status` is a polite live region and `alert` an assertive one unless `live` is set.
 

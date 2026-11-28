@@ -43,8 +43,8 @@ mod svg_smil;
 mod tree;
 
 pub use access::{
-    AccessExtra, AccessNodeData, AccessStates, AccessValue, Action, ActionData, AriaCurrent, Live,
-    Orientation, Role, Toggled,
+    AccessExtra, AccessNodeData, AccessStates, AccessValue, Action, ActionData, AriaCurrent,
+    HasPopup, Live, Orientation, Role, Toggled,
 };
 pub use animation::{
     ActiveAnimation, Animated, CompletionHandle, Interpolate, MotionCurve, animations_started,

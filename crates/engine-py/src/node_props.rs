@@ -26,7 +26,7 @@ use crate::node_layout::{LAYOUT_PROPS, StyleEdit, parse_layout, read_layout};
 
 /// Every property `set` accepts besides the layout ones
 /// (`node_layout::LAYOUT_PROPS`), in the order its error lists them.
-const SETTABLE: [&str; 93] = [
+const SETTABLE: [&str; 94] = [
     // 0.5.7 (#179): placed against another node.
     "anchor",
     "placement",
@@ -99,6 +99,7 @@ const SETTABLE: [&str; 93] = [
     "invalid",
     "busy",
     "current",
+    "haspopup",
     "description",
     "describedby",
     "controls",
@@ -127,7 +128,7 @@ const SETTABLE: [&str; 93] = [
 ];
 
 /// The M93 role vocabulary.
-const ROLES: [(&str, Role); 42] = [
+const ROLES: [(&str, Role); 45] = [
     ("button", Role::Button),
     ("checkbox", Role::CheckBox),
     ("radio", Role::RadioButton),
@@ -173,6 +174,11 @@ const ROLES: [(&str, Role); 42] = [
     ("combobox", Role::ComboBox),
     ("tooltip", Role::Tooltip),
     ("scrollbar", Role::ScrollBar),
+    // 0.6.14 (UXREQ-011): the WAI-ARIA menubar pattern: menubar > menuitem titles > menu > menuitem / menuitemcheckbox
+    // / menuitemradio (the last two take `checked`).
+    ("menubar", Role::MenuBar),
+    ("menuitemcheckbox", Role::MenuItemCheckBox),
+    ("menuitemradio", Role::MenuItemRadio),
 ];
 
 const ORIENTATIONS: [(&str, engine_core::Orientation); 2] = [
@@ -186,6 +192,14 @@ const CURRENT: [(&str, engine_core::AriaCurrent); 5] = [
     ("location", engine_core::AriaCurrent::Location),
     ("date", engine_core::AriaCurrent::Date),
     ("time", engine_core::AriaCurrent::Time),
+];
+
+const HAS_POPUP: [(&str, engine_core::HasPopup); 5] = [
+    ("menu", engine_core::HasPopup::Menu),
+    ("listbox", engine_core::HasPopup::Listbox),
+    ("tree", engine_core::HasPopup::Tree),
+    ("grid", engine_core::HasPopup::Grid),
+    ("dialog", engine_core::HasPopup::Dialog),
 ];
 
 const LIVE: [(&str, Live); 3] = [
@@ -239,6 +253,8 @@ pub(crate) enum Change {
     Invalid(bool),
     Busy(bool),
     Current(Option<engine_core::AriaCurrent>),
+    /// 0.6.14: `haspopup`.
+    HasPopup(Option<engine_core::HasPopup>),
     Description(Option<String>),
     ValueNow(Option<f64>),
     ValueText(Option<String>),
@@ -1263,6 +1279,26 @@ fn parse(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Change> {
         "pressed" => Change::Pressed(toggled(value, name)?),
         "invalid" => Change::Invalid(boolean(value, name)?),
         "busy" => Change::Busy(boolean(value, name)?),
+        "haspopup" => Change::HasPopup(if value.is_none() {
+            None
+        } else if value.is_instance_of::<pyo3::types::PyBool>() {
+            // True is the plain `aria-haspopup="true"`: a menu; False is none.
+            value.extract::<bool>()?.then_some(engine_core::HasPopup::Menu)
+        } else {
+            let text: String = required(value, name, "a str, a bool, or None")?;
+            Some(
+                HAS_POPUP
+                    .iter()
+                    .find(|(n, _)| *n == text)
+                    .map(|(_, c)| *c)
+                    .ok_or_else(|| {
+                        invalid(
+                            name,
+                            &format!("True, False, None, or one of: {}", names(&HAS_POPUP)),
+                        )
+                    })?,
+            )
+        }),
         "current" => Change::Current(if value.is_none() {
             None
         } else if value.is_instance_of::<pyo3::types::PyBool>() {
@@ -2061,6 +2097,13 @@ impl Node {
                 "modal" => any(access.modal.into_pyobject(py)?.to_owned().into_any()),
                 "invalid" => any(access.invalid.into_pyobject(py)?.to_owned().into_any()),
                 "busy" => any(access.busy.into_pyobject(py)?.to_owned().into_any()),
+                "haspopup" => HAS_POPUP
+                    .iter()
+                    .find(|(_, c)| Some(*c) == access.has_popup)
+                    .map(|(n, _)| *n)
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
                 "current" => match access.current {
                     None => py.None(),
                     Some(engine_core::AriaCurrent::True) => {
@@ -2664,6 +2707,7 @@ impl Node {
                 Change::Invalid(invalid) => access.invalid = invalid,
                 Change::Busy(busy) => access.busy = busy,
                 Change::Current(current) => access.current = current,
+                Change::HasPopup(popup) => access.has_popup = popup,
                 Change::Description(description) => access.description = description,
                 Change::ValueNow(Some(now)) => access.value = Some(AccessValue::Number(now)),
                 Change::ValueNow(None) => {
